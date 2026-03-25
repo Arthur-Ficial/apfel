@@ -32,8 +32,11 @@ class ChatViewModel {
     var errorMessage: String?
     var showDebugPanel: Bool = true
     var showLogPanel: Bool = true
+    var debugAutoFollow: Bool = true
+    var speakEnabled: Bool = false
 
     let apiClient: APIClient
+    let tts = TTSManager()
 
     init(apiClient: APIClient) {
         self.apiClient = apiClient
@@ -105,8 +108,17 @@ class ChatViewModel {
                 msg.isStreaming = false
                 msg.durationMs = durationMs
                 msg.tokenCount = max(1, msg.content.count / 4)
-                // Use the REAL raw SSE response from the server — 100% truthful
                 msg.responseJSON = rawResponse
+            }
+
+            // Auto-follow: select the latest assistant message in debug panel
+            if debugAutoFollow {
+                selectedMessageId = assistantId
+            }
+
+            // Speak the response if TTS is enabled
+            if speakEnabled, let content = messages.first(where: { $0.id == assistantId })?.content {
+                tts.speak(content)
             }
         } catch {
             updateMessage(id: assistantId) { msg in

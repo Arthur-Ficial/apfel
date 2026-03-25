@@ -47,7 +47,10 @@ struct ChatView: View {
                                     onSelect: {
                                         viewModel.selectedMessageId = msg.id
                                         viewModel.showDebugPanel = true
-                                    }
+                                    },
+                                    onSpeak: msg.role == "assistant" ? {
+                                        viewModel.tts.speak(msg.content)
+                                    } : nil
                                 )
                                 .id(msg.id)
                             }
@@ -66,19 +69,30 @@ struct ChatView: View {
             Divider()
 
             // Input bar
-            HStack(alignment: .center, spacing: 10) {
+            HStack(alignment: .center, spacing: 8) {
+                // Speaker toggle
+                Button(action: { viewModel.speakEnabled.toggle() }) {
+                    Image(systemName: viewModel.speakEnabled ? "speaker.wave.3.fill" : "speaker.slash")
+                        .font(.body)
+                        .foregroundColor(viewModel.speakEnabled ? .accentColor : .gray)
+                }
+                .buttonStyle(.borderless)
+                .help(viewModel.speakEnabled ? "Speech on — click to mute" : "Speech off — click to enable")
+                .onHover { h in if h { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
+
+                // Text input
                 TextField("Type a message, press Enter to send...", text: $viewModel.currentInput)
                     .textFieldStyle(.roundedBorder)
                     .font(.body)
                     .focused($focusedField, equals: .messageInput)
                     .onSubmit {
                         Task { await viewModel.send() }
-                        // Re-focus after send
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                             focusedField = .messageInput
                         }
                     }
 
+                // Send button
                 Button(action: {
                     Task { await viewModel.send() }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {

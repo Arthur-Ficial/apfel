@@ -17,6 +17,10 @@ struct DebugPanel: View {
                 Text("Debug Inspector")
                     .font(.headline)
                 Spacer()
+                Toggle("Auto-follow", isOn: $viewModel.debugAutoFollow)
+                    .toggleStyle(.checkbox)
+                    .font(.caption)
+
                 if viewModel.selectedMessage != nil {
                     Button("Clear") {
                         viewModel.selectedMessageId = nil

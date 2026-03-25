@@ -9,6 +9,7 @@ struct MessageBubble: View {
     let message: ChatMsg
     let isSelected: Bool
     let onSelect: () -> Void
+    var onSpeak: (() -> Void)? = nil
 
     @State private var inspectHovered = false
 
@@ -94,6 +95,22 @@ struct MessageBubble: View {
 
                 // Copy button
                 CopyButton(text: message.content)
+
+                // Speak button (assistant messages only)
+                if message.role == "assistant", let onSpeak {
+                    Button(action: onSpeak) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "speaker.wave.2")
+                            Text("Speak")
+                        }
+                        .font(.caption)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundColor(.secondary)
+                    .onHover { h in if h { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
+                }
 
                 if message.role == "assistant" { Spacer() }
             }
