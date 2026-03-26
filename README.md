@@ -120,7 +120,7 @@ demo/mac-narrator --watch      # continuous narration every 60s
 | `POST /v1/chat/completions` | Supported | Streaming + non-streaming |
 | `GET /v1/models` | Supported | Returns `apple-foundationmodel` |
 | `GET /health` | Supported | Model availability, context window, languages |
-| Tool calling | Supported | Native `Transcript.ToolDefinition` + JSON detection |
+| Tool calling | Supported | Native `Transcript.ToolDefinition` + JSON detection. See [Tool Calling Guide](docs/tool-calling-guide.md) |
 | `response_format: json_object` | Supported | Via system prompt injection |
 | `temperature`, `max_tokens`, `seed` | Supported | Mapped to `GenerationOptions` |
 | `stream: true` | Supported | SSE with usage stats in final chunk |
@@ -218,7 +218,7 @@ Built with Swift 6.3 strict concurrency. Single `Package.swift`, three targets:
 ```bash
 swift build                              # debug build
 swift run apfel-tests                    # 28 unit tests
-bash Tests/integration/run_tests.sh      # 14 integration tests (needs server)
+bash Tests/integration/run_tests.sh      # 33 integration tests (needs server)
 ```
 
 ## Examples
