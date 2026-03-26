@@ -2,9 +2,8 @@
 # cmd — natural language to shell command, powered by Apple Intelligence
 #
 # Usage:  cmd "find files larger than 100MB"
-#         cmd "kill all node processes"
-#         cmd -x "list all open ports"     # execute immediately
-#         cmd -c "disk usage by folder"    # copy to clipboard
+#         cmd -x "list all open ports"       # execute (asks confirm)
+#         cmd -c "kill all node processes"   # copy to clipboard
 #
 # Requires: apfel installed (https://github.com/Arthur-Ficial/apfel)
 
@@ -13,14 +12,14 @@ COPY=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        -x|--execute) EXECUTE=true; shift ;;
-        -c|--copy)    COPY=true; shift ;;
+        -x|--execute)  EXECUTE=true; shift ;;
+        -c|--copy)     COPY=true; shift ;;
         -h|--help)
             echo "cmd — natural language to shell command"
             echo ""
             echo "Usage: cmd [OPTIONS] \"description\""
             echo ""
-            echo "  -x, --execute  Run the command after showing it"
+            echo "  -x, --execute  Run the command (asks confirmation first)"
             echo "  -c, --copy     Copy command to clipboard"
             echo "  -h, --help     Show this help"
             echo ""

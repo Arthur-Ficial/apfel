@@ -100,35 +100,30 @@ apfel --gui
 
 Inspect every request/response, copy curl commands, view SSE streams, track token budgets.
 
-## Demo
+## Demos
 
-See [`demo/`](./demo/) for real-world shell scripts powered by apfel.
+See [`demo/`](./demo/) for 8 real-world shell scripts powered by apfel.
 
-**[cmd](./demo/cmd)** — natural language to shell command:
-
-```bash
-demo/cmd "find all .log files modified today"
-# $ find . -name "*.log" -type f -mtime -1
-
-demo/cmd -x "show disk usage sorted by size"   # -x = execute after confirm
-demo/cmd -c "list open ports"                   # -c = copy to clipboard
-```
-
-**[oneliner](./demo/oneliner)** — complex pipe chains from plain English:
-
-```bash
-demo/oneliner "sum the third column of a CSV"
-# $ awk -F',' '{sum += $3} END {print sum}' file.csv
-
-demo/oneliner "count unique IPs in access.log"
-# $ awk '{print $1}' access.log | sort | uniq -c | sort -rn
-```
-
-**[mac-narrator](./demo/mac-narrator)** — your Mac's inner monologue:
+| Demo | What it does |
+|------|-------------|
+| **[cmd](./demo/cmd)** | Natural language to shell command |
+| **[oneliner](./demo/oneliner)** | Complex pipe chains from plain English |
+| **[wtf](./demo/wtf)** | "What is this directory?" — instant project orientation |
+| **[explain](./demo/explain)** | Explain a command, error, or code snippet |
+| **[naming](./demo/naming)** | Naming suggestions for functions, variables, files |
+| **[port](./demo/port)** | What's using this port? |
+| **[gitsum](./demo/gitsum)** | Summarize recent git activity |
+| **[mac-narrator](./demo/mac-narrator)** | Your Mac's inner monologue |
 
 ```bash
-demo/mac-narrator              # one-shot: what's happening right now?
-demo/mac-narrator --watch      # continuous narration every 60s
+demo/cmd "find all .log files modified today"        # shell command from English
+demo/oneliner "sum the third column of a CSV"        # awk/sed/grep one-liners
+demo/wtf ~/some/project                              # what is this repo?
+demo/explain "awk -F: '{print \$1}' /etc/passwd"     # explain a command
+demo/naming "function that retries with backoff"      # name things well
+demo/port 3000                                        # what's on this port?
+demo/gitsum                                           # summarize recent commits
+demo/mac-narrator --watch                             # continuous narration
 ```
 
 ## OpenAI API Compatibility

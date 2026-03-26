@@ -1,0 +1,94 @@
+#!/bin/bash
+# wtf — what is this directory?, powered by Apple Intelligence
+#
+# Usage:  wtf              # current directory
+#         wtf ~/projects   # any directory
+#         wtf -c           # copy summary to clipboard
+#
+# Requires: apfel installed (https://github.com/Arthur-Ficial/apfel)
+
+COPY=false
+TARGET="."
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -c|--copy) COPY=true; shift ;;
+        -h|--help)
+            echo "wtf — what is this directory?"
+            echo ""
+            echo "Usage: wtf [OPTIONS] [directory]"
+            echo ""
+            echo "  -c, --copy  Copy summary to clipboard"
+            echo "  -h, --help  Show this help"
+            echo ""
+            echo "Examples:"
+            echo "  wtf                     # current directory"
+            echo "  wtf ~/some/project      # any directory"
+            echo "  wtf -c .                # copy summary to clipboard"
+            echo ""
+            echo "Requires: apfel (Apple Intelligence CLI)"
+            exit 0
+            ;;
+        -*) echo "Unknown option: $1. Use --help."; exit 1 ;;
+        *)  TARGET="$1"; shift ;;
+    esac
+done
+
+if [[ ! -d "$TARGET" ]]; then
+    echo "Error: '$TARGET' is not a directory" >&2
+    exit 1
+fi
+
+# Check apfel is installed
+if ! command -v apfel &>/dev/null; then
+    echo "Error: apfel not found. Install from https://github.com/Arthur-Ficial/apfel"
+    exit 1
+fi
+
+# Gather directory info (kept small for context window)
+snapshot=""
+
+# File listing
+snapshot+="Directory: $(cd "$TARGET" && pwd)
+"
+snapshot+="$(ls -la "$TARGET" 2>/dev/null | head -30)
+"
+
+# Check for key project files and grab first few lines
+for f in README.md README readme.md Package.swift package.json Cargo.toml go.mod pyproject.toml Makefile Dockerfile docker-compose.yml .gitignore; do
+    if [[ -f "$TARGET/$f" ]]; then
+        snippet=$(head -5 "$TARGET/$f" 2>/dev/null)
+        snapshot+="
+--- $f (first 5 lines) ---
+$snippet
+"
+    fi
+done
+
+# Git info if available
+if [[ -d "$TARGET/.git" ]] || git -C "$TARGET" rev-parse --git-dir &>/dev/null 2>&1; then
+    branch=$(git -C "$TARGET" branch --show-current 2>/dev/null)
+    last_commit=$(git -C "$TARGET" log --oneline -1 2>/dev/null)
+    snapshot+="
+--- git ---
+branch: $branch
+last commit: $last_commit
+"
+fi
+
+SYSTEM="Summarize what this directory/project is in 2-3 sentences. Mention: what language/framework, what it does, how to build/run it if obvious. Be concise and specific. No bullet points."
+
+result=$(echo "$snapshot" | apfel -q -s "$SYSTEM")
+status=$?
+
+if [[ $status -ne 0 ]]; then
+    echo "Error: apfel failed (exit $status)" >&2
+    exit $status
+fi
+
+if $COPY; then
+    echo "$result" | pbcopy
+    echo -e "\033[90m(copied to clipboard)\033[0m"
+fi
+
+echo "$result"
