@@ -112,7 +112,7 @@ class ChatViewModel {
             updateMessage(id: assistantId) { msg in
                 msg.isStreaming = false
                 msg.durationMs = durationMs
-                msg.tokenCount = nil  // real count comes from server usage stats
+                msg.tokenCount = APIClient.lastStreamingUsage?.totalTokens
                 msg.responseJSON = rawResponse
             }
             if shouldExcludeTurnFromHistory(assistantContent) {

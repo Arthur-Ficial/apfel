@@ -5,10 +5,11 @@
 // ============================================================================
 
 import Foundation
+import ApfelCore
 
 // MARK: - Configuration
 
-let version = "0.4.0"
+let version = "0.5.0"
 let appName = "apfel"
 let modelName = "apple-foundationmodel"
 
@@ -17,6 +18,22 @@ let modelName = "apple-foundationmodel"
 let exitSuccess: Int32 = 0
 let exitRuntimeError: Int32 = 1
 let exitUsageError: Int32 = 2
+let exitGuardrail: Int32 = 3
+let exitContextOverflow: Int32 = 4
+let exitModelUnavailable: Int32 = 5
+let exitRateLimited: Int32 = 6
+
+/// Map an ApfelError to the appropriate exit code.
+func exitCode(for error: ApfelError) -> Int32 {
+    switch error {
+    case .guardrailViolation:  return exitGuardrail
+    case .contextOverflow:     return exitContextOverflow
+    case .rateLimited:         return exitRateLimited
+    case .concurrentRequest:   return exitRateLimited
+    case .unsupportedLanguage: return exitRuntimeError
+    case .unknown:             return exitRuntimeError
+    }
+}
 
 // MARK: - Signal Handling
 
@@ -54,18 +71,19 @@ if args.isEmpty {
     exit(exitUsageError)
 }
 
-// Parse flags
-var systemPrompt: String? = nil
+// Parse flags — env vars provide defaults, CLI flags override
+let env = ProcessInfo.processInfo.environment
+var systemPrompt: String? = env["APFEL_SYSTEM_PROMPT"]
 var mode: String = "single"
 var prompt: String = ""
-var serverPort: Int = 11434
-var serverHost: String = "127.0.0.1"
+var serverPort: Int = Int(env["APFEL_PORT"] ?? "") ?? 11434
+var serverHost: String = env["APFEL_HOST"] ?? "127.0.0.1"
 var serverCORS: Bool = false
 var serverMaxConcurrent: Int = 5
 var serverDebug: Bool = false
-var cliTemperature: Double? = nil
+var cliTemperature: Double? = Double(env["APFEL_TEMPERATURE"] ?? "")
 var cliSeed: UInt64? = nil
-var cliMaxTokens: Int? = nil
+var cliMaxTokens: Int? = Int(env["APFEL_MAX_TOKENS"] ?? "").flatMap { $0 > 0 ? $0 : nil }
 var cliPermissive: Bool = false
 
 var i = 0
@@ -174,6 +192,21 @@ while i < args.count {
     case "--permissive":
         cliPermissive = true
 
+    case "--system-file":
+        i += 1
+        guard i < args.count else {
+            printError("--system-file requires a file path")
+            exit(exitUsageError)
+        }
+        let path = args[i]
+        do {
+            systemPrompt = try String(contentsOfFile: path, encoding: .utf8)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        } catch {
+            printError("Cannot read file: \(path)")
+            exit(exitUsageError)
+        }
+
     case "--model-info":
         mode = "model-info"
 
@@ -197,6 +230,15 @@ let sessionOpts = SessionOptions(
     seed: cliSeed,
     permissive: cliPermissive
 )
+
+// Check model availability for modes that need it
+if mode != "model-info" && mode != "gui" && mode != "serve" {
+    let available = await TokenCounter.shared.isAvailable
+    if !available {
+        printError("Apple Intelligence is not enabled or model is not ready. Run: apfel --model-info")
+        exit(exitModelUnavailable)
+    }
+}
 
 do {
     switch mode {
@@ -234,6 +276,7 @@ do {
         try await singlePrompt(prompt, systemPrompt: systemPrompt, stream: false, options: sessionOpts)
     }
 } catch {
-    printError(error.localizedDescription)
-    exit(exitRuntimeError)
+    let classified = ApfelError.classify(error)
+    printError("\(classified.cliLabel) \(classified.openAIMessage)")
+    exit(exitCode(for: classified))
 }

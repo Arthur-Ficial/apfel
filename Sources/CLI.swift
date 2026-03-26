@@ -256,36 +256,52 @@ func printUsage() {
       \(appName) --serve                  Start OpenAI-compatible HTTP server
 
     \(styled("OPTIONS:", .yellow, .bold))
-      -s, --system <text>     Set a system prompt to guide the model
-      -o, --output <format>   Output format: plain, json [default: plain]
-      -q, --quiet             Suppress non-essential output
-          --no-color           Disable colored output
-          --temperature <n>    Sampling temperature (e.g., 0.7)
-          --seed <n>           Random seed for reproducible output
-          --max-tokens <n>     Maximum response tokens
-          --permissive         Use permissive content guardrails
-          --model-info         Print model capabilities and exit
-      -h, --help              Show this help
-      -v, --version           Print version
+      -s, --system <text>       Set a system prompt
+          --system-file <path>  Read system prompt from file
+      -o, --output <format>     Output format: plain, json [default: plain]
+      -q, --quiet               Suppress non-essential output
+          --no-color             Disable colored output
+          --temperature <n>      Sampling temperature (e.g., 0.7)
+          --seed <n>             Random seed for reproducible output
+          --max-tokens <n>       Maximum response tokens
+          --permissive           Use permissive content guardrails
+          --model-info           Print model capabilities and exit
+      -h, --help                Show this help
+      -v, --version             Print version
 
     \(styled("SERVER OPTIONS:", .yellow, .bold))
-          --serve              Start OpenAI-compatible HTTP server
-          --port <number>      Server port [default: 11434]
-          --host <address>     Bind address [default: 127.0.0.1]
-          --cors               Enable CORS headers for browser clients
-          --max-concurrent <n> Max concurrent model requests [default: 5]
-          --debug              Verbose logging with full request/response bodies
+          --serve                Start OpenAI-compatible HTTP server
+          --port <number>        Server port [default: 11434]
+          --host <address>       Bind address [default: 127.0.0.1]
+          --cors                 Enable CORS headers for browser clients
+          --max-concurrent <n>   Max concurrent model requests [default: 5]
+          --debug                Verbose logging
 
     \(styled("ENVIRONMENT:", .yellow, .bold))
-      NO_COLOR                Disable colored output (https://no-color.org)
+      APFEL_SYSTEM_PROMPT       Default system prompt
+      APFEL_HOST                Server bind address [default: 127.0.0.1]
+      APFEL_PORT                Server port [default: 11434]
+      APFEL_TEMPERATURE         Default temperature
+      APFEL_MAX_TOKENS          Default max tokens
+      NO_COLOR                  Disable colored output (https://no-color.org)
+
+    \(styled("EXIT CODES:", .yellow, .bold))
+      0  Success
+      1  Runtime error
+      2  Usage error (bad flags)
+      3  Guardrail blocked (content policy)
+      4  Context overflow (input too long)
+      5  Model unavailable (Apple Intelligence not enabled)
+      6  Rate limited / busy
 
     \(styled("EXAMPLES:", .yellow, .bold))
       \(appName) "What is the capital of Austria?"
       \(appName) --stream "Write a haiku about code"
       \(appName) -s "You are a pirate" --chat
+      \(appName) --system-file prompt.txt "Analyze this"
       echo "Summarize this" | \(appName)
       \(appName) -o json "Translate to German: hello" | jq .content
-      \(appName) --serve
+      APFEL_SYSTEM_PROMPT="Be brief" \(appName) "Explain TCP"
       \(appName) --serve --port 3000 --host 0.0.0.0 --cors
     """)
 }

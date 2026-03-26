@@ -98,6 +98,15 @@ final class APIClient: Sendable {
     /// Access after the stream finishes to get the truthful server response.
     nonisolated(unsafe) static var lastRawSSEResponse: String = ""
 
+    /// Usage stats from the last streaming response (prompt_tokens, completion_tokens, total_tokens).
+    nonisolated(unsafe) static var lastStreamingUsage: StreamUsage?
+
+    struct StreamUsage: Sendable {
+        let promptTokens: Int
+        let completionTokens: Int
+        let totalTokens: Int
+    }
+
     func streamChatCompletion(
         messages: [(role: String, content: String)],
         systemPrompt: String?
@@ -121,6 +130,7 @@ final class APIClient: Sendable {
                     urlRequest.httpBody = try JSONEncoder().encode(request)
 
                     let (bytes, _) = try await URLSession.shared.bytes(for: urlRequest)
+                    APIClient.lastStreamingUsage = nil
                     for try await line in bytes.lines {
                         if line.hasPrefix("data: [DONE]") {
                             rawLines.append("data: [DONE]")
@@ -133,6 +143,16 @@ final class APIClient: Sendable {
                             rawLines.append("data: \(prettyChunk)")
 
                             if let data = json.data(using: .utf8) {
+                                // Check for usage stats line
+                                if let usageData = try? JSONDecoder().decode(StreamUsageChunk.self, from: data) {
+                                    APIClient.lastStreamingUsage = StreamUsage(
+                                        promptTokens: usageData.usage.prompt_tokens,
+                                        completionTokens: usageData.usage.completion_tokens,
+                                        totalTokens: usageData.usage.total_tokens
+                                    )
+                                    continue
+                                }
+
                                 if let errorChunk = try? JSONDecoder().decode(StreamErrorChunk.self, from: data) {
                                     APIClient.lastRawSSEResponse = rawLines.joined(separator: "\n\n")
                                     continuation.finish(throwing: StreamError(message: Self.userFacingErrorMessage(errorChunk.error)))
@@ -170,6 +190,15 @@ final class APIClient: Sendable {
 
     private struct StreamErrorChunk: Decodable {
         let error: String
+    }
+
+    private struct StreamUsageChunk: Decodable {
+        let usage: Usage
+        struct Usage: Decodable {
+            let prompt_tokens: Int
+            let completion_tokens: Int
+            let total_tokens: Int
+        }
     }
 
     // MARK: - Logs

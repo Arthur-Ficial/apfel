@@ -151,7 +151,7 @@ private func nonStreamingResponse(
 
     // Detect tool calls in response
     let toolCalls = ToolCallHandler.detectToolCall(in: content)
-    let finishReason: String
+    var finishReason: String
     let responseMessage: OpenAIMessage
     if let calls = toolCalls {
         finishReason = "tool_calls"
@@ -159,12 +159,19 @@ private func nonStreamingResponse(
                                                     function: ToolCallFunction(name: $0.name, arguments: $0.argumentsString)) }
         responseMessage = OpenAIMessage(role: "assistant", content: nil, tool_calls: openAIToolCalls)
     } else {
-        finishReason = "stop"
         responseMessage = OpenAIMessage(role: "assistant", content: .text(content))
+        finishReason = "stop"  // may be overridden below
     }
 
     let promptTokens = await TokenCounter.shared.count(prompt)
     let completionTokens = await TokenCounter.shared.count(content)
+
+    // Detect truncation: if max_tokens was set and response hit the limit
+    if finishReason == "stop",
+       let maxTok = genOpts.maximumResponseTokens,
+       completionTokens >= maxTok {
+        finishReason = "length"
+    }
 
     let payload = ChatCompletionResponse(
         id: id,
@@ -265,10 +272,28 @@ private func streamingResponse(
                     continuation.yield(ByteBuffer(string: toolLine))
                     eventBox.append("tool_calls detected: \(calls.map(\.name).joined(separator: ", "))")
                 } else {
-                    let stopLine = sseDataLine(sseStopChunk(id: id, created: created))
+                    // Detect truncation
+                    let completionTokens = await TokenCounter.shared.count(prev)
+                    var streamFinish = "stop"
+                    if let maxTok = genOpts.maximumResponseTokens, completionTokens >= maxTok {
+                        streamFinish = "length"
+                    }
+                    let stopChunk = ChatCompletionChunk(
+                        id: id, object: "chat.completion.chunk", created: created, model: modelName,
+                        choices: [.init(index: 0, delta: .init(role: nil, content: nil, tool_calls: nil), finish_reason: streamFinish)]
+                    )
+                    let stopLine = sseDataLine(stopChunk)
                     responseLines.append(stopLine.trimmingCharacters(in: .whitespacesAndNewlines))
                     continuation.yield(ByteBuffer(string: stopLine))
                 }
+
+                // Emit usage stats before [DONE] (OpenAI stream_options pattern)
+                let promptTokens = await TokenCounter.shared.count(prompt)
+                let completionTokens = await TokenCounter.shared.count(prev)
+                let usageLine = "data: {\"usage\":{\"prompt_tokens\":\(promptTokens),\"completion_tokens\":\(completionTokens),\"total_tokens\":\(promptTokens + completionTokens)}}\n\n"
+                responseLines.append(usageLine.trimmingCharacters(in: .whitespacesAndNewlines))
+                continuation.yield(ByteBuffer(string: usageLine))
+
                 continuation.yield(ByteBuffer(string: sseDone))
                 responseLines.append("data: [DONE]")
                 let finishReason = toolCalls != nil ? "tool_calls" : "stop"

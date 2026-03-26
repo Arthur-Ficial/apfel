@@ -54,7 +54,7 @@ struct DebugPanel: View {
                                         .clipShape(Capsule())
                                 }
                                 if let tokens = msg.tokenCount {
-                                    Text("~\(tokens) tokens")
+                                    Text("\(tokens) tokens")
                                         .font(.system(.caption, design: .monospaced))
                                         .padding(.horizontal, 6)
                                         .padding(.vertical, 2)
@@ -63,6 +63,27 @@ struct DebugPanel: View {
                                 }
                             }
                             .font(.caption)
+                        }
+
+                        // Token budget bar
+                        if let tokens = msg.tokenCount {
+                            let contextWindow = 4096
+                            let ratio = min(1.0, Double(tokens) / Double(contextWindow))
+                            let color: Color = ratio < 0.5 ? .green : ratio < 0.8 ? .yellow : .red
+                            infoCard {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack {
+                                        Image(systemName: "gauge.with.dots.needle.33percent")
+                                        Text("Context Budget")
+                                            .font(.caption.bold())
+                                        Spacer()
+                                        Text("\(tokens) / \(contextWindow) tokens")
+                                            .font(.system(.caption, design: .monospaced))
+                                    }
+                                    ProgressView(value: ratio)
+                                        .tint(color)
+                                }
+                            }
                         }
 
                         // curl command
