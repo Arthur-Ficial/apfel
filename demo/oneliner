@@ -1,0 +1,83 @@
+#!/bin/bash
+# oneliner — complex pipe chains from plain English, powered by Apple Intelligence
+#
+# Usage:  oneliner "sum the third column of a CSV"
+#         oneliner "count unique IPs in access.log"
+#         oneliner -x "sort processes by memory usage"
+#         oneliner -c "remove duplicate lines keeping order"
+#
+# Requires: apfel installed (https://github.com/Arthur-Ficial/apfel)
+
+EXECUTE=false
+COPY=false
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -x|--execute) EXECUTE=true; shift ;;
+        -c|--copy)    COPY=true; shift ;;
+        -h|--help)
+            echo "oneliner — complex pipe chains from plain English"
+            echo ""
+            echo "Usage: oneliner [OPTIONS] \"description\""
+            echo ""
+            echo "  -x, --execute  Run the command after showing it"
+            echo "  -c, --copy     Copy command to clipboard"
+            echo "  -h, --help     Show this help"
+            echo ""
+            echo "Examples:"
+            echo "  oneliner \"sum the third column of a CSV\""
+            echo "  oneliner \"count unique IPs in access.log\""
+            echo "  oneliner -c \"extract all URLs from a file\""
+            echo "  oneliner \"find duplicate files by md5 hash\""
+            echo "  oneliner \"sed to replace all http:// with https://\""
+            echo ""
+            echo "Specializes in: awk, sed, find, xargs, sort, uniq,"
+            echo "grep, cut, tr, jq, and complex pipe chains."
+            echo ""
+            echo "Requires: apfel (Apple Intelligence CLI)"
+            exit 0
+            ;;
+        -*) echo "Unknown option: $1. Use --help."; exit 1 ;;
+        *)  break ;;
+    esac
+done
+
+if [[ -z "$1" ]]; then
+    echo "Usage: oneliner \"what you need\""
+    echo "       oneliner --help for more options"
+    exit 1
+fi
+
+# Check apfel is installed
+if ! command -v apfel &>/dev/null; then
+    echo "Error: apfel not found. Install from https://github.com/Arthur-Ficial/apfel"
+    exit 1
+fi
+
+SYSTEM="You generate UNIX one-liners for macOS (zsh/bash). Output ONLY the command — no explanation, no markdown, no code fences. Prefer awk, sed, grep, sort, uniq, cut, tr, xargs, find, and jq. Use pipes. Keep it to a single line. Never output anything except the command."
+
+result=$(apfel -q -s "$SYSTEM" "$1")
+status=$?
+
+if [[ $status -ne 0 ]]; then
+    echo "Error: apfel failed (exit $status)" >&2
+    exit $status
+fi
+
+# Strip any accidental markdown fences the model might add
+result=$(echo "$result" | sed '/^```/d' | sed 's/^[[:space:]]*//' | sed '/^$/d')
+
+if $COPY; then
+    echo "$result" | pbcopy
+    echo -e "\033[90m(copied to clipboard)\033[0m"
+fi
+
+echo -e "\033[33m\$\033[0m $result"
+
+if $EXECUTE; then
+    echo ""
+    read -r -p "Run this? [y/N] " confirm
+    if [[ "$confirm" =~ ^[yY]$ ]]; then
+        eval "$result"
+    fi
+fi

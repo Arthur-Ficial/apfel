@@ -104,6 +104,26 @@ Inspect every request/response, copy curl commands, view SSE streams, track toke
 
 See [`demo/`](./demo/) for real-world shell scripts powered by apfel.
 
+**[cmd](./demo/cmd)** — natural language to shell command:
+
+```bash
+demo/cmd "find all .log files modified today"
+# $ find . -name "*.log" -type f -mtime -1
+
+demo/cmd -x "show disk usage sorted by size"   # -x = execute after confirm
+demo/cmd -c "list open ports"                   # -c = copy to clipboard
+```
+
+**[oneliner](./demo/oneliner)** — complex pipe chains from plain English:
+
+```bash
+demo/oneliner "sum the third column of a CSV"
+# $ awk -F',' '{sum += $3} END {print sum}' file.csv
+
+demo/oneliner "count unique IPs in access.log"
+# $ awk '{print $1}' access.log | sort | uniq -c | sort -rn
+```
+
 **[mac-narrator](./demo/mac-narrator)** — your Mac's inner monologue:
 
 ```bash
