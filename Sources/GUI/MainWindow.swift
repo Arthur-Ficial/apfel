@@ -46,6 +46,11 @@ struct MainWindow: View {
 
                 Divider()
 
+                Button(action: { viewModel.showContextSettings = true }) {
+                    Label("Context", systemImage: "gearshape")
+                }
+                .help("Context management settings")
+
                 Toggle(isOn: $viewModel.showDebugPanel) {
                     Label("Debug", systemImage: "ant.circle")
                 }
@@ -62,6 +67,9 @@ struct MainWindow: View {
         .frame(minWidth: 700, minHeight: 500)
         .sheet(isPresented: $viewModel.showSelfDiscussion) {
             SelfDiscussionView(viewModel: viewModel)
+        }
+        .sheet(isPresented: $viewModel.showContextSettings) {
+            ContextSettingsView(viewModel: viewModel)
         }
     }
 }

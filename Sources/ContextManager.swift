@@ -89,12 +89,13 @@ enum ContextManager {
 
         let historyEntries = history.compactMap { historyEntry(for: $0, options: options) }
         let finalPromptEntry = makePromptEntry(finalPrompt, options: options)
-        let budget = await TokenCounter.shared.inputBudget(reservedForOutput: 512)
+        let budget = await TokenCounter.shared.inputBudget(reservedForOutput: options.contextConfig.outputReserve)
         guard let entries = await trimHistoryEntriesToBudget(
             baseEntries: baseEntries,
             historyEntries: historyEntries,
             finalEntry: finalPromptEntry,
-            budget: budget
+            budget: budget,
+            config: options.contextConfig
         ) else {
             throw ApfelError.contextOverflow
         }

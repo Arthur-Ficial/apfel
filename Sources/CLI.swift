@@ -144,13 +144,13 @@ func chat(systemPrompt: String?, options: SessionOptions = .defaults) async thro
             // Context window protection: check transcript size after each turn
             let transcript = session.transcript
             let tokenCount = await TokenCounter.shared.count(entries: Array(Array(transcript)))
-            let budget = await TokenCounter.shared.inputBudget(reservedForOutput: 512)
+            let budget = await TokenCounter.shared.inputBudget(reservedForOutput: options.contextConfig.outputReserve)
             if tokenCount > budget {
                 do {
-                    let truncated = try await truncateTranscript(transcript, budget: budget)
+                    let truncated = try await truncateTranscript(transcript, budget: budget, config: options.contextConfig)
                     session = LanguageModelSession(model: model, transcript: truncated)
                     if !quietMode && outputFormat == .plain {
-                        print(styled("  [context rotated — oldest messages trimmed]", .dim))
+                        print(styled("  [context rotated — \(options.contextConfig.strategy.rawValue)]", .dim))
                     }
                 } catch {
                     let classified = ApfelError.classify(error)
@@ -176,9 +176,8 @@ func chat(systemPrompt: String?, options: SessionOptions = .defaults) async thro
 
 // MARK: - Context Truncation
 
-/// Truncate a transcript to fit within the token budget.
-/// Keeps instructions + newest turns that fit.
-func truncateTranscript(_ transcript: Transcript, budget: Int) async throws -> Transcript {
+/// Truncate a transcript to fit within the token budget using the configured strategy.
+func truncateTranscript(_ transcript: Transcript, budget: Int, config: ContextConfig = .defaults) async throws -> Transcript {
     let entries = Array(Array(transcript))
     guard !entries.isEmpty else { return transcript }
 
@@ -195,7 +194,8 @@ func truncateTranscript(_ transcript: Transcript, budget: Int) async throws -> T
     guard let trimmed = await trimHistoryEntriesToBudget(
         baseEntries: baseEntries,
         historyEntries: historyEntries,
-        budget: budget
+        budget: budget,
+        config: config
     ) else {
         throw ApfelError.contextOverflow
     }
@@ -250,6 +250,14 @@ func printUsage() {
       -h, --help                Show this help
       -v, --version             Print version
 
+    \(styled("CONTEXT OPTIONS:", .yellow, .bold))
+          --context-strategy <s>  Context management strategy [default: newest-first]
+                                  newest-first, oldest-first, sliding-window,
+                                  summarize, strict (error on overflow)
+          --context-max-turns <n> Max history turns (sliding-window only)
+          --context-output-reserve <n>
+                                  Tokens reserved for output [default: 512]
+
     \(styled("SERVER OPTIONS:", .yellow, .bold))
           --serve                Start OpenAI-compatible HTTP server
           --port <number>        Server port [default: 11434]
@@ -264,6 +272,10 @@ func printUsage() {
       APFEL_PORT                Server port [default: 11434]
       APFEL_TEMPERATURE         Default temperature
       APFEL_MAX_TOKENS          Default max tokens
+      APFEL_CONTEXT_STRATEGY    Default context strategy
+      APFEL_CONTEXT_MAX_TURNS   Max turns for sliding-window
+      APFEL_CONTEXT_OUTPUT_RESERVE
+                                Tokens reserved for output
       NO_COLOR                  Disable colored output (https://no-color.org)
 
     \(styled("EXIT CODES:", .yellow, .bold))

@@ -39,6 +39,9 @@ final class APIClient: Sendable {
         let model: String
         let messages: [Message]
         let stream: Bool
+        let x_context_strategy: String?
+        let x_context_max_turns: Int?
+        let x_context_output_reserve: Int?
 
         struct Message: Encodable {
             let role: String
@@ -68,14 +71,20 @@ final class APIClient: Sendable {
 
     func chatCompletion(
         messages: [(role: String, content: String)],
-        systemPrompt: String?
+        systemPrompt: String?,
+        contextStrategy: String? = nil,
+        contextMaxTurns: Int? = nil,
+        contextOutputReserve: Int? = nil
     ) async throws -> (response: ChatResponse, requestJSON: String, responseJSON: String, durationMs: Int) {
         let start = Date()
         let apiMessages = buildMessages(messages: messages, systemPrompt: systemPrompt)
         let request = ChatRequest(
             model: "apple-foundationmodel",
             messages: apiMessages,
-            stream: false
+            stream: false,
+            x_context_strategy: contextStrategy,
+            x_context_max_turns: contextMaxTurns,
+            x_context_output_reserve: contextOutputReserve
         )
         let requestJSON = prettyJSON(request)
 
@@ -109,13 +118,19 @@ final class APIClient: Sendable {
 
     func streamChatCompletion(
         messages: [(role: String, content: String)],
-        systemPrompt: String?
+        systemPrompt: String?,
+        contextStrategy: String? = nil,
+        contextMaxTurns: Int? = nil,
+        contextOutputReserve: Int? = nil
     ) -> (stream: AsyncThrowingStream<String, Error>, requestJSON: String) {
         let apiMessages = buildMessages(messages: messages, systemPrompt: systemPrompt)
         let request = ChatRequest(
             model: "apple-foundationmodel",
             messages: apiMessages,
-            stream: true
+            stream: true,
+            x_context_strategy: contextStrategy,
+            x_context_max_turns: contextMaxTurns,
+            x_context_output_reserve: contextOutputReserve
         )
         let requestJSON = prettyJSON(request)
         let url = URL(string: "/v1/chat/completions", relativeTo: baseURL)!

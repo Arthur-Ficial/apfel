@@ -16,9 +16,11 @@ struct SessionOptions: Sendable {
     let maxTokens: Int?
     let seed: UInt64?
     let permissive: Bool
+    let contextConfig: ContextConfig
 
     static let defaults = SessionOptions(
-        temperature: nil, maxTokens: nil, seed: nil, permissive: false
+        temperature: nil, maxTokens: nil, seed: nil, permissive: false,
+        contextConfig: .defaults
     )
 }
 
@@ -79,7 +81,8 @@ func trimHistoryEntriesToBudget(
     baseEntries: [Transcript.Entry],
     historyEntries: [Transcript.Entry],
     finalEntry: Transcript.Entry? = nil,
-    budget: Int
+    budget: Int,
+    config: ContextConfig = .defaults
 ) async -> [Transcript.Entry]? {
     var requiredEntries = baseEntries
     if let finalEntry {
@@ -89,21 +92,71 @@ func trimHistoryEntriesToBudget(
         return nil
     }
 
-    var keptHistory: [Transcript.Entry] = []
-    for entry in historyEntries.reversed() {
-        var candidate = baseEntries
-        candidate.append(entry)
-        candidate.append(contentsOf: keptHistory)
-        if let finalEntry {
-            candidate.append(finalEntry)
-        }
-        if await TokenCounter.shared.count(entries: candidate) > budget {
-            break
-        }
-        keptHistory.insert(entry, at: 0)
+    switch config.strategy {
+    case .newestFirst:
+        return await trimNewestFirst(
+            base: baseEntries, history: historyEntries, final: finalEntry, budget: budget)
+    case .oldestFirst:
+        return await trimOldestFirst(
+            base: baseEntries, history: historyEntries, final: finalEntry, budget: budget)
+    case .slidingWindow:
+        return await trimSlidingWindow(
+            base: baseEntries, history: historyEntries, final: finalEntry,
+            budget: budget, maxTurns: config.maxTurns)
+    case .summarize:
+        return await trimWithSummary(
+            base: baseEntries, history: historyEntries, final: finalEntry, budget: budget)
+    case .strict:
+        // No trimming — return all history or nil if it exceeds budget
+        var all = baseEntries + historyEntries
+        if let finalEntry { all.append(finalEntry) }
+        return await TokenCounter.shared.count(entries: all) <= budget ? all : nil
     }
+}
 
-    return baseEntries + keptHistory
+// MARK: - Strategy: Newest First (default)
+
+func trimNewestFirst(
+    base: [Transcript.Entry], history: [Transcript.Entry],
+    final: Transcript.Entry?, budget: Int
+) async -> [Transcript.Entry] {
+    var kept: [Transcript.Entry] = []
+    for entry in history.reversed() {
+        var candidate = base + [entry] + kept
+        if let final { candidate.append(final) }
+        if await TokenCounter.shared.count(entries: candidate) > budget { break }
+        kept.insert(entry, at: 0)
+    }
+    return base + kept
+}
+
+// MARK: - Strategy: Oldest First
+
+func trimOldestFirst(
+    base: [Transcript.Entry], history: [Transcript.Entry],
+    final: Transcript.Entry?, budget: Int
+) async -> [Transcript.Entry] {
+    var kept: [Transcript.Entry] = []
+    for entry in history {
+        var candidate = base + kept + [entry]
+        if let final { candidate.append(final) }
+        if await TokenCounter.shared.count(entries: candidate) > budget { break }
+        kept.append(entry)
+    }
+    return base + kept
+}
+
+// MARK: - Strategy: Sliding Window
+
+func trimSlidingWindow(
+    base: [Transcript.Entry], history: [Transcript.Entry],
+    final: Transcript.Entry?, budget: Int, maxTurns: Int?
+) async -> [Transcript.Entry] {
+    let windowSize = min(maxTurns ?? Int.max, history.count)
+    let windowed = Array(history.suffix(windowSize))
+    // Apply token-budget safety net (drop from front if over budget)
+    return await trimNewestFirst(
+        base: base, history: windowed, final: final, budget: budget)
 }
 
 // MARK: - Streaming Helper

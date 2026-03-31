@@ -83,12 +83,20 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
 
     events.append("decoded messages=\(chatRequest.messages.count) stream=\(chatRequest.stream == true) model=\(chatRequest.model)")
 
+    // Build context config from request extensions (optional, defaults to newest-first)
+    let contextConfig = ContextConfig(
+        strategy: chatRequest.x_context_strategy.flatMap { ContextStrategy(rawValue: $0) } ?? .newestFirst,
+        maxTurns: chatRequest.x_context_max_turns,
+        outputReserve: chatRequest.x_context_output_reserve ?? 512
+    )
+
     // Build session options from request
     let sessionOpts = SessionOptions(
         temperature: chatRequest.temperature,
         maxTokens: chatRequest.max_tokens,
         seed: chatRequest.seed.map { UInt64($0) },
-        permissive: false
+        permissive: false,
+        contextConfig: contextConfig
     )
 
     // Build session + extract final prompt via ContextManager (Transcript API)

@@ -42,6 +42,10 @@ struct ChatCompletionRequest: Decodable, Sendable {
     let presence_penalty: Double?
     let frequency_penalty: Double?
     let user: String?
+    // Context management extensions
+    let x_context_strategy: String?
+    let x_context_max_turns: Int?
+    let x_context_output_reserve: Int?
 }
 
 // MARK: - OpenAI Message (supports string content, content array, and tool calls)

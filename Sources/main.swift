@@ -85,6 +85,9 @@ var cliTemperature: Double? = Double(env["APFEL_TEMPERATURE"] ?? "")
 var cliSeed: UInt64? = nil
 var cliMaxTokens: Int? = Int(env["APFEL_MAX_TOKENS"] ?? "").flatMap { $0 > 0 ? $0 : nil }
 var cliPermissive: Bool = false
+var cliContextStrategy: ContextStrategy? = env["APFEL_CONTEXT_STRATEGY"].flatMap { ContextStrategy(rawValue: $0) }
+var cliContextMaxTurns: Int? = env["APFEL_CONTEXT_MAX_TURNS"].flatMap { Int($0) }
+var cliContextOutputReserve: Int? = env["APFEL_CONTEXT_OUTPUT_RESERVE"].flatMap { Int($0) }.flatMap { $0 > 0 ? $0 : nil }
 
 var i = 0
 while i < args.count {
@@ -192,6 +195,30 @@ while i < args.count {
     case "--permissive":
         cliPermissive = true
 
+    case "--context-strategy":
+        i += 1
+        guard i < args.count, let s = ContextStrategy(rawValue: args[i]) else {
+            printError("--context-strategy requires: newest-first|oldest-first|sliding-window|summarize|strict")
+            exit(exitUsageError)
+        }
+        cliContextStrategy = s
+
+    case "--context-max-turns":
+        i += 1
+        guard i < args.count, let n = Int(args[i]), n > 0 else {
+            printError("--context-max-turns requires a positive number")
+            exit(exitUsageError)
+        }
+        cliContextMaxTurns = n
+
+    case "--context-output-reserve":
+        i += 1
+        guard i < args.count, let n = Int(args[i]), n > 0 else {
+            printError("--context-output-reserve requires a positive number")
+            exit(exitUsageError)
+        }
+        cliContextOutputReserve = n
+
     case "--system-file":
         i += 1
         guard i < args.count else {
@@ -233,11 +260,18 @@ if prompt.isEmpty && mode == "single" && isatty(STDIN_FILENO) == 0 {
 
 // MARK: - Dispatch
 
+let contextConfig = ContextConfig(
+    strategy: cliContextStrategy ?? .newestFirst,
+    maxTurns: cliContextMaxTurns,
+    outputReserve: cliContextOutputReserve ?? 512
+)
+
 let sessionOpts = SessionOptions(
     temperature: cliTemperature,
     maxTokens: cliMaxTokens,
     seed: cliSeed,
-    permissive: cliPermissive
+    permissive: cliPermissive,
+    contextConfig: contextConfig
 )
 
 // Check model availability for modes that need it

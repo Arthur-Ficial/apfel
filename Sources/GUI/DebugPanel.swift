@@ -8,6 +8,8 @@ import AppKit
 struct DebugPanel: View {
     @Bindable var viewModel: ChatViewModel
 
+    private var strategyLabel: String { viewModel.contextStrategyRaw }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header
@@ -82,6 +84,12 @@ struct DebugPanel: View {
                                     }
                                     ProgressView(value: ratio)
                                         .tint(color)
+                                    HStack {
+                                        Image(systemName: "arrow.triangle.branch")
+                                        Text("Strategy: \(strategyLabel)")
+                                            .font(.system(.caption, design: .monospaced))
+                                    }
+                                    .foregroundStyle(.secondary)
                                 }
                             }
                         }

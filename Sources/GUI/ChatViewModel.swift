@@ -5,6 +5,7 @@
 
 import Foundation
 import SwiftUI
+import ApfelCore
 
 /// A single chat message with debug metadata.
 struct ChatMsg: Identifiable {
@@ -37,6 +38,15 @@ class ChatViewModel {
     var speakEnabled: Bool = false
     var isSelfDiscussing: Bool = false
     var showSelfDiscussion: Bool = false
+    var showContextSettings: Bool = false
+    var contextStrategyRaw: String = ContextStrategy.newestFirst.rawValue
+    var contextMaxTurns: Int? = nil
+    var contextOutputReserve: Int = 512
+
+    var contextStrategy: ContextStrategy {
+        get { ContextStrategy(rawValue: contextStrategyRaw) ?? .newestFirst }
+        set { contextStrategyRaw = newValue.rawValue }
+    }
 
     let apiClient: APIClient
     let tts = TTSManager()
@@ -63,9 +73,16 @@ class ChatViewModel {
         history.append((role: "user", content: input))
 
         // Get request JSON early so user message can show it too
+        let currentStrategy = ContextStrategy(rawValue: contextStrategyRaw) ?? .newestFirst
+        let strategy = currentStrategy == .newestFirst ? nil : currentStrategy.rawValue
+        let maxTurns = contextMaxTurns
+        let reserve = contextOutputReserve == 512 ? nil : contextOutputReserve
         let (stream, requestJSON) = apiClient.streamChatCompletion(
             messages: history,
-            systemPrompt: systemPrompt.isEmpty ? nil : systemPrompt
+            systemPrompt: systemPrompt.isEmpty ? nil : systemPrompt,
+            contextStrategy: strategy,
+            contextMaxTurns: maxTurns,
+            contextOutputReserve: reserve
         )
 
         // Build curl command for debug
