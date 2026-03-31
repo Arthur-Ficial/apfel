@@ -26,7 +26,7 @@ jobs:
       TAP_BRANCH: main
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           ref: main
@@ -105,7 +105,7 @@ jobs:
           fi
 
       - name: Check out homebrew tap
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: Arthur-Ficial/homebrew-tap
           token: ${{ secrets.HOMEBREW_TAP_PUSH_TOKEN }}
