@@ -9,7 +9,7 @@ import ApfelCore
 
 // MARK: - Configuration
 
-let version = "0.6.1"
+let version = buildVersion
 let appName = "apfel"
 let modelName = "apple-foundationmodel"
 

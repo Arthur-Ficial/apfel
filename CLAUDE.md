@@ -60,12 +60,16 @@ GUI (SwiftUI) ─── HTTP ────┘   ContextStrategy → 5 trimming st
 ## Build & Test
 
 ```bash
-make install                   # build release + install to /usr/local/bin
-swift build                    # debug build only
+make install                   # bump patch + build release + install to /usr/local/bin
+make build                     # bump patch + build release
+make release-minor             # bump minor (0.6.x -> 0.7.0) + build
+make release-major             # bump major (0.x.y -> 1.0.0) + build
+make version                   # print current version
+swift build                    # debug build (uses "dev" version stub)
 swift run apfel-tests          # run pure Swift unit tests
-apfel "Hello"                  # single prompt (after make install)
-apfel --serve                  # start server on :11434
 ```
+
+**Version is in `.version` file** (single source of truth). Every `make build`/`make install` auto-bumps the patch number, updates README badge, and generates `Sources/BuildInfo.swift`. No manual version editing — ever.
 
 **Always use `make install` for testing changes** - `swift run` uses a debug build, and the installed binary at `/usr/local/bin/apfel` won't reflect your changes until you run `make install`.
 
