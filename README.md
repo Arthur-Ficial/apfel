@@ -31,7 +31,7 @@ cd apfel
 make install    # builds release, installs to /usr/local/bin
 ```
 
-Requires macOS 26+, Apple Silicon, and [Apple Intelligence enabled](https://support.apple.com/en-us/108380).
+Requires macOS 26+, Apple Silicon, and [Apple Intelligence enabled](https://support.apple.com/en-us/121115).
 
 ## Quick Start
 
