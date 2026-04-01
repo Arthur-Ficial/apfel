@@ -160,6 +160,21 @@ def test_quiet_json_prompt_output_is_machine_readable():
     assert result.stderr == ""
 
 
+def test_json_output_has_no_trailing_newline():
+    """Regression test for #9: JSON output should not end with a newline."""
+    require_model()
+    result = run_cli(
+        ["-q", "-o", "json", "What is 2+2? Reply with just the number."],
+        timeout=90,
+    )
+    assert result.returncode == 0
+    assert not result.stdout.endswith("\n"), (
+        f"JSON output has trailing newline: {result.stdout!r}"
+    )
+    payload = json.loads(result.stdout)
+    assert payload["content"].strip()
+
+
 def test_piped_stdin_json_output_is_machine_readable():
     require_model()
     result = run_cli(
