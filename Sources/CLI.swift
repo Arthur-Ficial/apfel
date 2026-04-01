@@ -59,7 +59,7 @@ func singlePrompt(_ prompt: String, systemPrompt: String?, stream: Bool, options
             content: content,
             metadata: .init(onDevice: true, version: version)
         )
-        print(jsonString(obj))
+        print(jsonString(obj), terminator: "")
     }
 }
 
