@@ -32,8 +32,12 @@ struct SecurityMiddleware<Context: RequestContext>: RouterMiddleware {
             }
         }
 
-        // Token check (opt-in, skip for /health so monitoring tools work)
-        if config.token != nil && request.uri.path != "/health" {
+        // Token check (opt-in). /health stays public on loopback by default,
+        // but non-loopback token-protected deployments require auth unless
+        // the operator explicitly opts into public health checks.
+        let isHealth = request.uri.path == "/health"
+        let shouldCheckToken = config.token != nil && (!isHealth || config.healthRequiresAuthentication)
+        if shouldCheckToken {
             let authHeader = request.headers[.authorization]
             if !OriginValidator.isValidToken(provided: authHeader, expected: config.token) {
                 return errorResponse(

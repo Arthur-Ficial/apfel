@@ -242,7 +242,7 @@ curl -H "Authorization: Bearer wrong-token" http://localhost:11434/v1/models
 curl -H "Authorization: Bearer my-secret-token" http://localhost:11434/v1/models
 # => 200 OK
 
-# /health is ALWAYS exempt (monitoring tools need it)
+# On loopback binds, /health remains public for monitoring convenience
 curl http://localhost:11434/health
 # => 200 OK (no token needed)
 
@@ -256,6 +256,10 @@ print(c.models.list().data[0].id)
 ```
 
 **Security note:** When using `--token` (not `--token-auto`), the secret is NOT printed in the startup banner. Only `token: required` is shown.
+
+**Health note:** When you bind to a non-loopback address such as `0.0.0.0` and enable `--token`, `/health` now requires the same Bearer token by default. Use `--public-health` only if you intentionally want unauthenticated monitoring on that network-exposed bind.
+
+**Debug note:** Request log endpoints (`/v1/logs`, `/v1/logs/stats`) are only exposed when the server starts with `--debug`. When they are enabled, they still follow the same origin and token checks as the rest of the API.
 
 **When to use:** Shared machines, multi-user environments, or any setup where you want to control who can use the model.
 
@@ -354,17 +358,22 @@ Request arrives
     |                               No --> 403 Forbidden
     |
     v
-3. Token required? --> Yes --> Is /health? --> Yes --> Skip token check
+3. Token required? --> Yes --> Is /health on loopback/public-health? --> Yes --> Skip token check
     |                              |
     |                         No --> Valid token?
     |                                    |
     |                               No --> 401 Unauthorized
     |
     v
-4. Route handler (your actual request)
+4. Debug endpoint gating (`/v1/logs*` requires `--debug`)
+    |
+    |                         No --> 404 Not Found
     |
     v
-5. Add CORS headers to response (if applicable)
+5. Route handler (your actual request)
+    |
+    v
+6. Add CORS headers to response (if applicable)
     |
     v
 Response sent
@@ -372,7 +381,8 @@ Response sent
 
 This means:
 - **Origin check runs before token check.** A foreign origin gets 403 even with a valid token.
-- **`/health` is always accessible.** It skips token auth so monitoring tools work.
+- **`/health` stays public on loopback by default.** On token-protected non-loopback binds, it requires auth unless `--public-health` is set.
+- **`/v1/logs` and `/v1/logs/stats` are debug-only.** They return 404 unless `--debug` is enabled.
 - **OPTIONS preflight skips both checks.** Browsers need preflight to succeed before sending the real request.
 
 ---
@@ -431,6 +441,13 @@ Other machines connect with:
 
 ```bash
 curl -H "Authorization: Bearer <token>" http://192.168.1.42:11434/v1/models
+curl -H "Authorization: Bearer <token>" http://192.168.1.42:11434/health
+```
+
+If you really need unauthenticated health probes on that network-exposed bind:
+
+```bash
+apfel --serve --host 0.0.0.0 --token-auto --public-health
 ```
 
 ### I need multiple dev servers to access apfel
@@ -466,7 +483,7 @@ Every combination explained:
 | `--cors` | localhost only | on allowed requests | 204 + full CORS | curl, SDKs, localhost browsers | curl, SDKs, localhost browsers (POST too) |
 | `--no-origin-check` | disabled | `*` on all | 204, no full CORS | everyone | everyone (simple GET only) |
 | `--footgun` | disabled | `*` on all | 204 + full CORS | everyone | everyone (POST too) |
-| `--token X` | localhost only | on allowed requests | 204, no CORS | token holders only (except /health) | token holders with localhost origin |
+| `--token X` | localhost only | on allowed requests | 204, no CORS | token holders only (loopback `/health` stays public) | token holders with localhost origin |
 | `--cors --token X` | localhost only | on allowed requests | 204 + full CORS | token holders from localhost | token holders from localhost browsers |
 | `--cors --allowed-origins X` | custom list | on allowed requests | 204 + full CORS | curl, SDKs, listed origins | curl, SDKs, listed origin browsers |
 | `--footgun --token X` | disabled | `*` on all | 204 + full CORS | token holders from anywhere | token holders from any browser |
@@ -475,4 +492,3 @@ Every combination explained:
 - "Who can connect" = whose requests get a 200 response
 - "Who can read responses" = whose browser JavaScript can read the response body (requires CORS headers)
 - "simple GET only" = browsers can read GET responses but POST requires full CORS preflight (`--cors`)
-

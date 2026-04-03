@@ -43,13 +43,13 @@ def find_free_port():
         return sock.getsockname()[1]
 
 
-def wait_for_server(base_url, timeout=20):
+def wait_for_server(base_url, timeout=20, expected_statuses=(200,)):
     """Poll /health until the spawned server is reachable."""
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
             resp = httpx.get(f"{base_url}/health", timeout=1)
-            if resp.status_code == 200:
+            if resp.status_code in expected_statuses:
                 return
         except httpx.HTTPError:
             pass
@@ -62,7 +62,7 @@ def read_log(log_path):
 
 
 @contextlib.contextmanager
-def running_server(*extra_args, env=None, port=None):
+def running_server(*extra_args, env=None, port=None, bind_host="127.0.0.1", ready_statuses=(200,)):
     """Launch a dedicated release-binary server for non-default flag tests."""
     port = port or find_free_port()
     with tempfile.NamedTemporaryFile(mode="w+", encoding="utf-8") as log_file:
@@ -71,7 +71,7 @@ def running_server(*extra_args, env=None, port=None):
                 str(BINARY),
                 "--serve",
                 "--host",
-                "127.0.0.1",
+                bind_host,
                 "--port",
                 str(port),
                 *extra_args,
@@ -83,7 +83,7 @@ def running_server(*extra_args, env=None, port=None):
         )
         base_url = f"http://127.0.0.1:{port}"
         try:
-            wait_for_server(base_url)
+            wait_for_server(base_url, expected_statuses=ready_statuses)
             log_file.flush()
             yield base_url, log_file.name
         finally:
@@ -195,22 +195,24 @@ def test_foreign_origin_rejected_on_chat():
 
 def test_foreign_origin_rejected_on_logs():
     """Origin check applies to /v1/logs."""
-    resp = httpx.get(
-        f"{BASE_URL}/v1/logs",
-        headers={"Origin": "http://evil.com"},
-        timeout=10
-    )
-    assert resp.status_code == 403
+    with running_server("--debug") as (base_url, _):
+        resp = httpx.get(
+            f"{base_url}/v1/logs",
+            headers={"Origin": "http://evil.com"},
+            timeout=10
+        )
+        assert resp.status_code == 403
 
 
 def test_foreign_origin_rejected_on_stats():
     """Origin check applies to /v1/logs/stats."""
-    resp = httpx.get(
-        f"{BASE_URL}/v1/logs/stats",
-        headers={"Origin": "http://evil.com"},
-        timeout=10
-    )
-    assert resp.status_code == 403
+    with running_server("--debug") as (base_url, _):
+        resp = httpx.get(
+            f"{base_url}/v1/logs/stats",
+            headers={"Origin": "http://evil.com"},
+            timeout=10
+        )
+        assert resp.status_code == 403
 
 
 # MARK: - CORS Headers (not enabled by default)
@@ -242,6 +244,43 @@ def test_origin_error_is_openai_format():
     assert "message" in data["error"]
     assert "type" in data["error"]
     assert data["error"]["type"] == "forbidden"
+
+
+def test_logs_endpoints_hidden_without_debug():
+    """/v1/logs and /v1/logs/stats should not be exposed unless --debug is on."""
+    with running_server() as (base_url, _):
+        logs = httpx.get(f"{base_url}/v1/logs", timeout=10)
+        stats = httpx.get(f"{base_url}/v1/logs/stats", timeout=10)
+        assert logs.status_code == 404
+        assert stats.status_code == 404
+
+
+def test_logs_include_bodies_in_debug_mode():
+    """--debug should explicitly opt into request/response body retention."""
+    with running_server("--debug") as (base_url, _):
+        resp = httpx.post(
+            f"{base_url}/v1/chat/completions",
+            content=b"{",
+            headers={"Content-Type": "application/json"},
+            timeout=10,
+        )
+        assert resp.status_code == 400
+
+        logs = httpx.get(f"{base_url}/v1/logs?limit=1", timeout=10)
+        assert logs.status_code == 200
+        entry = logs.json()["data"][-1]
+        assert entry["request_body"] == "{"
+        assert entry["response_body"] is not None
+
+
+def test_logs_limit_is_clamped_to_safe_positive_range():
+    """Malformed negative limits should not crash the server."""
+    with running_server("--debug") as (base_url, _):
+        resp = httpx.get(f"{base_url}/v1/logs?limit=-5", timeout=10)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "data" in data
+        assert isinstance(data["data"], list)
 
 
 # MARK: - Spawned server scenarios
@@ -308,3 +347,35 @@ def test_unauthorized_error_keeps_cors_for_allowed_origin():
     assert resp.headers["vary"] == "Origin"
     assert resp.headers["www-authenticate"] == "Bearer"
     assert resp.json()["error"]["type"] == "authentication_error"
+
+
+def test_health_requires_auth_on_non_loopback_token_protected_bind():
+    """Network-exposed token-protected servers should not leak /health unauthenticated."""
+    with running_server(
+        "--token",
+        "secret123",
+        bind_host="0.0.0.0",
+        ready_statuses=(401,),
+    ) as (base_url, _):
+        resp = httpx.get(f"{base_url}/health", timeout=10)
+        authed = httpx.get(
+            f"{base_url}/health",
+            headers={"Authorization": "Bearer secret123"},
+            timeout=10,
+        )
+    assert resp.status_code == 401
+    assert resp.headers["www-authenticate"] == "Bearer"
+    assert authed.status_code == 200
+
+
+def test_public_health_keeps_non_loopback_health_open():
+    """--public-health should preserve unauthenticated health checks when explicitly requested."""
+    with running_server(
+        "--token",
+        "secret123",
+        "--public-health",
+        bind_host="0.0.0.0",
+        ready_statuses=(200,),
+    ) as (base_url, _):
+        resp = httpx.get(f"{base_url}/health", timeout=10)
+    assert resp.status_code == 200

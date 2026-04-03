@@ -244,6 +244,8 @@ Chat, debug inspector, request logs, context settings, speech-to-text, text-to-s
 | `POST /v1/chat/completions` | Supported | Streaming + non-streaming |
 | `GET /v1/models` | Supported | Returns `apple-foundationmodel` |
 | `GET /health` | Supported | Model availability, context window, languages |
+| `GET /v1/logs` | Debug only | Available only when server starts with `--debug` |
+| `GET /v1/logs/stats` | Debug only | Available only when server starts with `--debug` |
 | Tool calling | Supported | Native `Transcript.ToolDefinition` + JSON detection. See [Tool Calling Guide](docs/tool-calling-guide.md) |
 | `response_format: json_object` | Supported | Via system prompt injection |
 | `temperature`, `max_tokens`, `seed` | Supported | Mapped to `GenerationOptions` |
@@ -321,9 +323,10 @@ apfel --release                Show detailed release and build info
 | `--no-origin-check` | Disable origin checking (allow all origins) |
 | `--token <secret>` | Require Bearer token authentication |
 | `--token-auto` | Generate and print a random Bearer token |
+| `--public-health` | Keep `/health` unauthenticated on non-loopback token-protected binds |
 | `--footgun` | Disable all protections (`--no-origin-check` + `--cors`) |
 | `--max-concurrent <n>` | Max concurrent requests (default: 5) |
-| `--debug` | Verbose logging |
+| `--debug` | Verbose logging and enable `/v1/logs` inspector endpoints |
 
 See [Server Security](docs/server-security.md) for detailed documentation on security options.
 

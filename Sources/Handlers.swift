@@ -18,6 +18,11 @@ struct ChatRequestTrace: Sendable {
     let events: [String]
 }
 
+private func loggedBody(_ value: String) -> String? {
+    guard serverState.config.debug else { return nil }
+    return truncateForLog(value)
+}
+
 // MARK: - /v1/chat/completions
 
 /// POST /v1/chat/completions — Main chat endpoint (streaming + non-streaming).
@@ -199,8 +204,8 @@ private func nonStreamingResponse(
             stream: false,
             estimatedTokens: promptTokens + completionTokens,
             error: nil,
-            requestBody: truncateForLog(requestBody),
-            responseBody: truncateForLog(body),
+            requestBody: loggedBody(requestBody),
+            responseBody: loggedBody(body),
             events: events + ["non-stream response chars=\(content.count)", "finish_reason=\(finishReason)"]
         )
     )
@@ -223,12 +228,25 @@ private func streamingResponse(
     headers[.cacheControl] = "no-cache"
     headers[.init("Connection")!] = "keep-alive"
     let eventBox = TraceBuffer(events: events + ["stream start"])
+    let cleanup = StreamCleanup()
+    let taskBox = StreamTaskBox()
 
     let responseStream = AsyncStream<ByteBuffer> { continuation in
-        Task {
+        let streamTask = Task {
             let streamStart = Date()
             var responseLines: [String] = []
             var streamError: String?
+            var streamCancelled = false
+
+            defer {
+                Task {
+                    await cleanup.run {
+                        await serverState.semaphore.signal()
+                        await serverState.logStore.requestFinished()
+                    }
+                    continuation.finish()
+                }
+            }
 
             // Role announcement chunk
             let roleLine = sseDataLine(sseRoleChunk(id: id, created: created))
@@ -300,6 +318,9 @@ private func streamingResponse(
                 responseLines.append("data: [DONE]")
                 let finishReason = toolCalls != nil ? "tool_calls" : "stop"
                 eventBox.append("sent [DONE] total_chars=\(prev.count) finish_reason=\(finishReason)")
+            } catch is CancellationError {
+                streamCancelled = true
+                eventBox.append("stream cancelled by client")
             } catch {
                 let classified = ApfelError.classify(error)
                 let errPayload = OpenAIErrorResponse(error: .init(
@@ -318,17 +339,27 @@ private func streamingResponse(
                 timestamp: ISO8601DateFormatter().string(from: streamStart),
                 method: "POST",
                 path: "/v1/chat/completions/stream",
-                status: streamError == nil ? 200 : 500,
+                status: streamCancelled ? 499 : (streamError == nil ? 200 : 500),
                 duration_ms: Int(Date().timeIntervalSince(streamStart) * 1000),
                 stream: true,
                 estimated_tokens: await TokenCounter.shared.count(prev),
                 error: streamError,
-                request_body: truncateForLog(requestBody),
-                response_body: truncateForLog(responseLines.joined(separator: "\n\n")),
+                request_body: loggedBody(requestBody),
+                response_body: loggedBody(responseLines.joined(separator: "\n\n")),
                 events: eventBox.snapshot()
             )
             await serverState.logStore.append(completionLog)
-            continuation.finish()
+        }
+        taskBox.set(streamTask)
+
+        continuation.onTermination = { _ in
+            taskBox.cancel()
+            Task {
+                await cleanup.run {
+                    await serverState.semaphore.signal()
+                    await serverState.logStore.requestFinished()
+                }
+            }
         }
     }
 
@@ -338,8 +369,10 @@ private func streamingResponse(
             stream: true,
             estimatedTokens: promptTokens,
             error: nil,
-            requestBody: truncateForLog(requestBody),
-            responseBody: "Streaming response in progress. See /v1/chat/completions/stream log for final SSE transcript.",
+            requestBody: loggedBody(requestBody),
+            responseBody: serverState.config.debug
+                ? "Streaming response in progress. See /v1/chat/completions/stream log for final SSE transcript."
+                : nil,
             events: events + ["stream request accepted", "final stream completion logged separately"]
         )
     )
@@ -362,6 +395,36 @@ final class TraceBuffer: @unchecked Sendable {
     }
 }
 
+actor StreamCleanup {
+    private var didRun = false
+
+    func run(_ operation: @Sendable () async -> Void) async {
+        if didRun {
+            return
+        }
+        didRun = true
+        await operation()
+    }
+}
+
+final class StreamTaskBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var task: Task<Void, Never>?
+
+    func set(_ task: Task<Void, Never>) {
+        lock.lock()
+        self.task = task
+        lock.unlock()
+    }
+
+    func cancel() {
+        lock.lock()
+        let task = self.task
+        lock.unlock()
+        task?.cancel()
+    }
+}
+
 private func chatFailure(
     status: HTTPResponse.Status,
     message: String,
@@ -377,8 +440,8 @@ private func chatFailure(
             stream: stream,
             estimatedTokens: nil,
             error: message,
-            requestBody: truncateForLog(requestBody),
-            responseBody: message,
+            requestBody: loggedBody(requestBody),
+            responseBody: loggedBody(message),
             events: events + [event]
         )
     )

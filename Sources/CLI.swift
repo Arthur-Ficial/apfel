@@ -301,9 +301,10 @@ func printUsage() {
           --no-origin-check      Disable origin checking (allow all origins)
           --token <secret>       Require Bearer token authentication
           --token-auto           Generate and print a random Bearer token
+          --public-health        Keep /health unauthenticated on non-loopback binds
           --footgun              Disable all protections (--no-origin-check + --cors)
           --max-concurrent <n>   Max concurrent model requests [default: 5]
-          --debug                Verbose logging
+          --debug                Verbose logging and enable /v1/logs inspector
 
     \(styled("ENVIRONMENT:", .yellow, .bold))
       APFEL_SYSTEM_PROMPT       Default system prompt
