@@ -5,6 +5,7 @@
 
 import Foundation
 import Hummingbird
+import NIOCore
 import ApfelCore
 
 /// Server configuration passed from CLI argument parsing.
@@ -235,7 +236,15 @@ func startServer(config: ServerConfig) async throws {
     printStderr("  GET  http://\(config.host):\(config.port)/health")
     printStderr("")
 
-    try await app.run()
+    do {
+        try await app.run()
+    } catch let error as IOError where error.errnoCode == EADDRINUSE {
+        printStderr("")
+        printStderr(styled("error: Port \(config.port) is already in use.", .red, .bold))
+        printStderr("Another process (e.g. Ollama) may be listening on this port.")
+        printStderr("Fix: \(styled("apfel --serve --port <other-port>", .cyan)) or stop the other process.")
+        exit(exitRuntimeError)
+    }
 }
 
 func isLoopbackHost(_ host: String) -> Bool {
