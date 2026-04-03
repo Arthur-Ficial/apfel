@@ -301,7 +301,7 @@ The `--token` flag overrides `APFEL_TOKEN`. The `--token-auto` flag overrides bo
 
 ### `--footgun` - Disable all protections
 
-The nuclear option. Combines `--no-origin-check` and `--cors` to disable all security.
+The shooting-yourself-in-the-foot-at-some-point-in-the-future option. Combines `--no-origin-check` and `--cors` to disable all security.
 
 ```bash
 apfel --serve --footgun
