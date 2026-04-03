@@ -196,6 +196,32 @@ def test_stream_returns_content():
     assert result.stdout.strip()
 
 
+def _assert_system_prompt_honored(args):
+    require_model()
+    system_prompt = "You are a pirate. Reply in pirate speech and include matey or arrr."
+    command = [
+        system_prompt if arg == "__SYSTEM_PROMPT__" else arg
+        for arg in args
+    ]
+    result = run_cli(["-q", "-o", "json", *command], timeout=90)
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    content = payload["content"].lower()
+    assert "matey" in content or "arrr" in content or "arr" in content, payload["content"]
+
+
+def test_system_prompt_controls_non_stream_prompt():
+    _assert_system_prompt_honored(["-s", "__SYSTEM_PROMPT__", "What is recursion?"])
+
+
+def test_system_prompt_is_honored_with_stream_after_short_flag():
+    _assert_system_prompt_honored(["-s", "__SYSTEM_PROMPT__", "--stream", "What is recursion?"])
+
+
+def test_system_prompt_is_honored_with_stream_before_short_flag():
+    _assert_system_prompt_honored(["--stream", "-s", "__SYSTEM_PROMPT__", "What is recursion?"])
+
+
 # --- File flag (-f/--file) tests (GH-12) ---
 
 

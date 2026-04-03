@@ -48,9 +48,15 @@ func makeModel(permissive: Bool) -> SystemLanguageModel {
 // MARK: - Simple Session (CLI use)
 
 /// Create a LanguageModelSession with optional system instructions for CLI use.
+/// Uses Transcript.Instructions so streaming and non-streaming read the same source.
 func makeSession(systemPrompt: String?, options: SessionOptions = .defaults) -> LanguageModelSession {
     let model = makeModel(permissive: options.permissive)
-    return LanguageModelSession(model: model, instructions: systemPrompt)
+    guard let systemPrompt, !systemPrompt.isEmpty else {
+        return LanguageModelSession(model: model)
+    }
+    let segment = Transcript.TextSegment(content: systemPrompt)
+    let instructions = Transcript.Instructions(segments: [.text(segment)], toolDefinitions: [])
+    return makeTranscriptSession(model: model, entries: [.instructions(instructions)])
 }
 
 func makePromptEntry(_ prompt: String, options: SessionOptions = .defaults) -> Transcript.Entry {
