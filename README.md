@@ -279,7 +279,7 @@ Chat, debug inspector, request logs, context settings, speech-to-text, text-to-s
 | `POST /v1/embeddings` | 501 | Embeddings not available on-device |
 | `logprobs=true`, `n>1`, `stop`, `presence_penalty`, `frequency_penalty` | 400 | Rejected explicitly. `n=1` and `logprobs=false` are accepted as no-ops |
 | Multi-modal (images) | 400 | Rejected with clear error |
-| `Authorization` header | Accepted | Ignored (no auth needed for localhost) |
+| `Authorization` header | Supported | Required when `--token` is set. See [Server Security](docs/server-security.md) |
 
 Full API spec: [openai/openai-openapi](https://github.com/openai/openai-openapi)
 
@@ -299,13 +299,14 @@ Full API spec: [openai/openai-openapi](https://github.com/openai/openai-openapi)
 ## CLI Reference
 
 ```
-apfel [OPTIONS] <prompt>       Single prompt
-apfel -f <file> <prompt>       Attach file content to prompt
-apfel --chat                   Interactive conversation
-apfel --stream <prompt>        Stream response tokens
-apfel --serve                  Start OpenAI-compatible server
-apfel --model-info             Print model capabilities
-apfel --release                Show detailed release and build info
+apfel [OPTIONS] <prompt>                Single prompt
+apfel -f <file> <prompt>                Attach file content to prompt
+apfel --mcp <server.py> <prompt>        Use MCP tools (repeatable)
+apfel --chat                            Interactive conversation
+apfel --stream <prompt>                 Stream response tokens
+apfel --serve                           Start OpenAI-compatible server
+apfel --serve --mcp <server.py>         Server with MCP tools
+apfel --model-info                      Print model capabilities
 ```
 
 **General options** (all modes):
@@ -321,6 +322,7 @@ apfel --release                Show detailed release and build info
 | `--temperature <n>` | Sampling temperature |
 | `--seed <n>` | Random seed for reproducibility |
 | `--max-tokens <n>` | Maximum response tokens |
+| `--mcp <path>` | Attach MCP tool server (repeatable). See [MCP docs](docs/mcp-calculator.md) |
 | `--permissive` | Use permissive content guardrails |
 | `--model-info` | Print model capabilities and exit |
 | `--release` | Show detailed version, build, and capability info |
@@ -394,7 +396,7 @@ HTTP Server (/v1/*) ───────┘   (100% on-device, zero network)
 Built with Swift 6.3 strict concurrency. Single `Package.swift`, three targets:
 - `ApfelCore` - pure logic library (no FoundationModels dependency, unit-testable)
 - `apfel` - executable (CLI + server)
-- `apfel-tests` - 48 unit tests
+- `apfel-tests` - unit tests (pure Swift runner, no XCTest)
 
 **No Xcode required.** Builds and tests with Command Line Tools only.
 
@@ -414,9 +416,9 @@ make release-major                       # bump major: 0.x.y -> 1.0.0
 swift build                              # quick debug build
 
 # Tests
-swift run apfel-tests                    # 48 pure Swift unit tests (no XCTest needed)
-apfel --serve &                          # start server for integration tests
-python3 -m pytest Tests/integration/ -v  # 51 integration tests
+swift run apfel-tests                    # pure Swift unit tests (no XCTest needed)
+apfel --serve --debug &                  # start server for integration tests
+python3 -m pytest Tests/integration/ -v  # integration tests (requires server)
 ```
 
 Every `make build`/`make install` automatically:
