@@ -5,3 +5,5 @@ xcuserdata/
 DerivedData/
 .DS_Store
 .triage-log/
+.wrangler/
+__pycache__/
