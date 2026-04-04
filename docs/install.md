@@ -79,3 +79,8 @@ apfel "Hello, world!"
 apfel --version
 apfel --release       # full build info
 ```
+
+## Errors
+If you get this error, "error: Apple Intelligence is not enabled or model is not ready. Run: apfel --model-info", check to see that you have Apple Intelligence enabled. (System Settings GUI (Apple menu > System Settings > Apple Intelligence & Siri))
+
+

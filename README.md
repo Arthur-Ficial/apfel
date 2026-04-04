@@ -27,6 +27,7 @@ Every Mac with Apple Silicon has a **built-in LLM** - Apple's on-device foundati
 
 - Apple Silicon Mac, macOS 26 Tahoe or newer, [Apple Intelligence enabled](https://support.apple.com/en-us/121115)
 - Building from source requires Command Line Tools with macOS 26.4 SDK (ships Swift 6.3). No Xcode required.
+- Apple Intelligence is enabled (System Settings GUI (Apple menu > System Settings > Apple Intelligence & Siri))
 
 **Homebrew** (recommended):
 
