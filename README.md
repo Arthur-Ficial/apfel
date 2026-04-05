@@ -36,6 +36,12 @@ brew install apfel
 brew upgrade apfel
 ```
 
+**Update:**
+
+```bash
+brew upgrade apfel
+```
+
 **Build from source:**
 
 ```bash
