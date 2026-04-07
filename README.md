@@ -18,6 +18,7 @@ Every Mac with Apple Silicon has a **built-in LLM** - Apple's on-device foundati
 
 - **UNIX tool** - `echo "summarize this" | apfel` - pipe-friendly, file attachments, JSON output, exit codes
 - **OpenAI-compatible server** - `apfel --serve` - drop-in replacement at `localhost:11434`, works with any OpenAI SDK
+- **Background service** - `apfel service install` - keep the local server running without an open terminal
 - **Tool calling** - function calling with schema conversion, full round-trip support
 - **Zero cost** - no API keys, no cloud, no subscriptions, 4096-token context window
 
@@ -34,6 +35,7 @@ Every Mac with Apple Silicon has a **built-in LLM** - Apple's on-device foundati
 brew tap Arthur-Ficial/tap
 brew install apfel
 brew upgrade apfel
+apfel service install
 ```
 
 **Update:**
@@ -118,6 +120,30 @@ resp = client.chat.completions.create(
 )
 print(resp.choices[0].message.content)
 ```
+
+### Background service
+
+Keep the server running in the background via a per-user LaunchAgent:
+
+```bash
+apfel service install
+apfel service status
+```
+
+Custom port:
+
+```bash
+apfel service install --port 11435
+```
+
+Stop or remove it:
+
+```bash
+apfel service stop
+apfel service uninstall
+```
+
+The service keeps its config in `~/Library/Application Support/apfel/server.json` and writes logs under `~/Library/Logs/apfel/`.
 
 ### Interactive chat
 
@@ -308,6 +334,8 @@ MODES
   apfel --stream <prompt>                 Stream response tokens
   apfel --chat                            Interactive conversation
   apfel --serve                           Start OpenAI-compatible server
+  apfel service install                   Install and start background service
+  apfel service status                    Show background service status
   apfel --benchmark                       Run internal performance benchmarks
 
 INPUT
@@ -352,6 +380,14 @@ META
   --release                               Detailed build info
   --model-info                            Print model capabilities
   --update                                Check for updates via Homebrew
+
+SERVICE
+  apfel service install                   Install and start the background service
+  apfel service start                     Start the background service
+  apfel service stop                      Stop the background service
+  apfel service restart                   Restart the background service
+  apfel service status                    Show service status, endpoint, and paths
+  apfel service uninstall                 Remove the LaunchAgent (keeps server config)
 ```
 
 **Examples by flag:**
@@ -430,6 +466,13 @@ apfel --chat --context-strategy summarize          # compress old turns
 apfel --serve
 apfel --serve --port 3000 --host 0.0.0.0
 
+# service
+apfel service install
+apfel service install --port 11435
+apfel service status
+apfel service stop
+apfel service uninstall
+
 # --cors, --token, --footgun
 apfel --serve --cors
 apfel --serve --token "my-secret-token"
@@ -461,6 +504,8 @@ apfel --help
 ```
 
 See [Server Security](docs/server-security.md) for detailed documentation on security options.
+
+See [Background Service](docs/background-service.md) for install, status, logs, and lifecycle commands.
 
 ### Exit Codes
 

@@ -76,23 +76,12 @@ let env = ProcessInfo.processInfo.environment
 var systemPrompt: String? = env["APFEL_SYSTEM_PROMPT"]
 var mode: String = "single"
 var prompt: String = ""
-var serverPort: Int = Int(env["APFEL_PORT"] ?? "") ?? 11434
-var serverHost: String = env["APFEL_HOST"] ?? "127.0.0.1"
-var serverCORS: Bool = false
-var serverMaxConcurrent: Int = 5
-var serverDebug: Bool = false
-var serverAllowedOrigins: [String] = OriginValidator.defaultAllowedOrigins
-var serverOriginCheckEnabled: Bool = true
-var serverToken: String? = env["APFEL_TOKEN"]
+var serverConfig = defaultServerServiceConfig(environment: env)
 var serverTokenAuto: Bool = false
-var serverPublicHealth: Bool = false
-var mcpServerPaths: [String] = []
 var cliTemperature: Double? = Double(env["APFEL_TEMPERATURE"] ?? "")
 var cliSeed: UInt64? = nil
 var cliMaxTokens: Int? = Int(env["APFEL_MAX_TOKENS"] ?? "").flatMap { $0 > 0 ? $0 : nil }
 var cliPermissive: Bool = false
-var cliRetryEnabled: Bool = false
-var cliRetryCount: Int = 3
 var cliContextStrategy: ContextStrategy? = env["APFEL_CONTEXT_STRATEGY"].flatMap { ContextStrategy(rawValue: $0) }
 var cliContextMaxTurns: Int? = env["APFEL_CONTEXT_MAX_TURNS"].flatMap { Int($0) }
 var cliContextOutputReserve: Int? = env["APFEL_CONTEXT_OUTPUT_RESERVE"].flatMap { Int($0) }.flatMap { $0 > 0 ? $0 : nil }
@@ -102,6 +91,37 @@ func parseAllowedOrigins(_ value: String) -> [String] {
     value.split(separator: ",")
         .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
         .filter { !$0.isEmpty }
+}
+
+var serviceSubcommand: ServiceSubcommand?
+if args.first == "service" {
+    guard args.count >= 2, let subcommand = ServiceSubcommand(rawValue: args[1]) else {
+        printError("service requires one of: install|start|stop|restart|status|uninstall|run")
+        exit(exitUsageError)
+    }
+    serviceSubcommand = subcommand
+    mode = "service"
+    args = Array(args.dropFirst(2))
+
+    switch subcommand {
+    case .install:
+        break
+    case .run:
+        guard args.isEmpty else {
+            printError("apfel service run does not accept extra arguments")
+            exit(exitUsageError)
+        }
+    default:
+        guard args.isEmpty else {
+            printError("apfel service \(subcommand.rawValue) does not accept extra arguments")
+            exit(exitUsageError)
+        }
+    }
+}
+
+func rejectServiceInstallOption(_ option: String) -> Never {
+    printError("\(option) is not supported with apfel service install")
+    exit(exitUsageError)
 }
 
 var i = 0
@@ -120,6 +140,7 @@ while i < args.count {
         exit(exitSuccess)
 
     case "-s", "--system":
+        if serviceSubcommand == .install { rejectServiceInstallOption(args[i]) }
         i += 1
         guard i < args.count else {
             printError("--system requires a value")
@@ -128,6 +149,7 @@ while i < args.count {
         systemPrompt = args[i]
 
     case "-o", "--output":
+        if serviceSubcommand == .install { rejectServiceInstallOption(args[i]) }
         i += 1
         guard i < args.count else {
             printError("--output requires a value (plain or json)")
@@ -140,21 +162,27 @@ while i < args.count {
         outputFormat = fmt
 
     case "-q", "--quiet":
+        if serviceSubcommand == .install { rejectServiceInstallOption(args[i]) }
         quietMode = true
 
     case "--no-color":
+        if serviceSubcommand == .install { rejectServiceInstallOption(args[i]) }
         noColorFlag = true
 
     case "--chat":
+        if serviceSubcommand == .install { rejectServiceInstallOption(args[i]) }
         mode = "chat"
 
     case "--stream":
+        if serviceSubcommand == .install { rejectServiceInstallOption(args[i]) }
         mode = "stream"
 
     case "--serve":
+        if serviceSubcommand == .install { rejectServiceInstallOption(args[i]) }
         mode = "serve"
 
     case "--benchmark":
+        if serviceSubcommand == .install { rejectServiceInstallOption(args[i]) }
         mode = "benchmark"
 
     case "--port":
@@ -163,7 +191,7 @@ while i < args.count {
             printError("--port requires a valid port number (1-65535)")
             exit(exitUsageError)
         }
-        serverPort = p
+        serverConfig.port = p
 
     case "--host":
         i += 1
@@ -171,10 +199,10 @@ while i < args.count {
             printError("--host requires an address")
             exit(exitUsageError)
         }
-        serverHost = args[i]
+        serverConfig.host = args[i]
 
     case "--cors":
-        serverCORS = true
+        serverConfig.cors = true
 
     case "--max-concurrent":
         i += 1
@@ -182,10 +210,10 @@ while i < args.count {
             printError("--max-concurrent requires a positive number")
             exit(exitUsageError)
         }
-        serverMaxConcurrent = n
+        serverConfig.maxConcurrent = n
 
     case "--debug":
-        serverDebug = true
+        serverConfig.debug = true
         apfelDebugEnabled = true
 
     case "--allowed-origins":
@@ -199,12 +227,12 @@ while i < args.count {
             printError("--allowed-origins requires at least one non-empty origin")
             exit(exitUsageError)
         }
-        for origin in customOrigins where !serverAllowedOrigins.contains(origin) {
-            serverAllowedOrigins.append(origin)
+        for origin in customOrigins where !serverConfig.allowedOrigins.contains(origin) {
+            serverConfig.allowedOrigins.append(origin)
         }
 
     case "--no-origin-check":
-        serverOriginCheckEnabled = false
+        serverConfig.originCheckEnabled = false
 
     case "--token":
         i += 1
@@ -212,17 +240,17 @@ while i < args.count {
             printError("--token requires a secret value")
             exit(exitUsageError)
         }
-        serverToken = args[i]
+        serverConfig.token = args[i]
 
     case "--token-auto":
         serverTokenAuto = true
 
     case "--public-health":
-        serverPublicHealth = true
+        serverConfig.publicHealth = true
 
     case "--footgun":
-        serverOriginCheckEnabled = false
-        serverCORS = true
+        serverConfig.originCheckEnabled = false
+        serverConfig.cors = true
 
     case "--mcp":
         i += 1
@@ -230,9 +258,10 @@ while i < args.count {
             printError("--mcp requires a path to an MCP server script")
             exit(exitUsageError)
         }
-        mcpServerPaths.append(args[i])
+        serverConfig.mcpServerPaths.append(args[i])
 
     case "--temperature":
+        if serviceSubcommand == .install { rejectServiceInstallOption(args[i]) }
         i += 1
         guard i < args.count, let t = Double(args[i]), t >= 0 else {
             printError("--temperature requires a non-negative number (e.g., 0.7)")
@@ -241,6 +270,7 @@ while i < args.count {
         cliTemperature = t
 
     case "--seed":
+        if serviceSubcommand == .install { rejectServiceInstallOption(args[i]) }
         i += 1
         guard i < args.count, let s = UInt64(args[i]) else {
             printError("--seed requires a positive integer")
@@ -249,6 +279,7 @@ while i < args.count {
         cliSeed = s
 
     case "--max-tokens":
+        if serviceSubcommand == .install { rejectServiceInstallOption(args[i]) }
         i += 1
         guard i < args.count, let n = Int(args[i]), n > 0 else {
             printError("--max-tokens requires a positive number")
@@ -257,17 +288,19 @@ while i < args.count {
         cliMaxTokens = n
 
     case "--permissive":
+        if serviceSubcommand == .install { rejectServiceInstallOption(args[i]) }
         cliPermissive = true
 
     case "--retry":
-        cliRetryEnabled = true
+        serverConfig.retryEnabled = true
         // Optional argument: --retry or --retry N
         if i + 1 < args.count, let n = Int(args[i + 1]), n > 0 {
-            cliRetryCount = n
+            serverConfig.retryCount = n
             i += 1
         }
 
     case "--context-strategy":
+        if serviceSubcommand == .install { rejectServiceInstallOption(args[i]) }
         i += 1
         guard i < args.count, let s = ContextStrategy(rawValue: args[i]) else {
             printError("--context-strategy requires: newest-first|oldest-first|sliding-window|summarize|strict")
@@ -276,6 +309,7 @@ while i < args.count {
         cliContextStrategy = s
 
     case "--context-max-turns":
+        if serviceSubcommand == .install { rejectServiceInstallOption(args[i]) }
         i += 1
         guard i < args.count, let n = Int(args[i]), n > 0 else {
             printError("--context-max-turns requires a positive number")
@@ -284,6 +318,7 @@ while i < args.count {
         cliContextMaxTurns = n
 
     case "--context-output-reserve":
+        if serviceSubcommand == .install { rejectServiceInstallOption(args[i]) }
         i += 1
         guard i < args.count, let n = Int(args[i]), n > 0 else {
             printError("--context-output-reserve requires a positive number")
@@ -292,6 +327,7 @@ while i < args.count {
         cliContextOutputReserve = n
 
     case "--system-file":
+        if serviceSubcommand == .install { rejectServiceInstallOption(args[i]) }
         i += 1
         guard i < args.count else {
             printError("--system-file requires a file path")
@@ -307,12 +343,15 @@ while i < args.count {
         }
 
     case "--model-info":
+        if serviceSubcommand == .install { rejectServiceInstallOption(args[i]) }
         mode = "model-info"
 
     case "--update":
+        if serviceSubcommand == .install { rejectServiceInstallOption(args[i]) }
         mode = "update"
 
     case "-f", "--file":
+        if serviceSubcommand == .install { rejectServiceInstallOption(args[i]) }
         i += 1
         guard i < args.count else {
             printError("--file requires a file path")
@@ -330,6 +369,10 @@ while i < args.count {
     default:
         if args[i].hasPrefix("-") {
             printError("unknown option: \(args[i])")
+            exit(exitUsageError)
+        }
+        if serviceSubcommand == .install {
+            printError("unexpected argument for apfel service install: \(args[i])")
             exit(exitUsageError)
         }
         prompt = args[i...].joined(separator: " ")
@@ -380,12 +423,22 @@ let sessionOpts = SessionOptions(
     seed: cliSeed,
     permissive: cliPermissive,
     contextConfig: contextConfig,
-    retryEnabled: cliRetryEnabled,
-    retryCount: cliRetryCount
+    retryEnabled: serverConfig.retryEnabled,
+    retryCount: serverConfig.retryCount
 )
 
 // Check model availability for modes that need it
-if mode != "model-info" && mode != "serve" && mode != "update" {
+let requiresModelAvailabilityCheck: Bool = {
+    switch serviceSubcommand {
+    case .run:
+        return true
+    case .install, .start, .stop, .restart, .status, .uninstall:
+        return false
+    case .none:
+        return mode != "model-info" && mode != "serve" && mode != "update"
+    }
+}()
+if requiresModelAvailabilityCheck {
     let available = await TokenCounter.shared.isAvailable
     if !available {
         printError("Apple Intelligence is not enabled or model is not ready. Run: apfel --model-info")
@@ -395,9 +448,9 @@ if mode != "model-info" && mode != "serve" && mode != "update" {
 
 // Initialize MCP servers if any
 var mcpManager: MCPManager?
-if !mcpServerPaths.isEmpty {
+if serviceSubcommand == nil && !serverConfig.mcpServerPaths.isEmpty {
     do {
-        mcpManager = try await MCPManager(paths: mcpServerPaths)
+        mcpManager = try await MCPManager(paths: serverConfig.mcpServerPaths)
     } catch {
         printError("MCP server failed to start: \(error)")
         exit(exitRuntimeError)
@@ -407,26 +460,48 @@ defer { Task { await mcpManager?.shutdown() } }
 
 do {
     switch mode {
-    case "serve":
-        let tokenWasAutoGenerated = serverTokenAuto && serverToken == nil
-        if serverTokenAuto && serverToken == nil {
-            serverToken = UUID().uuidString
+    case "service":
+        guard let serviceSubcommand else {
+            printError("missing service subcommand")
+            exit(exitUsageError)
         }
-        let config = ServerConfig(
-            host: serverHost,
-            port: serverPort,
-            cors: serverCORS,
-            maxConcurrent: serverMaxConcurrent,
-            debug: serverDebug,
-            allowedOrigins: serverOriginCheckEnabled ? serverAllowedOrigins : ["*"],
-            originCheckEnabled: serverOriginCheckEnabled,
-            token: serverToken,
-            tokenWasAutoGenerated: tokenWasAutoGenerated,
-            publicHealth: serverPublicHealth,
-            retryEnabled: cliRetryEnabled,
-            retryCount: cliRetryCount
+
+        switch serviceSubcommand {
+        case .run:
+            let manager = ServiceManager()
+            let persistedConfig = try manager.loadConfig()
+            var serviceMCPManager: MCPManager?
+            if !persistedConfig.mcpServerPaths.isEmpty {
+                do {
+                    serviceMCPManager = try await MCPManager(paths: persistedConfig.mcpServerPaths)
+                } catch {
+                    printError("MCP server failed to start: \(error)")
+                    exit(exitRuntimeError)
+                }
+            }
+            defer { Task { await serviceMCPManager?.shutdown() } }
+            try await startServer(
+                config: makeRuntimeServerConfig(from: persistedConfig),
+                mcpManager: serviceMCPManager
+            )
+
+        default:
+            try await performServiceCommand(
+                subcommand: serviceSubcommand,
+                config: serverConfig,
+                tokenAuto: serverTokenAuto
+            )
+        }
+
+    case "serve":
+        let tokenWasAutoGenerated = serverTokenAuto
+        if serverTokenAuto {
+            serverConfig.token = UUID().uuidString
+        }
+        try await startServer(
+            config: makeRuntimeServerConfig(from: serverConfig, tokenWasAutoGenerated: tokenWasAutoGenerated),
+            mcpManager: mcpManager
         )
-        try await startServer(config: config, mcpManager: mcpManager)
 
     case "update":
         performUpdate()

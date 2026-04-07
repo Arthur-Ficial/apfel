@@ -294,7 +294,7 @@ func printRelease() {
     \(styled("CAPABILITIES:", .yellow, .bold))
     \(styled("├", .dim)) on-device:  100% local inference (no cloud, no API keys)
     \(styled("├", .dim)) model:      \(modelName) (FoundationModels framework)
-    \(styled("├", .dim)) modes:      single, stream, chat, serve
+    \(styled("├", .dim)) modes:      single, stream, chat, serve, service
     \(styled("├", .dim)) server:     OpenAI-compatible (/v1/chat/completions)
     \(styled("├", .dim)) tools:      function calling + MCP tool servers (--mcp)
     \(styled("├", .dim)) formats:    plain, json, streaming SSE
@@ -416,6 +416,7 @@ func printUsage() {
       \(appName) --chat                   Interactive conversation
       \(appName) --stream <prompt>        Stream a single response
       \(appName) --serve                  Start OpenAI-compatible HTTP server
+      \(appName) service install          Install and start background service
       \(appName) --benchmark              Run internal performance benchmarks
 
     \(styled("OPTIONS:", .yellow, .bold))
@@ -461,6 +462,14 @@ func printUsage() {
           --footgun              Disable all protections (--no-origin-check + --cors)
           --max-concurrent <n>   Max concurrent model requests [default: 5]
 
+    \(styled("SERVICE COMMANDS:", .yellow, .bold))
+      service install            Install and start the background service
+      service start              Start the background service
+      service stop               Stop the background service
+      service restart            Restart the background service
+      service status             Show service status, endpoint, and paths
+      service uninstall          Remove the LaunchAgent (keeps server config)
+
 
     \(styled("ENVIRONMENT:", .yellow, .bold))
       APFEL_SYSTEM_PROMPT       Default system prompt
@@ -496,5 +505,8 @@ func printUsage() {
       \(appName) -o json "Translate to German: hello" | jq .content
       APFEL_SYSTEM_PROMPT="Be brief" \(appName) "Explain TCP"
       \(appName) --serve --port 3000 --host 0.0.0.0 --cors
+      \(appName) service install --port 11435
+      \(appName) service status
+      \(appName) service uninstall
     """)
 }

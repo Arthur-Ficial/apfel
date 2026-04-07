@@ -78,6 +78,7 @@ fi
 echo "Running tests..."
 python3 -m pytest \
     Tests/integration/cli_e2e_test.py \
+    Tests/integration/service_test.py \
     Tests/integration/performance_test.py \
     Tests/integration/openai_client_test.py \
     Tests/integration/openapi_spec_test.py \

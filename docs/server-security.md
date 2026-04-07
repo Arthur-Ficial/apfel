@@ -1,6 +1,6 @@
 # Server Security
 
-apfel's HTTP server (`--serve`) runs on localhost by default and is designed for local development and on-device inference. This document explains the security settings and how to configure them for your specific use case.
+apfel's HTTP server (`--serve`) runs on localhost by default and is designed for local development and on-device inference. The same security model applies when you run it as a background service via `apfel service install`. This document explains the security settings and how to configure them for your specific use case.
 
 ## How it works
 
@@ -291,7 +291,7 @@ curl -H "Authorization: Bearer E259FD6E-1220-49CA-95CE-66D14BB7FD4B" http://loca
 
 ### `APFEL_TOKEN` environment variable
 
-Set the token via environment variable. Useful for scripts and systemd services.
+Set the token via environment variable. Useful for scripts or one-off `apfel --serve` runs.
 
 ```bash
 export APFEL_TOKEN="my-secret-token"
@@ -300,6 +300,20 @@ apfel --serve
 ```
 
 The `--token` flag overrides `APFEL_TOKEN`. The `--token-auto` flag overrides both (generates a new random one).
+
+For background services installed with `apfel service install`, prefer saving the token in the service config instead:
+
+```bash
+apfel service install --token "my-secret-token"
+```
+
+Or generate one once and persist it:
+
+```bash
+apfel service install --token-auto
+```
+
+Unlike `apfel --serve --token-auto`, the service flow generates the token during install and reuses it on later starts.
 
 ---
 

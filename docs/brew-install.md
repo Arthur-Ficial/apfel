@@ -5,6 +5,7 @@
 ```bash
 brew tap Arthur-Ficial/tap
 brew install apfel
+apfel service install
 ```
 
 Verify the install:
@@ -12,6 +13,7 @@ Verify the install:
 ```bash
 apfel --version
 apfel --release
+apfel service status
 ```
 
 ## Requirements
@@ -21,6 +23,18 @@ apfel --release
 - Apple Intelligence enabled
 
 Homebrew installs the `apfel` binary. You do **not** need Xcode.
+
+If you want the OpenAI-compatible server to stay up without an open terminal:
+
+```bash
+apfel service install
+```
+
+Change the port later by re-running install:
+
+```bash
+apfel service install --port 11435
+```
 
 ## Troubleshooting
 

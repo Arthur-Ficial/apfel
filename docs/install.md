@@ -13,6 +13,7 @@
 ```bash
 brew tap Arthur-Ficial/tap
 brew install apfel
+apfel service install
 ```
 
 No build tools needed. See [brew-install.md](brew-install.md) for troubleshooting.
@@ -25,6 +26,7 @@ Requires Swift 6.3+ with developer tools that include the **macOS 26.4 SDK**. Xc
 git clone https://github.com/Arthur-Ficial/apfel.git
 cd apfel
 make install
+apfel service install
 ```
 
 `make install` auto-bumps the version, builds a release binary, and installs to `/usr/local/bin/apfel`.
@@ -78,4 +80,5 @@ make install
 apfel 'Hello, world!'
 apfel --version
 apfel --release       # full build info
+apfel service status  # background service status (if installed)
 ```
