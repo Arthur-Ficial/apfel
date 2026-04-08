@@ -1,26 +1,38 @@
 #!/bin/bash
-# mac-narrator — your Mac's inner monologue, powered by Apple Intelligence
+# mac-narrator -- your Mac's inner monologue, powered by Apple Intelligence
 #
 # One-shot:  mac-narrator
 # Watch:     mac-narrator --watch
 #            mac-narrator --watch --interval 30
+# Speak:     mac-narrator --say
+# Quiet:     mac-narrator --watch --threshold 50   (only narrate when score > 50)
 #
 # Requires: apfel installed (https://github.com/Arthur-Ficial/apfel)
 
 INTERVAL=60
 WATCH=false
+SAY=false
+THRESHOLD=0  # 0 = always narrate, 1-100 = only when interesting enough
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --watch|-w)    WATCH=true; shift ;;
-        --interval|-i) INTERVAL="$2"; shift 2 ;;
+        --watch|-w)      WATCH=true; shift ;;
+        --interval|-i)   INTERVAL="$2"; shift 2 ;;
+        --say|-s)        SAY=true; shift ;;
+        --threshold|-t)  THRESHOLD="$2"; shift 2 ;;
         -h|--help)
-            echo "mac-narrator — your Mac's inner monologue"
+            echo "mac-narrator -- your Mac's inner monologue"
             echo ""
-            echo "Usage: mac-narrator [--watch [--interval N]]"
+            echo "Usage: mac-narrator [OPTIONS]"
             echo ""
-            echo "  --watch, -w        Continuous mode (default: every 60s)"
-            echo "  --interval N, -i N  Seconds between narrations"
+            echo "  --watch, -w          Continuous mode (default: every 60s)"
+            echo "  --interval N, -i N   Seconds between narrations"
+            echo "  --say, -s            Speak narration aloud (macOS say)"
+            echo "  --threshold N, -t N  Only narrate when interest score > N (0-100)"
+            echo "                       Score based on: CPU, memory pressure, battery, disk"
+            echo "                       0 = always narrate (default)"
+            echo "                       30 = only mildly interesting (a process > 30% CPU)"
+            echo "                       70 = only dramatic (battery < 20%, memory full, etc.)"
             echo ""
             echo "Requires: apfel (Apple Intelligence CLI)"
             exit 0
@@ -29,7 +41,6 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Check apfel is installed
 if ! command -v apfel &>/dev/null; then
     echo "Error: apfel not found. Install from https://github.com/Arthur-Ficial/apfel"
     exit 1
@@ -37,7 +48,86 @@ fi
 
 PROMPT="You narrate this computer's life like a nature documentary. Given system data, respond with EXACTLY 1-2 short sentences. Be specific about process names and numbers. Dry British humor. No bullet points, no lists."
 
+# Compute an interest score (0-100) from system metrics.
+# Higher = more interesting = more worth narrating.
+compute_score() {
+    local score=0
+
+    # Top CPU process (> 50% = interesting, > 90% = dramatic)
+    local top_cpu
+    top_cpu=$(ps -eo %cpu -r 2>/dev/null | head -2 | tail -1 | tr -d ' ')
+    top_cpu=${top_cpu%.*}  # truncate to int
+    if [ "${top_cpu:-0}" -gt 90 ] 2>/dev/null; then
+        score=$((score + 40))
+    elif [ "${top_cpu:-0}" -gt 50 ] 2>/dev/null; then
+        score=$((score + 25))
+    elif [ "${top_cpu:-0}" -gt 30 ] 2>/dev/null; then
+        score=$((score + 15))
+    fi
+
+    # Memory pressure (free < 30% = interesting, < 10% = dramatic)
+    local mem_free
+    mem_free=$(memory_pressure 2>/dev/null | grep "System-wide" | grep -o '[0-9]*' | head -1)
+    if [ "${mem_free:-100}" -lt 10 ] 2>/dev/null; then
+        score=$((score + 40))
+    elif [ "${mem_free:-100}" -lt 30 ] 2>/dev/null; then
+        score=$((score + 20))
+    elif [ "${mem_free:-100}" -lt 50 ] 2>/dev/null; then
+        score=$((score + 10))
+    fi
+
+    # Battery (< 20% = interesting, < 5% = dramatic, charging = boring)
+    local batt_pct
+    batt_pct=$(pmset -g batt 2>/dev/null | grep -o '[0-9]*%' | tr -d '%')
+    local batt_state
+    batt_state=$(pmset -g batt 2>/dev/null | tail -1)
+    if [ -n "$batt_pct" ] && ! echo "$batt_state" | grep -q "charged\|charging"; then
+        if [ "$batt_pct" -lt 5 ] 2>/dev/null; then
+            score=$((score + 30))
+        elif [ "$batt_pct" -lt 20 ] 2>/dev/null; then
+            score=$((score + 15))
+        fi
+    fi
+
+    # Disk (> 80% full = interesting, > 95% = dramatic)
+    local disk_pct
+    disk_pct=$(df -h / 2>/dev/null | tail -1 | awk '{print $5}' | tr -d '%')
+    if [ "${disk_pct:-0}" -gt 95 ] 2>/dev/null; then
+        score=$((score + 30))
+    elif [ "${disk_pct:-0}" -gt 80 ] 2>/dev/null; then
+        score=$((score + 15))
+    fi
+
+    # Load average (> 4 = interesting for most Macs)
+    local load
+    load=$(sysctl -n vm.loadavg 2>/dev/null | awk '{print $2}' | cut -d. -f1)
+    if [ "${load:-0}" -gt 8 ] 2>/dev/null; then
+        score=$((score + 20))
+    elif [ "${load:-0}" -gt 4 ] 2>/dev/null; then
+        score=$((score + 10))
+    fi
+
+    # Cap at 100
+    if [ "$score" -gt 100 ]; then score=100; fi
+    echo "$score"
+}
+
 narrate() {
+    # Check threshold
+    if [ "$THRESHOLD" -gt 0 ]; then
+        local score
+        score=$(compute_score)
+        if [ "$score" -lt "$THRESHOLD" ]; then
+            if $WATCH; then
+                echo -e "\033[90m[$(date +%H:%M:%S)] score $score/$THRESHOLD -- quiet\033[0m"
+            fi
+            return
+        fi
+        if $WATCH; then
+            echo -e "\033[90m[$(date +%H:%M:%S)] score $score/$THRESHOLD -- narrating\033[0m"
+        fi
+    fi
+
     local snapshot
     snapshot=$(
         ps -eo pid,%cpu,%mem,comm -r 2>/dev/null | head -8
@@ -51,20 +141,28 @@ narrate() {
         uptime 2>/dev/null
     )
 
-    # Collapse to single line for clean argument passing
     local oneline
     oneline=$(echo "$snapshot" | tr '\n' '; ')
 
     local comment
     if comment=$(apfel -q --max-tokens 150 -s "$PROMPT" "System snapshot: $oneline"); then
         echo -e "\033[90m[$(date +%H:%M:%S)]\033[0m $comment"
+        if $SAY; then
+            say "$comment" &
+        fi
     else
         echo -e "\033[90m[$(date +%H:%M:%S)]\033[0m \033[33m(model busy, skipping)\033[0m"
     fi
 }
 
 if $WATCH; then
-    echo -e "\033[36m🍎 mac-narrator\033[0m watching every ${INTERVAL}s (Ctrl+C to stop)"
+    echo -e "\033[36mapfel mac-narrator\033[0m watching every ${INTERVAL}s (Ctrl+C to stop)"
+    if [ "$THRESHOLD" -gt 0 ]; then
+        echo -e "\033[90mthreshold: $THRESHOLD (only narrating when interesting enough)\033[0m"
+    fi
+    if $SAY; then
+        echo -e "\033[90mspeech: on\033[0m"
+    fi
     echo ""
     while true; do
         narrate
