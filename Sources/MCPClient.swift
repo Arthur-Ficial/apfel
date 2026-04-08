@@ -118,15 +118,32 @@ final class MCPConnection: @unchecked Sendable {
         stdinPipe.fileHandleForWriting.write(data)
     }
 
+    /// Leftover bytes from a previous buffered read that arrived after a newline.
+    private var readBuffer = Data()
+
     private func sendAndReceive(
         _ message: String,
         timeoutMilliseconds: Int,
         operationDescription: String
     ) throws -> String {
         send(message)
-        var buffer = Data()
+        var lineBuffer = Data()
         let fd = stdoutPipe.fileHandleForReading.fileDescriptor
         let deadline = Date().timeIntervalSinceReferenceDate + (Double(timeoutMilliseconds) / 1000.0)
+
+        // Drain any leftover bytes from the previous read that crossed a message boundary.
+        if let newlineIndex = readBuffer.firstIndex(of: UInt8(ascii: "\n")) {
+            lineBuffer.append(readBuffer[readBuffer.startIndex..<newlineIndex])
+            readBuffer = Data(readBuffer[(newlineIndex + 1)...])
+            if let line = String(data: lineBuffer, encoding: .utf8), !line.isEmpty {
+                return line
+            }
+        } else if !readBuffer.isEmpty {
+            lineBuffer.append(readBuffer)
+            readBuffer = Data()
+        }
+
+        var chunk = [UInt8](repeating: 0, count: 4096)
 
         while true {
             let remainingMilliseconds = Int((deadline - Date().timeIntervalSinceReferenceDate) * 1000.0)
@@ -156,8 +173,7 @@ final class MCPConnection: @unchecked Sendable {
                 continue
             }
 
-            var byte: UInt8 = 0
-            let readCount = Darwin.read(fd, &byte, 1)
+            let readCount = Darwin.read(fd, &chunk, chunk.count)
             if readCount == 0 {
                 throw MCPError.processError("MCP server closed unexpectedly")
             }
@@ -165,10 +181,20 @@ final class MCPConnection: @unchecked Sendable {
                 if errno == EINTR { continue }
                 throw MCPError.processError("Failed reading MCP response: \(String(cString: strerror(errno)))")
             }
-            if byte == UInt8(ascii: "\n") { break }
-            buffer.append(&byte, count: 1)
+
+            let bytes = chunk[..<readCount]
+            if let newlineOffset = bytes.firstIndex(of: UInt8(ascii: "\n")) {
+                lineBuffer.append(contentsOf: bytes[bytes.startIndex..<newlineOffset])
+                // Stash anything after the newline for the next call.
+                let afterNewline = bytes.index(after: newlineOffset)
+                if afterNewline < bytes.endIndex {
+                    readBuffer = Data(bytes[afterNewline...])
+                }
+                break
+            }
+            lineBuffer.append(contentsOf: bytes)
         }
-        guard let line = String(data: buffer, encoding: .utf8), !line.isEmpty else {
+        guard let line = String(data: lineBuffer, encoding: .utf8), !line.isEmpty else {
             throw MCPError.processError("Empty response from MCP server")
         }
         return line
