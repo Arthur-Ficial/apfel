@@ -81,6 +81,7 @@ suite("MCPClientTests") { runMCPClientTests() }
 suite("AsyncHarnessTests") { runAsyncHarnessTests() }
 suite("RetryTests") { runRetryTests() }
 suite("DebugLoggerTests") { runDebugLoggerTests() }
+suite("CLIArgumentsTests") { runCLIArgumentsTests() }
 
 // MARK: - Summary
 
