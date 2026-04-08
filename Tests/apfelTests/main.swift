@@ -2,6 +2,7 @@
 // Run: swift run apfel-tests
 
 import Foundation
+import ApfelCLI
 
 // MARK: - Minimal test harness
 

@@ -1,12 +1,14 @@
 // ============================================================================
 // CLIArguments.swift — Parsed CLI arguments as a testable value type
-// Part of ApfelCore — pure data types, no FoundationModels dependency
+// Part of ApfelCLI — CLI-specific parsing, separate from ApfelCore domain logic
 // ============================================================================
 
 import Foundation
+import ApfelCore
 
 /// Represents the result of parsing CLI arguments into a typed struct.
-/// No side effects, no exit() calls — just pure parsing logic.
+/// Pure parsing logic — no side effects, no exit() calls.
+/// File I/O is injectable via the `readFile` parameter for testability.
 public struct CLIArguments: Sendable, Equatable {
 
     // MARK: - Mode
@@ -89,10 +91,17 @@ public struct CLIParseError: Error, Equatable, CustomStringConvertible {
 extension CLIArguments {
 
     /// Parse command-line arguments into a CLIArguments struct.
-    /// Does not call exit() or perform I/O — just returns the parsed result or throws.
-    /// File reads (--system-file, --file) are the one exception, since the content
-    /// must be captured at parse time.
-    public static func parse(_ args: [String], env: [String: String] = [:]) throws -> CLIArguments {
+    /// Does not call exit() — returns the parsed result or throws `CLIParseError`.
+    ///
+    /// - Parameters:
+    ///   - args: Command-line arguments (without the executable name).
+    ///   - env: Environment variables. Defaults applied first, CLI flags override.
+    ///   - readFile: Closure to read file contents by path. Injectable for testing.
+    public static func parse(
+        _ args: [String],
+        env: [String: String] = [:],
+        readFile: (_ path: String) throws -> String = { try String(contentsOfFile: $0, encoding: .utf8) }
+    ) throws -> CLIArguments {
         var result = CLIArguments()
 
         // Environment variable defaults
@@ -292,8 +301,10 @@ extension CLIArguments {
                 guard i < args.count else { throw CLIParseError("--system-file requires a file path") }
                 let path = args[i]
                 do {
-                    result.systemPrompt = try String(contentsOfFile: path, encoding: .utf8)
+                    result.systemPrompt = try readFile(path)
                         .trimmingCharacters(in: .whitespacesAndNewlines)
+                } catch let e as CLIParseError {
+                    throw e
                 } catch {
                     throw CLIParseError(fileErrorMessage(path: path))
                 }
@@ -303,8 +314,9 @@ extension CLIArguments {
                 guard i < args.count else { throw CLIParseError("--file requires a file path") }
                 let path = args[i]
                 do {
-                    let content = try String(contentsOfFile: path, encoding: .utf8)
-                    result.fileContents.append(content)
+                    result.fileContents.append(try readFile(path))
+                } catch let e as CLIParseError {
+                    throw e
                 } catch {
                     throw CLIParseError(fileErrorMessage(path: path))
                 }

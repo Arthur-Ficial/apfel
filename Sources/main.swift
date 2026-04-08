@@ -6,6 +6,7 @@
 
 import Foundation
 import ApfelCore
+import ApfelCLI
 import CReadline
 
 // MARK: - Configuration
