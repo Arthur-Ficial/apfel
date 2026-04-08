@@ -1,6 +1,6 @@
 # apfel
 
-[![Version 0.9.2](https://img.shields.io/badge/version-0.9.2-blue)](https://github.com/Arthur-Ficial/apfel)
+[![Version 0.9.3](https://img.shields.io/badge/version-0.9.3-blue)](https://github.com/Arthur-Ficial/apfel)
 [![Swift 6.3+](https://img.shields.io/badge/Swift-6.3%2B-F05138?logo=swift&logoColor=white)](https://swift.org)
 [![macOS 26+](https://img.shields.io/badge/macOS-26%2B-000000?logo=apple&logoColor=white)](https://developer.apple.com/macos/)
 [![No Xcode Required](https://img.shields.io/badge/Xcode-not%20required-orange)](https://developer.apple.com/xcode/resources/)
