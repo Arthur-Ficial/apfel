@@ -115,8 +115,7 @@ extension CLIArguments {
         result.serverPort = Int(env["APFEL_PORT"] ?? "") ?? 11434
         result.serverHost = env["APFEL_HOST"] ?? "127.0.0.1"
         result.serverToken = env["APFEL_TOKEN"]
-        result.mcpServerPaths = env["APFEL_MCP"]?
-            .split(separator: ":").map(String.init).filter { !$0.isEmpty } ?? []
+        result.mcpServerPaths = env["APFEL_MCP"].map(parseMCPServerPaths) ?? []
         result.mcpTimeoutSeconds = Int(env["APFEL_MCP_TIMEOUT"] ?? "")
             .flatMap { $0 > 0 ? min($0, 300) : nil } ?? 5
         result.mcpBearerToken = env["APFEL_MCP_TOKEN"].flatMap { $0.isEmpty ? nil : $0 }
@@ -388,6 +387,53 @@ extension CLIArguments {
     }
 
     // MARK: - Helpers
+
+    /// Parse a colon- or comma-separated list of MCP server paths/URLs.
+    ///
+    /// Commas are the canonical separator and always work correctly, including
+    /// with `http(s)://` URLs. Colons are supported as a legacy separator for
+    /// local stdio paths only (i.e. when no entry contains `://`). This avoids
+    /// splitting `https://example.com/mcp` on the colon in the scheme.
+    private static func parseMCPServerPaths(_ value: String) -> [String] {
+        // Comma-first: if the value contains a comma, use it as the separator.
+        // This is the recommended format for mixed local + remote lists.
+        if value.contains(",") {
+            return value.split(separator: ",")
+                .map { String($0).trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+        }
+        // Legacy colon-separator: safe only when no entry is a URL.
+        // Split on ":" but rejoin pairs that look like a scheme (http: + //...).
+        let parts = value.split(separator: ":").map(String.init).filter { !$0.isEmpty }
+        var result: [String] = []
+        var i = parts.startIndex
+        while i < parts.endIndex {
+            let part = parts[i]
+            let next = parts.index(after: i)
+            if (part == "http" || part == "https"),
+               next < parts.endIndex,
+               parts[next].hasPrefix("//") {
+                // Reassemble "http" + "://..." → "http://..."
+                // But the URL may have a port too (e.g. "https://host" + "8080/path"),
+                // so keep consuming non-scheme parts that would have been split.
+                var url = part + ":" + parts[next]
+                var j = parts.index(after: next)
+                // If the very next part is a bare port+path (no "//"), it was
+                // split off a port colon: "https://host" "8080/path".
+                while j < parts.endIndex, !parts[j].hasPrefix("//"),
+                      parts[j] != "http", parts[j] != "https" {
+                    url += ":" + parts[j]
+                    j = parts.index(after: j)
+                }
+                result.append(url)
+                i = j
+            } else {
+                result.append(part)
+                i = parts.index(after: i)
+            }
+        }
+        return result.filter { !$0.isEmpty }
+    }
 
     private static func parseAllowedOrigins(_ value: String) -> [String] {
         value.split(separator: ",")

@@ -513,9 +513,38 @@ func runCLIArgumentsTests() {
         try assertEqual(args.contextOutputReserve, 1024)
     }
 
-    test("APFEL_MCP env splits on colon separator") {
+    test("APFEL_MCP env splits on colon separator (legacy paths)") {
         let args = try CLIArguments.parse(["hi"], env: ["APFEL_MCP": "a.py:b.py"])
         try assertEqual(args.mcpServerPaths, ["a.py", "b.py"])
+    }
+
+    test("APFEL_MCP env single URL is not split") {
+        let args = try CLIArguments.parse(["hi"], env: ["APFEL_MCP": "https://mcp.example.com/mcp"])
+        try assertEqual(args.mcpServerPaths, ["https://mcp.example.com/mcp"])
+    }
+
+    test("APFEL_MCP env two colon-separated URLs are preserved as two entries") {
+        let args = try CLIArguments.parse(
+            ["hi"],
+            env: ["APFEL_MCP": "https://a.example.com/mcp:https://b.example.com/mcp"]
+        )
+        try assertEqual(args.mcpServerPaths, ["https://a.example.com/mcp", "https://b.example.com/mcp"])
+    }
+
+    test("APFEL_MCP env URL with port is not mangled") {
+        let args = try CLIArguments.parse(
+            ["hi"],
+            env: ["APFEL_MCP": "https://localhost:8080/mcp"]
+        )
+        try assertEqual(args.mcpServerPaths, ["https://localhost:8080/mcp"])
+    }
+
+    test("APFEL_MCP env comma separator works for mixed local and remote") {
+        let args = try CLIArguments.parse(
+            ["hi"],
+            env: ["APFEL_MCP": "/path/calc.py,https://remote.example.com/mcp"]
+        )
+        try assertEqual(args.mcpServerPaths, ["/path/calc.py", "https://remote.example.com/mcp"])
     }
 
     test("APFEL_MCP_TIMEOUT env sets mcpTimeoutSeconds") {
