@@ -326,6 +326,57 @@ func runCLIArgumentsTests() {
         }
     }
 
+    test("--mcp-token sets mcpBearerToken") {
+        let args = try CLIArguments.parse(["--mcp", "https://remote.example.com/mcp", "--mcp-token", "secret123"])
+        try assertEqual(args.mcpBearerToken, "secret123")
+    }
+
+    test("--mcp-token without value throws") {
+        do {
+            _ = try CLIArguments.parse(["--mcp-token"])
+            try assertTrue(false, "should have thrown")
+        } catch let e as CLIParseError {
+            try assertTrue(e.message.contains("--mcp-token"))
+        }
+    }
+
+    test("--mcp accepts http URL") {
+        let args = try CLIArguments.parse(["--mcp", "http://localhost:9000/mcp"])
+        try assertEqual(args.mcpServerPaths, ["http://localhost:9000/mcp"])
+    }
+
+    test("--mcp accepts https URL") {
+        let args = try CLIArguments.parse(["--mcp", "https://mcp.example.com/v1/mcp"])
+        try assertEqual(args.mcpServerPaths, ["https://mcp.example.com/v1/mcp"])
+    }
+
+    test("--mcp and --mcp-token together set both fields") {
+        let args = try CLIArguments.parse([
+            "--mcp", "https://remote.example.com/mcp",
+            "--mcp-token", "mytoken",
+        ])
+        try assertEqual(args.mcpServerPaths, ["https://remote.example.com/mcp"])
+        try assertEqual(args.mcpBearerToken, "mytoken")
+    }
+
+    test("APFEL_MCP_TOKEN env sets mcpBearerToken") {
+        let args = try CLIArguments.parse([], env: ["APFEL_MCP_TOKEN": "envtoken"])
+        try assertEqual(args.mcpBearerToken, "envtoken")
+    }
+
+    test("APFEL_MCP_TOKEN empty string produces nil") {
+        let args = try CLIArguments.parse([], env: ["APFEL_MCP_TOKEN": ""])
+        try assertTrue(args.mcpBearerToken == nil)
+    }
+
+    test("--mcp-token CLI flag overrides APFEL_MCP_TOKEN env") {
+        let args = try CLIArguments.parse(
+            ["--mcp-token", "cli-token"],
+            env: ["APFEL_MCP_TOKEN": "env-token"]
+        )
+        try assertEqual(args.mcpBearerToken, "cli-token")
+    }
+
     // ========================================================================
     // MARK: - Generation flags
     // ========================================================================
