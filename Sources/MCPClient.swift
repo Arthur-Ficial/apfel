@@ -142,15 +142,21 @@ final class MCPConnection: @unchecked Sendable {
 private let maxRemoteMCPResponseBytes = 10 * 1024 * 1024
 
 /// A connection to a remote MCP server using the Streamable HTTP transport (MCP spec 2025-03-26).
-final class RemoteMCPConnection: @unchecked Sendable {
-    let urlString: String
-    private(set) var tools: [OpenAITool]
+///
+/// Declared as an `actor` so that `sessionId` and `nextId` mutations are
+/// serialised by the Swift runtime with no manual locking required.
+/// `urlString` and `tools` are `nonisolated` so callers can read them without
+/// an `await` (they are written once during `init` and never mutated again).
+actor RemoteMCPConnection: Sendable {
+    nonisolated let urlString: String
+    // Written once in init, read-only thereafter; nonisolated(unsafe) lets
+    // callers access the tool list synchronously without an await.
+    nonisolated(unsafe) private(set) var tools: [OpenAITool] = []
 
     private let url: URL
     private let bearerToken: String?
     private let timeoutSeconds: Int
     private let session: URLSession
-    private let lock = NSLock()
     private var nextId = 1
     private var sessionId: String?
 
@@ -175,7 +181,6 @@ final class RemoteMCPConnection: @unchecked Sendable {
         let config = URLSessionConfiguration.ephemeral
         config.httpAdditionalHeaders = ["User-Agent": "apfel/\(buildVersion)"]
         self.session = URLSession(configuration: config)
-        self.tools = []
 
         do {
             // Initialize handshake
@@ -185,7 +190,7 @@ final class RemoteMCPConnection: @unchecked Sendable {
             // Send initialized notification (202, no response body needed)
             _ = try? await post(MCPProtocol.initializedNotification())
 
-            // Discover tools
+            // Discover tools (written once; thereafter treated as read-only)
             let toolsResp = try await post(MCPProtocol.toolsListRequest(id: allocId()))
             self.tools = try MCPProtocol.parseToolsListResponse(toolsResp)
         } catch let error as MCPError {
@@ -218,8 +223,6 @@ final class RemoteMCPConnection: @unchecked Sendable {
     // MARK: - Private
 
     private func allocId() -> Int {
-        lock.lock()
-        defer { lock.unlock() }
         let id = nextId
         nextId += 1
         return id
@@ -317,7 +320,9 @@ enum AnyMCPConnection: Sendable {
     func shutdown() {
         switch self {
         case .local(let c): c.shutdown()
-        case .remote(let c): c.shutdown()
+        // Actor methods require await; fire-and-forget via unstructured Task
+        // since shutdown is best-effort (the session will expire on the server).
+        case .remote(let c): Task { await c.shutdown() }
         }
     }
 }
