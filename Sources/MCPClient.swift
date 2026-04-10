@@ -137,6 +137,10 @@ final class MCPConnection: @unchecked Sendable {
 
 // MARK: - Remote (Streamable HTTP) connection
 
+/// Maximum number of bytes accepted from a single remote MCP response (10 MB).
+/// Prevents a malicious server from OOM-ing the client via an unbounded response.
+private let maxRemoteMCPResponseBytes = 10 * 1024 * 1024
+
 /// A connection to a remote MCP server using the Streamable HTTP transport (MCP spec 2025-03-26).
 final class RemoteMCPConnection: @unchecked Sendable {
     let urlString: String
@@ -145,6 +149,7 @@ final class RemoteMCPConnection: @unchecked Sendable {
     private let url: URL
     private let bearerToken: String?
     private let timeoutSeconds: Int
+    private let session: URLSession
     private let lock = NSLock()
     private var nextId = 1
     private var sessionId: String?
@@ -164,6 +169,12 @@ final class RemoteMCPConnection: @unchecked Sendable {
         self.url = url
         self.bearerToken = bearerToken
         self.timeoutSeconds = timeoutSeconds
+        // Ephemeral session: no shared cookie jar, no disk cache, isolated from
+        // other URLSession.shared traffic. User-Agent identifies apfel to remote
+        // server operators. Timeout is set per-request via URLRequest.
+        let config = URLSessionConfiguration.ephemeral
+        config.httpAdditionalHeaders = ["User-Agent": "apfel/\(buildVersion)"]
+        self.session = URLSession(configuration: config)
         self.tools = []
 
         do {
@@ -201,7 +212,7 @@ final class RemoteMCPConnection: @unchecked Sendable {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         req.setValue(sid, forHTTPHeaderField: "Mcp-Session-Id")
-        URLSession.shared.dataTask(with: req).resume()
+        session.dataTask(with: req).resume()
     }
 
     // MARK: - Private
@@ -227,7 +238,13 @@ final class RemoteMCPConnection: @unchecked Sendable {
         }
         request.httpBody = body.data(using: .utf8)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
+
+        guard data.count <= maxRemoteMCPResponseBytes else {
+            throw MCPError.serverError(
+                "Response from \(urlString) exceeded size limit (\(maxRemoteMCPResponseBytes / (1024 * 1024)) MB)"
+            )
+        }
 
         if let httpResponse = response as? HTTPURLResponse {
             // Capture session ID for subsequent requests
