@@ -353,6 +353,9 @@ actor MCPManager {
                 toolMap[tool.function.name] = conn
             }
             if !quietMode {
+                if case .remote = conn {
+                    printStderr("warning: remote MCP server attached (\(conn.identifier)) - tool arguments will be sent to this server")
+                }
                 printStderr("\(styled("mcp:", .cyan)) \(conn.identifier) - \(conn.tools.map(\.function.name).joined(separator: ", "))")
             }
         }
