@@ -72,4 +72,18 @@ Huge thanks to [**@tvi** (Tomas Virgl)](https://github.com/tvi) for contributing
 
 ---
 
+## Visual Studio Code + Continue
+
+Use `apfel` as the local review/chat model in Visual Studio Code and pair it with a second model for Edit/Apply. (See also: [Leveraging multiple, repository-specific OpenAI Codex API Keys with Visual Studio Code on macOS](https://snelson.us/2026/04/many-to-one-api-keys/).)
+
+Step-by-step setup: [docs/local-setup-with-vs-code.md](docs/local-setup-with-vs-code.md)
+
+Why this setup works well:
+
+- `apfel` stays in the small-context, low-latency review lane
+- Continue provides the Visual Studio Code integration
+- a second model can handle larger edit/apply tasks without overloading `apfel`'s 4096-token context window
+
+---
+
 *Have an integration to share? Open an issue at [github.com/Arthur-Ficial/apfel](https://github.com/Arthur-Ficial/apfel/issues).*
