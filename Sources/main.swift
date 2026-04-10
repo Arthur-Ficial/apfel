@@ -6,6 +6,7 @@
 
 import Foundation
 import ApfelCore
+import ApfelCLI
 import CReadline
 
 // MARK: - Configuration
@@ -46,10 +47,12 @@ apfel_install_sigint_exit_handler(isatty(STDOUT_FILENO) != 0 ? 1 : 0)
 
 // MARK: - Argument Parsing
 
-var args = Array(CommandLine.arguments.dropFirst())
+let rawArgs = Array(CommandLine.arguments.dropFirst())
 
-// Stdin pipe with no args
-if args.isEmpty {
+// No-args + stdin-pipe fast path: `echo "prompt" | apfel` with no flags.
+// Must stay above the parse() call because it needs isatty + await singlePrompt
+// before any parsing happens.
+if rawArgs.isEmpty {
     if isatty(STDIN_FILENO) == 0 {
         var lines: [String] = []
         while let line = readLine(strippingNewline: false) {
@@ -71,286 +74,42 @@ if args.isEmpty {
     exit(exitUsageError)
 }
 
-// Parse flags — env vars provide defaults, CLI flags override
-let env = ProcessInfo.processInfo.environment
-var systemPrompt: String? = env["APFEL_SYSTEM_PROMPT"]
-var mode: String = "single"
-var prompt: String = ""
-var serverPort: Int = Int(env["APFEL_PORT"] ?? "") ?? 11434
-var serverHost: String = env["APFEL_HOST"] ?? "127.0.0.1"
-var serverCORS: Bool = false
-var serverMaxConcurrent: Int = 5
-var serverDebug: Bool = false
-var serverAllowedOrigins: [String] = OriginValidator.defaultAllowedOrigins
-var serverOriginCheckEnabled: Bool = true
-var serverToken: String? = env["APFEL_TOKEN"]
-var serverTokenAuto: Bool = false
-var serverPublicHealth: Bool = false
-var mcpServerPaths: [String] = env["APFEL_MCP"]?
-    .split(separator: ":").map(String.init).filter { !$0.isEmpty } ?? []
-var mcpTimeoutSeconds: Int = Int(env["APFEL_MCP_TIMEOUT"] ?? "").flatMap { $0 > 0 ? min($0, 300) : nil } ?? 5
-var cliTemperature: Double? = Double(env["APFEL_TEMPERATURE"] ?? "")
-var cliSeed: UInt64? = nil
-var cliMaxTokens: Int? = Int(env["APFEL_MAX_TOKENS"] ?? "").flatMap { $0 > 0 ? $0 : nil }
-var cliPermissive: Bool = false
-var cliRetryEnabled: Bool = false
-var cliRetryCount: Int = 3
-var cliContextStrategy: ContextStrategy? = env["APFEL_CONTEXT_STRATEGY"].flatMap { ContextStrategy(rawValue: $0) }
-var cliContextMaxTurns: Int? = env["APFEL_CONTEXT_MAX_TURNS"].flatMap { Int($0) }
-var cliContextOutputReserve: Int? = env["APFEL_CONTEXT_OUTPUT_RESERVE"].flatMap { Int($0) }.flatMap { $0 > 0 ? $0 : nil }
-var fileContents: [String] = []
-
-func parseAllowedOrigins(_ value: String) -> [String] {
-    value.split(separator: ",")
-        .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-        .filter { !$0.isEmpty }
+// Pure, testable parsing. Errors land here as CLIParseError.
+let parsed: CLIArguments
+do {
+    parsed = try CLIArguments.parse(rawArgs, env: ProcessInfo.processInfo.environment)
+} catch let error as CLIParseError {
+    printError(error.message)
+    exit(exitUsageError)
 }
 
-var i = 0
-while i < args.count {
-    switch args[i] {
-    case "-h", "--help":
-        printUsage()
-        exit(exitSuccess)
-
-    case "-v", "--version":
-        print("\(appName) v\(version)")
-        exit(exitSuccess)
-
-    case "--release":
-        printRelease()
-        exit(exitSuccess)
-
-    case "-s", "--system":
-        i += 1
-        guard i < args.count else {
-            printError("--system requires a value")
-            exit(exitUsageError)
-        }
-        systemPrompt = args[i]
-
-    case "-o", "--output":
-        i += 1
-        guard i < args.count else {
-            printError("--output requires a value (plain or json)")
-            exit(exitUsageError)
-        }
-        guard let fmt = OutputFormat(rawValue: args[i]) else {
-            printError("unknown output format: \(args[i]) (use plain or json)")
-            exit(exitUsageError)
-        }
-        outputFormat = fmt
-
-    case "-q", "--quiet":
-        quietMode = true
-
-    case "--no-color":
-        noColorFlag = true
-
-    case "--chat":
-        mode = "chat"
-
-    case "--stream":
-        mode = "stream"
-
-    case "--serve":
-        mode = "serve"
-
-    case "--benchmark":
-        mode = "benchmark"
-
-    case "--port":
-        i += 1
-        guard i < args.count, let p = Int(args[i]), p > 0, p < 65536 else {
-            printError("--port requires a valid port number (1-65535)")
-            exit(exitUsageError)
-        }
-        serverPort = p
-
-    case "--host":
-        i += 1
-        guard i < args.count else {
-            printError("--host requires an address")
-            exit(exitUsageError)
-        }
-        serverHost = args[i]
-
-    case "--cors":
-        serverCORS = true
-
-    case "--max-concurrent":
-        i += 1
-        guard i < args.count, let n = Int(args[i]), n > 0 else {
-            printError("--max-concurrent requires a positive number")
-            exit(exitUsageError)
-        }
-        serverMaxConcurrent = n
-
-    case "--debug":
-        serverDebug = true
-        apfelDebugEnabled = true
-
-    case "--allowed-origins":
-        i += 1
-        guard i < args.count else {
-            printError("--allowed-origins requires a comma-separated list of origins")
-            exit(exitUsageError)
-        }
-        let customOrigins = parseAllowedOrigins(args[i])
-        guard !customOrigins.isEmpty else {
-            printError("--allowed-origins requires at least one non-empty origin")
-            exit(exitUsageError)
-        }
-        for origin in customOrigins where !serverAllowedOrigins.contains(origin) {
-            serverAllowedOrigins.append(origin)
-        }
-
-    case "--no-origin-check":
-        serverOriginCheckEnabled = false
-
-    case "--token":
-        i += 1
-        guard i < args.count else {
-            printError("--token requires a secret value")
-            exit(exitUsageError)
-        }
-        serverToken = args[i]
-
-    case "--token-auto":
-        serverTokenAuto = true
-
-    case "--public-health":
-        serverPublicHealth = true
-
-    case "--footgun":
-        serverOriginCheckEnabled = false
-        serverCORS = true
-
-    case "--mcp":
-        i += 1
-        guard i < args.count else {
-            printError("--mcp requires a path to an MCP server script")
-            exit(exitUsageError)
-        }
-        mcpServerPaths.append(args[i])
-
-    case "--mcp-timeout":
-        i += 1
-        guard i < args.count, let t = Int(args[i]), t > 0 else {
-            printError("--mcp-timeout requires a positive number (seconds)")
-            exit(exitUsageError)
-        }
-        mcpTimeoutSeconds = min(t, 300)
-
-    case "--temperature":
-        i += 1
-        guard i < args.count, let t = Double(args[i]), t >= 0 else {
-            printError("--temperature requires a non-negative number (e.g., 0.7)")
-            exit(exitUsageError)
-        }
-        cliTemperature = t
-
-    case "--seed":
-        i += 1
-        guard i < args.count, let s = UInt64(args[i]) else {
-            printError("--seed requires a positive integer")
-            exit(exitUsageError)
-        }
-        cliSeed = s
-
-    case "--max-tokens":
-        i += 1
-        guard i < args.count, let n = Int(args[i]), n > 0 else {
-            printError("--max-tokens requires a positive number")
-            exit(exitUsageError)
-        }
-        cliMaxTokens = n
-
-    case "--permissive":
-        cliPermissive = true
-
-    case "--retry":
-        cliRetryEnabled = true
-        // Optional argument: --retry or --retry N
-        if i + 1 < args.count, let n = Int(args[i + 1]), n > 0 {
-            cliRetryCount = n
-            i += 1
-        }
-
-    case "--context-strategy":
-        i += 1
-        guard i < args.count, let s = ContextStrategy(rawValue: args[i]) else {
-            printError("--context-strategy requires: newest-first|oldest-first|sliding-window|summarize|strict")
-            exit(exitUsageError)
-        }
-        cliContextStrategy = s
-
-    case "--context-max-turns":
-        i += 1
-        guard i < args.count, let n = Int(args[i]), n > 0 else {
-            printError("--context-max-turns requires a positive number")
-            exit(exitUsageError)
-        }
-        cliContextMaxTurns = n
-
-    case "--context-output-reserve":
-        i += 1
-        guard i < args.count, let n = Int(args[i]), n > 0 else {
-            printError("--context-output-reserve requires a positive number")
-            exit(exitUsageError)
-        }
-        cliContextOutputReserve = n
-
-    case "--system-file":
-        i += 1
-        guard i < args.count else {
-            printError("--system-file requires a file path")
-            exit(exitUsageError)
-        }
-        let path = args[i]
-        do {
-            systemPrompt = try String(contentsOfFile: path, encoding: .utf8)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-        } catch {
-            printError(fileErrorMessage(path: path))
-            exit(exitUsageError)
-        }
-
-    case "--model-info":
-        mode = "model-info"
-
-    case "--update":
-        mode = "update"
-
-    case "-f", "--file":
-        i += 1
-        guard i < args.count else {
-            printError("--file requires a file path")
-            exit(exitUsageError)
-        }
-        let path = args[i]
-        do {
-            let content = try String(contentsOfFile: path, encoding: .utf8)
-            fileContents.append(content)
-        } catch {
-            printError(fileErrorMessage(path: path))
-            exit(exitUsageError)
-        }
-
-    default:
-        if args[i].hasPrefix("-") {
-            printError("unknown option: \(args[i])")
-            exit(exitUsageError)
-        }
-        prompt = args[i...].joined(separator: " ")
-        i = args.count
-        continue
-    }
-    i += 1
+// Handle immediate-exit modes.
+switch parsed.mode {
+case .help:
+    printUsage()
+    exit(exitSuccess)
+case .version:
+    print("\(appName) v\(version)")
+    exit(exitSuccess)
+case .release:
+    printRelease()
+    exit(exitSuccess)
+default:
+    break
 }
 
-// Read stdin when piped -- as the prompt (no args) or prepended to the prompt
-if mode == "single" && isatty(STDIN_FILENO) == 0 {
+// Apply parsed values to global state used throughout the main target.
+if let fmt = parsed.outputFormat { outputFormat = fmt }
+if parsed.quiet { quietMode = true }
+if parsed.noColor { noColorFlag = true }
+if parsed.debug { apfelDebugEnabled = true }
+
+// Build the prompt: positional args + piped stdin + attached files.
+var prompt = parsed.prompt
+var fileContents = parsed.fileContents
+
+// Read stdin when piped -- as the prompt (no args) or prepended to the prompt.
+if parsed.mode == .single && isatty(STDIN_FILENO) == 0 {
     var lines: [String] = []
     while let line = readLine(strippingNewline: false) {
         lines.append(line)
@@ -365,7 +124,7 @@ if mode == "single" && isatty(STDIN_FILENO) == 0 {
     }
 }
 
-// Prepend file/stdin content to the prompt
+// Prepend file/stdin content to the prompt.
 if !fileContents.isEmpty {
     let combined = fileContents.joined(separator: "\n\n")
     if prompt.isEmpty {
@@ -378,24 +137,36 @@ if !fileContents.isEmpty {
 // MARK: - Dispatch
 
 let contextConfig = ContextConfig(
-    strategy: cliContextStrategy ?? .newestFirst,
-    maxTurns: cliContextMaxTurns,
-    outputReserve: cliContextOutputReserve ?? 512,
-    permissive: cliPermissive
+    strategy: parsed.contextStrategy ?? .newestFirst,
+    maxTurns: parsed.contextMaxTurns,
+    outputReserve: parsed.contextOutputReserve ?? 512,
+    permissive: parsed.permissive
 )
 
 let sessionOpts = SessionOptions(
-    temperature: cliTemperature,
-    maxTokens: cliMaxTokens,
-    seed: cliSeed,
-    permissive: cliPermissive,
+    temperature: parsed.temperature,
+    maxTokens: parsed.maxTokens,
+    seed: parsed.seed,
+    permissive: parsed.permissive,
     contextConfig: contextConfig,
-    retryEnabled: cliRetryEnabled,
-    retryCount: cliRetryCount
+    retryEnabled: parsed.retryEnabled,
+    retryCount: parsed.retryCount
 )
 
-// Check model availability for modes that need it
-if mode != "model-info" && mode != "serve" && mode != "update" {
+// Resolve the final allowed-origins list: defaults + any CLI-specified values.
+let serverAllowedOrigins: [String] = {
+    var origins = OriginValidator.defaultAllowedOrigins
+    for origin in parsed.serverAllowedOrigins where !origins.contains(origin) {
+        origins.append(origin)
+    }
+    return origins
+}()
+
+// Check model availability for modes that need it.
+switch parsed.mode {
+case .modelInfo, .serve, .update:
+    break
+default:
     let available = await TokenCounter.shared.isAvailable
     if !available {
         printError("Apple Intelligence is not enabled or model is not ready. Run: apfel --model-info")
@@ -403,11 +174,11 @@ if mode != "model-info" && mode != "serve" && mode != "update" {
     }
 }
 
-// Initialize MCP servers if any
+// Initialize MCP servers if any.
 var mcpManager: MCPManager?
-if !mcpServerPaths.isEmpty {
+if !parsed.mcpServerPaths.isEmpty {
     do {
-        mcpManager = try await MCPManager(paths: mcpServerPaths, timeoutSeconds: mcpTimeoutSeconds)
+        mcpManager = try await MCPManager(paths: parsed.mcpServerPaths, timeoutSeconds: parsed.mcpTimeoutSeconds)
     } catch {
         printError("MCP server failed to start: \(error)")
         exit(exitRuntimeError)
@@ -416,75 +187,60 @@ if !mcpServerPaths.isEmpty {
 defer { Task { await mcpManager?.shutdown() } }
 
 do {
-    switch mode {
-    case "serve":
-        let tokenWasAutoGenerated = serverTokenAuto && serverToken == nil
-        if serverTokenAuto && serverToken == nil {
+    switch parsed.mode {
+    case .serve:
+        var serverToken = parsed.serverToken
+        let tokenWasAutoGenerated = parsed.serverTokenAuto && serverToken == nil
+        if parsed.serverTokenAuto && serverToken == nil {
             serverToken = UUID().uuidString
         }
         let config = ServerConfig(
-            host: serverHost,
-            port: serverPort,
-            cors: serverCORS,
-            maxConcurrent: serverMaxConcurrent,
-            debug: serverDebug,
-            allowedOrigins: serverOriginCheckEnabled ? serverAllowedOrigins : ["*"],
-            originCheckEnabled: serverOriginCheckEnabled,
+            host: parsed.serverHost,
+            port: parsed.serverPort,
+            cors: parsed.serverCORS,
+            maxConcurrent: parsed.serverMaxConcurrent,
+            debug: parsed.debug,
+            allowedOrigins: parsed.serverOriginCheckEnabled ? serverAllowedOrigins : ["*"],
+            originCheckEnabled: parsed.serverOriginCheckEnabled,
             token: serverToken,
             tokenWasAutoGenerated: tokenWasAutoGenerated,
-            publicHealth: serverPublicHealth,
-            retryEnabled: cliRetryEnabled,
-            retryCount: cliRetryCount
+            publicHealth: parsed.serverPublicHealth,
+            retryEnabled: parsed.retryEnabled,
+            retryCount: parsed.retryCount
         )
         try await startServer(config: config, mcpManager: mcpManager)
 
-    case "update":
+    case .update:
         performUpdate()
 
-    case "model-info":
+    case .modelInfo:
         await printModelInfo()
 
-    case "benchmark":
+    case .benchmark:
         try await runBenchmarks()
 
-    case "chat":
-        try await chat(systemPrompt: systemPrompt, options: sessionOpts, mcpManager: mcpManager)
+    case .chat:
+        try await chat(systemPrompt: parsed.systemPrompt, options: sessionOpts, mcpManager: mcpManager)
 
-    case "stream":
+    case .stream:
         guard !prompt.isEmpty else {
             printError("no prompt provided")
             exit(exitUsageError)
         }
-        try await singlePrompt(prompt, systemPrompt: systemPrompt, stream: true, options: sessionOpts, mcpManager: mcpManager)
+        try await singlePrompt(prompt, systemPrompt: parsed.systemPrompt, stream: true, options: sessionOpts, mcpManager: mcpManager)
 
-    default:
+    case .single:
         guard !prompt.isEmpty else {
             printError("no prompt provided")
             exit(exitUsageError)
         }
-        try await singlePrompt(prompt, systemPrompt: systemPrompt, stream: false, options: sessionOpts, mcpManager: mcpManager)
+        try await singlePrompt(prompt, systemPrompt: parsed.systemPrompt, stream: false, options: sessionOpts, mcpManager: mcpManager)
+
+    case .help, .version, .release:
+        break   // Already handled above; exhaustive switch.
     }
 } catch {
     let classified = ApfelError.classify(error)
     printError("\(classified.cliLabel) \(classified.openAIMessage)")
     exit(exitCode(for: classified))
-}
-
-func fileErrorMessage(path: String) -> String {
-    let fm = FileManager.default
-    if !fm.fileExists(atPath: path) {
-        return "no such file: \(path)"
-    }
-    if !fm.isReadableFile(atPath: path) {
-        return "permission denied: \(path)"
-    }
-    let ext = (path.lowercased() as NSString).pathExtension
-    switch ext {
-    case "jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "tiff", "bmp", "svg", "ico":
-        return "cannot attach image: \(path) -- the on-device model is text-only (no vision). Try: tesseract \(path) stdout | apfel \"describe this\""
-    case "pdf", "zip", "tar", "gz", "dmg", "pkg", "exe", "bin", "dat", "mp3", "mp4", "mov", "avi", "wav":
-        return "cannot attach binary file: \(path) -- only text files are supported"
-    default:
-        return "file is not valid UTF-8 text: \(path) (binary file?)"
-    }
 }

@@ -2,6 +2,7 @@
 // Run: swift run apfel-tests
 
 import Foundation
+import ApfelCLI
 
 // MARK: - Minimal test harness
 
@@ -82,6 +83,7 @@ suite("AsyncHarnessTests") { runAsyncHarnessTests() }
 suite("RetryTests") { runRetryTests() }
 suite("DebugLoggerTests") { runDebugLoggerTests() }
 suite("BufferedLineReaderTests") { runBufferedLineReaderTests() }
+suite("CLIArgumentsTests") { runCLIArgumentsTests() }
 
 // MARK: - Summary
 

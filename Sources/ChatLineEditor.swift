@@ -4,6 +4,7 @@
 // ============================================================================
 
 import Foundation
+import ApfelCLI
 import CReadline
 
 final class ChatLineEditor: @unchecked Sendable {

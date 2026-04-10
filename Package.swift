@@ -22,16 +22,23 @@ let package = Package(
             dependencies: [],
             path: "Sources/Core"
         ),
-        // Main executable — depends on ApfelCore + Hummingbird + FoundationModels
+        // CLI argument parsing — depends on ApfelCore for ContextStrategy
+        .target(
+            name: "ApfelCLI",
+            dependencies: ["ApfelCore"],
+            path: "Sources/CLI"
+        ),
+        // Main executable — depends on ApfelCore + ApfelCLI + Hummingbird + FoundationModels
         .executableTarget(
             name: "apfel",
             dependencies: [
                 .product(name: "Hummingbird", package: "hummingbird"),
                 "ApfelCore",
+                "ApfelCLI",
                 "CReadline",
             ],
             path: "Sources",
-            exclude: ["Core"],
+            exclude: ["Core", "CLI"],
             linkerSettings: [
                 .unsafeFlags([
                     "-Xlinker", "-sectcreate",
@@ -44,7 +51,7 @@ let package = Package(
         // Test runner — pure Swift, no XCTest/Testing (Command Line Tools only)
         .executableTarget(
             name: "apfel-tests",
-            dependencies: ["ApfelCore"],
+            dependencies: ["ApfelCore", "ApfelCLI"],
             path: "Tests/apfelTests"
         ),
     ]

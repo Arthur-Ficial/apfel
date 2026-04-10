@@ -6,6 +6,7 @@
 import FoundationModels
 import Foundation
 import ApfelCore
+import ApfelCLI
 import CReadline
 
 // MARK: - Chat Header

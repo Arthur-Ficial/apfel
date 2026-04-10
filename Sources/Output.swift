@@ -5,16 +5,7 @@
 
 import Foundation
 import ApfelCore
-
-// MARK: - Output Format
-
-/// Supported output formats for responses.
-/// - `plain`: Human-readable text (default). Supports ANSI colors when on a TTY.
-/// - `json`: Machine-readable JSON. Single object for prompts, JSONL for chat.
-enum OutputFormat: String, Sendable {
-    case plain
-    case json
-}
+import ApfelCLI
 
 // MARK: - Global State
 // Set during argument parsing (before any async work) and read during execution.
