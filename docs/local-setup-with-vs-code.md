@@ -62,19 +62,18 @@ models:
     apiKey: ignored
     roles:
       - chat
+    contextLength: 4096
     defaultCompletionOptions:
-      contextLength: 4096
       temperature: 0.0
-      maxTokens: 450
+      maxTokens: 256
+    requestOptions:
+      extraBodyProperties:
+        x_context_output_reserve: 256
     chatOptions:
       baseSystemMessage: |
         You are a code review assistant.
-        Prioritize correctness, regressions, edge cases, security risks, performance risks, and missing tests.
-        Review only the provided diff, file, or selection.
-        Give findings first, ordered by severity.
-        Be concrete and cite exact lines, symbols, or behaviors when possible.
-        Do not rewrite code unless explicitly asked.
-        If evidence is insufficient, say what needs verification.
+        Prioritize bugs, regressions, edge cases, security risks, and missing tests.
+        Give findings first and be concrete.
 
   - name: gpt-5.1-apply
     provider: openai
@@ -90,13 +89,6 @@ models:
 context:
   - provider: diff
   - provider: file
-
-rules:
-  - Keep reviews concise, evidence-based, and skeptical.
-  - Prefer bugs, regressions, security issues, and missing tests over style nits.
-  - If no findings are clear, say that explicitly and list residual risks.
-  - If editing, preserve behavior unless the user explicitly requests a refactor.
-  - Do not expand scope beyond the selected file, diff, or instruction.
 ```
 
 Why this split works:
