@@ -14,7 +14,7 @@ No API keys. No cloud. No subscriptions. No per-token billing. The AI is already
 
 ## What is this
 
-Every Mac with Apple Silicon has a **built-in LLM** - Apple's on-device foundation model, shipped as part of Apple Intelligence. Apple provides the [FoundationModels framework](https://developer.apple.com/documentation/foundationmodels) (macOS 26+) to access it, but only exposes it through Siri and system features. **apfel wraps it** in a CLI and an HTTP server - so you can actually use it. All inference runs **on-device**, no network calls.
+Every Mac with Apple Silicon has a **built-in LLM** - Apple's on-device foundation model, shipped as part of Apple Intelligence. Apple provides the [FoundationModels framework](https://developer.apple.com/documentation/foundationmodels) (macOS 26+) to access it, but only exposes it through Siri and system features. **apfel wraps it** in a CLI and an HTTP server - so you can actually use it. All **inference** runs on-device with no network calls for the LLM itself. Optional remote MCP tool servers (`--mcp https://...`) do make network calls for tool arguments — see [MCP Tool Support](#mcp-tool-support).
 
 - **UNIX tool** - `echo "summarize this" | apfel` - pipe-friendly, file attachments, JSON output, exit codes
 - **OpenAI-compatible server** - `apfel --serve` - drop-in replacement at `localhost:11434`, works with any OpenAI SDK
@@ -539,7 +539,7 @@ See [docs/server-security.md](docs/server-security.md) for detailed documentatio
 ```
 CLI (single/stream/chat) ──┐
                            ├─→ FoundationModels.SystemLanguageModel
-HTTP Server (/v1/*) ───────┘   (100% on-device, zero network)
+HTTP Server (/v1/*) ───────┘   (inference: 100% on-device; remote MCP tools make network calls)
                                 ContextManager → Transcript API
                                 SchemaConverter → native ToolDefinitions
                                 TokenCounter → real token counts (SDK 26.4)
