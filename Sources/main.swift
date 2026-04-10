@@ -184,7 +184,7 @@ default:
 var mcpManager: MCPManager?
 if !parsed.mcpServerPaths.isEmpty {
     do {
-        mcpManager = try await MCPManager(paths: parsed.mcpServerPaths, timeoutSeconds: parsed.mcpTimeoutSeconds)
+        mcpManager = try await MCPManager(paths: parsed.mcpServerPaths, bearerToken: parsed.mcpBearerToken, timeoutSeconds: parsed.mcpTimeoutSeconds)
     } catch {
         printError("MCP server failed to start: \(error)")
         exit(exitRuntimeError)

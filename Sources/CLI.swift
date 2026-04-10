@@ -307,7 +307,7 @@ func printRelease() {
     \(styled("├", .dim)) model:      \(modelName) (FoundationModels framework)
     \(styled("├", .dim)) modes:      single, stream, chat, serve
     \(styled("├", .dim)) server:     OpenAI-compatible (/v1/chat/completions)
-    \(styled("├", .dim)) tools:      function calling + MCP tool servers (--mcp)
+    \(styled("├", .dim)) tools:      function calling + MCP tool servers, local and remote (--mcp)
     \(styled("├", .dim)) formats:    plain, json, streaming SSE
     \(styled("└", .dim)) strategies: newest-first, oldest-first, sliding-window, summarize, strict
 
@@ -439,8 +439,9 @@ func printUsage() {
           --temperature <n>      Sampling temperature (e.g., 0.7)
           --seed <n>             Random seed for reproducible output
           --max-tokens <n>       Maximum response tokens
-          --mcp <path>           Attach MCP tool server (repeatable)
+          --mcp <path|url>       Attach MCP tool server - local path or http(s) URL (repeatable)
           --mcp-timeout <n>      MCP server timeout in seconds [default: 5]
+          --mcp-token <token>    Bearer token for remote MCP servers [env: APFEL_MCP_TOKEN]
           --permissive           Use permissive content guardrails
           --retry [n]            Enable retry with exponential backoff [default: 3 retries]
           --model-info           Print model capabilities and exit

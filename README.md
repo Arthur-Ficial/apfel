@@ -269,8 +269,17 @@ Native SwiftUI debug inspector with request timeline, MCP protocol viewer, chat,
 
 Attach [MCP](https://modelcontextprotocol.io/) tool servers with `--mcp`. apfel discovers tools, executes them automatically, and returns the final answer. No glue code needed.
 
+Pass a **local path** for stdio servers or an **`http(s)://` URL** for remote servers:
+
 ```bash
+# Local stdio server
 apfel --mcp ./mcp/calculator/server.py "What is 15 times 27?"
+
+# Remote server (Streamable HTTP transport, MCP spec 2025-03-26)
+apfel --mcp https://mcp.example.com/mcp "Use a tool"
+
+# Remote server with Bearer token auth
+apfel --mcp https://mcp.example.com/mcp --mcp-token mytoken "Use a tool"
 ```
 
 ```
@@ -282,9 +291,9 @@ tool: multiply({"a": 15, "b": 27}) = 405                                        
 Tool info goes to stderr; only the answer goes to stdout. Use `-q` to suppress tool info.
 
 ```bash
-apfel --mcp ./server_a.py --mcp ./server_b.py "Use both tools"  # multiple servers
-apfel --serve --mcp ./mcp/calculator/server.py                   # server mode
-apfel --chat --mcp ./mcp/calculator/server.py                    # chat mode
+apfel --mcp ./server_a.py --mcp https://remote.example.com/mcp "Use both tools"  # mix local + remote
+apfel --serve --mcp ./mcp/calculator/server.py                                    # server mode
+apfel --chat --mcp ./mcp/calculator/server.py                                     # chat mode
 ```
 
 Ships with a calculator MCP server at `mcp/calculator/`. See [docs/mcp-calculator.md](docs/mcp-calculator.md) for details.
@@ -340,8 +349,9 @@ INPUT
   apfel -f, --file <path> <prompt>        Attach file content (repeatable)
   apfel -s, --system <text> <prompt>      Set system prompt
   apfel --system-file <path> <prompt>     Read system prompt from file
-  apfel --mcp <server.py> <prompt>        Attach MCP tool server (repeatable)
+  apfel --mcp <path|url> <prompt>         Attach MCP tool server - local path or http(s) URL (repeatable)
   apfel --mcp-timeout <n> <prompt>       MCP timeout in seconds [default: 5]
+  apfel --mcp-token <token> <prompt>     Bearer token for remote MCP servers
 
 OUTPUT
   -o, --output <fmt>                      Output format: plain, json
@@ -395,9 +405,11 @@ apfel -s "Reply in JSON only" "List 3 colors"
 # --system-file — read system prompt from a file
 apfel --system-file persona.txt "Introduce yourself"
 
-# --mcp — attach MCP tool servers (repeatable)
+# --mcp — attach MCP tool servers (repeatable, local path or http(s) URL)
 apfel --mcp ./mcp/calculator/server.py "What is 15 times 27?"
 apfel --mcp ./calc.py --mcp ./weather.py "Use both tools"
+apfel --mcp https://mcp.example.com/mcp "Use a remote tool"
+apfel --mcp https://mcp.example.com/mcp --mcp-token mytoken "Use a remote tool"
 
 # -f, --file
 apfel -f main.swift "Explain this code"
@@ -409,10 +421,11 @@ apfel -s "You are a pirate" "What is recursion?"
 # --system-file
 apfel --system-file persona.txt "Introduce yourself"
 
-# --mcp, --mcp-timeout
+# --mcp, --mcp-timeout, --mcp-token
 apfel --mcp ./mcp/calculator/server.py "What is 15 times 27?"
 apfel --mcp ./calc.py --mcp ./weather.py "Use both tools"
-apfel --mcp-timeout 30 --mcp ./slow-remote-server.py "hello"
+apfel --mcp https://mcp.example.com/mcp --mcp-token mytoken "Use a remote tool"
+apfel --mcp-timeout 30 --mcp ./slow-server.py "hello"
 
 # -o, --output
 apfel -o json "Translate to German: hello" | jq .content
@@ -516,8 +529,9 @@ See [docs/server-security.md](docs/server-security.md) for detailed documentatio
 | `APFEL_CONTEXT_STRATEGY` | Default context strategy |
 | `APFEL_CONTEXT_MAX_TURNS` | Max turns for sliding-window |
 | `APFEL_CONTEXT_OUTPUT_RESERVE` | Tokens reserved for output |
-| `APFEL_MCP` | MCP server paths (colon-separated) |
+| `APFEL_MCP` | MCP server paths or URLs (colon-separated) |
 | `APFEL_MCP_TIMEOUT` | MCP timeout in seconds (default: 5, max: 300) |
+| `APFEL_MCP_TOKEN` | Bearer token for remote MCP servers |
 | `NO_COLOR` | Disable colors ([no-color.org](https://no-color.org)) |
 
 ## Architecture

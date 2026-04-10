@@ -7,6 +7,8 @@ import Foundation
 import Darwin
 import ApfelCore
 
+// MARK: - Local (stdio) connection
+
 /// A connection to a single MCP server process (stdio transport).
 final class MCPConnection: @unchecked Sendable {
     private let timeoutMilliseconds: Int
@@ -133,26 +135,196 @@ final class MCPConnection: @unchecked Sendable {
     }
 }
 
+// MARK: - Remote (Streamable HTTP) connection
+
+/// A connection to a remote MCP server using the Streamable HTTP transport (MCP spec 2025-03-26).
+final class RemoteMCPConnection: @unchecked Sendable {
+    let urlString: String
+    private(set) var tools: [OpenAITool]
+
+    private let url: URL
+    private let bearerToken: String?
+    private let timeoutSeconds: Int
+    private let lock = NSLock()
+    private var nextId = 1
+    private var sessionId: String?
+
+    init(urlString: String, bearerToken: String?, timeoutSeconds: Int = 5) async throws {
+        guard let url = URL(string: urlString) else {
+            throw MCPError.processError("Invalid MCP server URL: \(urlString)")
+        }
+        self.urlString = urlString
+        self.url = url
+        self.bearerToken = bearerToken
+        self.timeoutSeconds = timeoutSeconds
+        self.tools = []
+
+        do {
+            // Initialize handshake
+            let initResp = try await post(MCPProtocol.initializeRequest(id: allocId()))
+            _ = try MCPProtocol.parseInitializeResponse(initResp)
+
+            // Send initialized notification (202, no response body needed)
+            _ = try? await post(MCPProtocol.initializedNotification())
+
+            // Discover tools
+            let toolsResp = try await post(MCPProtocol.toolsListRequest(id: allocId()))
+            self.tools = try MCPProtocol.parseToolsListResponse(toolsResp)
+        } catch let error as MCPError {
+            throw error
+        } catch {
+            throw MCPError.processError("Remote MCP handshake failed for \(urlString): \(error)")
+        }
+    }
+
+    func callTool(name: String, arguments: String) async throws -> String {
+        let resp = try await post(MCPProtocol.toolsCallRequest(id: allocId(), name: name, arguments: arguments))
+        let result = try MCPProtocol.parseToolCallResponse(resp)
+        if result.isError {
+            throw MCPError.serverError("Tool '\(name)' failed: \(result.text)")
+        }
+        return result.text
+    }
+
+    func shutdown() {
+        guard let sid = sessionId else { return }
+        var req = URLRequest(url: url, timeoutInterval: 5)
+        req.httpMethod = "DELETE"
+        if let token = bearerToken {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        req.setValue(sid, forHTTPHeaderField: "Mcp-Session-Id")
+        URLSession.shared.dataTask(with: req).resume()
+    }
+
+    // MARK: - Private
+
+    private func allocId() -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        let id = nextId
+        nextId += 1
+        return id
+    }
+
+    private func post(_ body: String) async throws -> String {
+        var request = URLRequest(url: url, timeoutInterval: TimeInterval(timeoutSeconds))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json, text/event-stream", forHTTPHeaderField: "Accept")
+        if let token = bearerToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        if let sid = sessionId {
+            request.setValue(sid, forHTTPHeaderField: "Mcp-Session-Id")
+        }
+        request.httpBody = body.data(using: .utf8)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        if let httpResponse = response as? HTTPURLResponse {
+            // Capture session ID for subsequent requests
+            if let sid = httpResponse.value(forHTTPHeaderField: "Mcp-Session-Id") {
+                sessionId = sid
+            }
+            // 202 Accepted = notification delivered, no body to parse
+            if httpResponse.statusCode == 202 {
+                return "{}"
+            }
+            guard (200..<300).contains(httpResponse.statusCode) else {
+                let body = String(data: data, encoding: .utf8) ?? "(no body)"
+                throw MCPError.serverError("HTTP \(httpResponse.statusCode) from \(urlString): \(body)")
+            }
+        }
+
+        let contentType = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type") ?? ""
+        guard let raw = String(data: data, encoding: .utf8), !raw.isEmpty else {
+            return "{}"
+        }
+
+        // Streamable HTTP servers may respond with SSE even for single responses.
+        // Extract the last non-empty `data:` line and use that as the JSON payload.
+        if contentType.contains("text/event-stream") {
+            let payload = raw.components(separatedBy: "\n")
+                .filter { $0.hasPrefix("data:") }
+                .compactMap { line -> String? in
+                    let value = line.dropFirst("data:".count).trimmingCharacters(in: .whitespaces)
+                    return value.isEmpty ? nil : value
+                }
+                .last
+            return payload ?? "{}"
+        }
+
+        return raw
+    }
+}
+
+// MARK: - Unified connection wrapper
+
+/// Wraps either a local (stdio) or remote (HTTP) MCP connection.
+enum AnyMCPConnection: Sendable {
+    case local(MCPConnection)
+    case remote(RemoteMCPConnection)
+
+    var tools: [OpenAITool] {
+        switch self {
+        case .local(let c): return c.tools
+        case .remote(let c): return c.tools
+        }
+    }
+
+    var identifier: String {
+        switch self {
+        case .local(let c): return c.path
+        case .remote(let c): return c.urlString
+        }
+    }
+
+    func callTool(name: String, arguments: String) async throws -> String {
+        switch self {
+        case .local(let c):
+            // Run blocking stdio I/O off the cooperative thread pool
+            return try await Task.detached { try c.callTool(name: name, arguments: arguments) }.value
+        case .remote(let c):
+            return try await c.callTool(name: name, arguments: arguments)
+        }
+    }
+
+    func shutdown() {
+        switch self {
+        case .local(let c): c.shutdown()
+        case .remote(let c): c.shutdown()
+        }
+    }
+}
+
+// MARK: - Manager
+
 /// Manages multiple MCP server connections and routes tool calls.
 actor MCPManager {
-    private var connections: [MCPConnection] = []
-    private var toolMap: [String: MCPConnection] = [:]
+    private var connections: [AnyMCPConnection] = []
+    private var toolMap: [String: AnyMCPConnection] = [:]
 
-    init(paths: [String], timeoutSeconds: Int = 5) async throws {
+    init(paths: [String], bearerToken: String? = nil, timeoutSeconds: Int = 5) async throws {
         for path in paths {
-            let absPath: String
-            if path.hasPrefix("/") {
-                absPath = path
+            let conn: AnyMCPConnection
+            if path.hasPrefix("http://") || path.hasPrefix("https://") {
+                let remote = try await RemoteMCPConnection(
+                    urlString: path, bearerToken: bearerToken, timeoutSeconds: timeoutSeconds)
+                conn = .remote(remote)
             } else {
-                absPath = FileManager.default.currentDirectoryPath + "/" + path
+                let absPath = path.hasPrefix("/")
+                    ? path
+                    : FileManager.default.currentDirectoryPath + "/" + path
+                let local = try await MCPConnection(path: absPath, timeoutSeconds: timeoutSeconds)
+                conn = .local(local)
             }
-            let conn = try await MCPConnection(path: absPath, timeoutSeconds: timeoutSeconds)
             connections.append(conn)
             for tool in conn.tools {
                 toolMap[tool.function.name] = conn
             }
             if !quietMode {
-                printStderr("\(styled("mcp:", .cyan)) \(conn.path) - \(conn.tools.map(\.function.name).joined(separator: ", "))")
+                printStderr("\(styled("mcp:", .cyan)) \(conn.identifier) - \(conn.tools.map(\.function.name).joined(separator: ", "))")
             }
         }
     }
@@ -161,11 +333,11 @@ actor MCPManager {
         connections.flatMap(\.tools)
     }
 
-    func execute(name: String, arguments: String) throws -> String {
+    func execute(name: String, arguments: String) async throws -> String {
         guard let conn = toolMap[name] else {
             throw MCPError.toolNotFound("No MCP server provides tool '\(name)'")
         }
-        return try conn.callTool(name: name, arguments: arguments)
+        return try await conn.callTool(name: name, arguments: arguments)
     }
 
     func shutdown() {
