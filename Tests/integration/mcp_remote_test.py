@@ -321,6 +321,7 @@ def test_remote_mcp_response_has_usage(remote_multiply_response):
 def test_remote_mcp_streaming_tool_auto_execute(apfel_remote_mcp_url):
     """Streaming SSE chat completions also auto-execute remote MCP tools."""
     chunks = []
+    finish_reasons = []
     with httpx.stream(
         "POST",
         f"{apfel_remote_mcp_url}/chat/completions",
@@ -329,11 +330,10 @@ def test_remote_mcp_streaming_tool_auto_execute(apfel_remote_mcp_url):
             "messages": [
                 {
                     "role": "user",
-                    "content": "Use the add tool to add 5 and 7. Reply with just the number.",
+                    "content": "Use the multiply tool to compute 247 times 83. Reply with just the number.",
                 }
             ],
             "stream": True,
-            "seed": 42,
         },
         timeout=TIMEOUT,
     ) as resp:
@@ -342,14 +342,21 @@ def test_remote_mcp_streaming_tool_auto_execute(apfel_remote_mcp_url):
             if line.startswith("data: ") and line != "data: [DONE]":
                 try:
                     data = json.loads(line[6:])
-                    delta = data["choices"][0]["delta"].get("content", "")
-                    if delta:
-                        chunks.append(delta)
-                except (json.JSONDecodeError, KeyError):
+                    choices = data.get("choices") or []
+                    if choices:
+                        fr = choices[0].get("finish_reason")
+                        if fr:
+                            finish_reasons.append(fr)
+                        delta = choices[0].get("delta", {}).get("content", "")
+                        if delta:
+                            chunks.append(delta)
+                except (json.JSONDecodeError, KeyError, IndexError):
                     pass
     content = "".join(chunks)
     assert content, "No content in streaming response"
-    assert "12" in content, f"Expected '12' (5+7) in streamed response: {content}"
+    assert "20501" in content or "20,501" in content, (
+        f"Expected '20501' (247*83) in streamed response: {content}"
+    )
 
 
 # ============================================================================
@@ -438,7 +445,9 @@ def test_missing_token_against_auth_required_server_fails(auth_mcp_port):
 
 
 def test_http_with_bearer_token_is_refused():
-    """apfel must refuse http:// + --mcp-token (would expose credentials in plaintext)."""
+    """apfel must refuse non-loopback http:// + --mcp-token (token would be sent in plaintext)."""
+    # 192.0.2.1 is TEST-NET (RFC 5737) - non-routable, non-loopback, guaranteed to be refused.
+    # The security check fires before any network call, so this exits immediately.
     result = subprocess.run(
         [
             str(BINARY),
@@ -446,7 +455,7 @@ def test_http_with_bearer_token_is_refused():
             "--port",
             str(find_free_port()),
             "--mcp",
-            "http://127.0.0.1:19997/mcp",
+            "http://192.0.2.1:8080/mcp",
             "--mcp-token",
             "mytoken",
         ],

@@ -160,11 +160,17 @@ actor RemoteMCPConnection: Sendable {
               scheme == "http" || scheme == "https" else {
             throw MCPError.processError("Invalid MCP server URL: \(urlString) (must be http:// or https://)")
         }
-        // Security: refuse to send bearer token over plaintext HTTP
+        // Security: refuse to send bearer token over non-loopback plaintext HTTP.
+        // Loopback traffic (127.0.0.1, ::1, localhost) never leaves the machine,
+        // so http:// is acceptable there. Remote http:// would expose the token in plaintext.
         if bearerToken != nil && scheme == "http" {
-            throw MCPError.processError(
-                "refusing to send --mcp-token over plaintext http:// - use https:// to protect credentials"
-            )
+            let host = url.host ?? ""
+            let isLoopback = host == "127.0.0.1" || host == "::1" || host == "localhost"
+            if !isLoopback {
+                throw MCPError.processError(
+                    "refusing to send --mcp-token over plaintext http:// to \(host) - use https:// to protect credentials"
+                )
+            }
         }
         self.urlString = urlString
         self.url = url
