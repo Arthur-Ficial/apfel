@@ -150,8 +150,15 @@ final class RemoteMCPConnection: @unchecked Sendable {
     private var sessionId: String?
 
     init(urlString: String, bearerToken: String?, timeoutSeconds: Int = 5) async throws {
-        guard let url = URL(string: urlString) else {
-            throw MCPError.processError("Invalid MCP server URL: \(urlString)")
+        guard let url = URL(string: urlString),
+              let scheme = url.scheme,
+              scheme == "http" || scheme == "https" else {
+            throw MCPError.processError("Invalid MCP server URL: \(urlString) (must be http:// or https://)")
+        }
+        if bearerToken != nil && scheme == "http" {
+            throw MCPError.processError(
+                "refusing to send --mcp-token over plaintext http:// - use https:// to protect credentials"
+            )
         }
         self.urlString = urlString
         self.url = url
