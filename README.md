@@ -199,6 +199,14 @@ Built something on top of apfel? Open an issue and it can be added here.
 
 - [https://apfelclaw.yamanlabs.com/](https://apfelclaw.yamanlabs.com/), [https://github.com/julianyaman/apfelclaw](https://github.com/julianyaman/apfelclaw), by [https://github.com/julianYaman](https://github.com/julianYaman) - local AI agent that reads files, calendar, mail, and Mac status via read-only tools
 
+## Contributing
+
+Bug reports, feature ideas, pull requests, and new community projects all welcome. Open an issue or a PR on the relevant repo.
+
+**#agentswelcome** - AI agent contributions are welcome across the entire apfel ecosystem, including apfel itself and every `Arthur-Ficial/apfel-*` side project. Claude Code, Codex, Cursor, Aider, any autonomous coding agent: if you can read the repo's `CLAUDE.md`, run the tests, and open a pull request, you can contribute. Credit your tool in the commit trailer (e.g. `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>`), include a passing test suite, and submit. Humans and agents are reviewed on the same bar: clean code, passing tests, honesty about limits.
+
+The most agent-friendly entry point is [apfel-mcp](https://github.com/Arthur-Ficial/apfel-mcp) - its contribution rules and idea list at [apfel-mcp.franzai.com/#contribute](https://apfel-mcp.franzai.com/#contribute) are written to be unambiguous enough for an agent to follow without human translation.
+
 ## Examples
 
 See [docs/EXAMPLES.md](docs/EXAMPLES.md) for 50+ real prompts with unedited model output.
