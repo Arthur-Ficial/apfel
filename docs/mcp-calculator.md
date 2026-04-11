@@ -4,6 +4,8 @@ apfel natively speaks the [https://modelcontextprotocol.io/](https://modelcontex
 
 All inference runs on-device with no network calls for the LLM itself. Optional remote MCP tool servers (`--mcp https://...`) do make network calls for tool arguments.
 
+> **Ready-made MCPs for apfel**: [apfel-mcp.franzai.com](https://apfel-mcp.franzai.com/) ships three token-budget-optimized MCP servers designed specifically for apfel's 4096-token context window: `url-fetch`, `ddg-search`, and the flagship compound `search-and-fetch` tool. Install with `brew install Arthur-Ficial/tap/apfel-mcp`. Repo is open for contributions of new apfel-optimized MCPs.
+
 ## Quick start
 
 ```bash
@@ -219,3 +221,12 @@ Transport: stdio (JSON-RPC 2.0, one message per line).
 | `ping` | client -> server | Empty result |
 
 See `mcp/calculator/server.py` for a complete working example.
+
+## Ready-made MCPs
+
+- [apfel-mcp.franzai.com](https://apfel-mcp.franzai.com/) - three token-budget-optimized MCP servers for apfel's 4096-token context window:
+  - `apfel-mcp-url-fetch` - fetch a URL, extract the main article with Readability, return clean Markdown. SSRF blocklist, 6000-char hard cap.
+  - `apfel-mcp-ddg-search` - DuckDuckGo web search via direct HTML scrape. No API key. 2000-char hard cap.
+  - `apfel-mcp-search-and-fetch` - the flagship compound tool. Searches AND fetches the top N result pages in ONE tool call. Saves ~500 tokens of schema/state overhead vs chaining separate tools. Declared as both `search` and `web_search` so the 3B model's hallucinated tool names still route correctly.
+  - Install with `brew install Arthur-Ficial/tap/apfel-mcp`
+  - Repo: [github.com/Arthur-Ficial/apfel-mcp](https://github.com/Arthur-Ficial/apfel-mcp) - open for contributions of new apfel-optimized MCPs. See [apfel-mcp.franzai.com/#contribute](https://apfel-mcp.franzai.com/#contribute) for the rules and idea list.

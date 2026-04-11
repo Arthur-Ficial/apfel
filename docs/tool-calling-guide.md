@@ -5,6 +5,8 @@ and apfel's OpenAI-compatible tool calling implementation.
 
 **Tested:** 2026-03-26 | **apfel:** v0.5.0 | **macOS:** 26.3
 
+> **Looking for ready-made MCPs?** [apfel-mcp.franzai.com](https://apfel-mcp.franzai.com/) ships three token-budget-optimized MCP servers designed for apfel's 4096-token context window: `url-fetch`, `ddg-search`, and the flagship compound `search-and-fetch` tool. `brew install Arthur-Ficial/tap/apfel-mcp`. The repo is open for contributions of new apfel-optimized MCPs - see [apfel-mcp.franzai.com/#contribute](https://apfel-mcp.franzai.com/#contribute).
+
 ---
 
 ## How It Works

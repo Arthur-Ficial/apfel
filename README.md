@@ -117,6 +117,8 @@ apfel --serve --mcp ./mcp/calculator/server.py
 
 `mcp/calculator/` ships with the repo. Remote `https://` MCP servers, bearer-token handling, timeout tuning, server-mode auto-execution, and protocol details live in [docs/mcp-calculator.md](docs/mcp-calculator.md) and [docs/tool-calling-guide.md](docs/tool-calling-guide.md).
 
+**Want web search and URL fetching?** [apfel-mcp.franzai.com](https://apfel-mcp.franzai.com/) ships three token-budget-optimized MCP servers for apfel's 4096-token context window: `url-fetch` (Readability article extraction with SSRF guards), `ddg-search` (DuckDuckGo web search, no API key), and `search-and-fetch` (the flagship compound tool - search AND fetch the top N pages in ONE tool call). Install with `brew install Arthur-Ficial/tap/apfel-mcp`. The repo is open for contributions of new apfel-optimized MCPs - ideas and rules at [apfel-mcp.franzai.com](https://apfel-mcp.franzai.com/#contribute).
+
 ## OpenAI API Compatibility
 
 `apfel` exposes `http://localhost:11434/v1` with `POST /v1/chat/completions`, `GET /v1/models`, `GET /health`, streaming, tool calling, and `response_format: json_object`. Unsupported surfaces such as embeddings, legacy completions, and multimodal inputs return honest `501` or `400` errors. Full compatibility matrix: [docs/openai-api-compatibility.md](docs/openai-api-compatibility.md)
