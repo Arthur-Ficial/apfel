@@ -88,6 +88,58 @@ public struct CLIParseError: Error, Equatable, CustomStringConvertible {
     public var description: String { message }
 }
 
+// MARK: - Validation
+
+/// Parser-phase state passed into `CLIArguments.validate(context:)`. Carries
+/// information that is needed for semantic checks but does not belong on the
+/// `CLIArguments` result struct itself (because it is process state, not
+/// user-visible output).
+///
+/// Today this only tracks which mode flags were seen in which order so that
+/// `validate()` can produce a friendly "cannot combine --X and --Y" error
+/// when more than one is set. Future cross-flag checks will add more fields.
+public struct ValidationContext: Sendable, Equatable {
+    public var modeFlagsSeen: [String]
+
+    public init() {
+        self.modeFlagsSeen = []
+    }
+
+    public init(modeFlagsSeen: [String]) {
+        self.modeFlagsSeen = modeFlagsSeen
+    }
+}
+
+extension CLIArguments {
+
+    /// Run semantic validation on a parsed `CLIArguments` value. This is the
+    /// post-parse phase where cross-flag invariants are checked. Call this
+    /// after `parse()` has returned a fully-populated struct, or call it
+    /// directly on a hand-built struct (with an explicit context) to unit-test
+    /// individual invariants.
+    ///
+    /// `parse()` invokes `validate()` internally as its last step, so callers
+    /// using the normal API path (`CLIArguments.parse(args)`) do not need to
+    /// call `validate()` themselves.
+    ///
+    /// - Parameter context: Parser-phase state (e.g., which mode flags were
+    ///   seen in which order). Defaults to an empty context, which is
+    ///   sufficient for checks that only need the `CLIArguments` struct
+    ///   itself.
+    public func validate(context: ValidationContext = .init()) throws {
+        // Mode conflict: more than one mode flag was set during parsing.
+        // First two flags seen win the error message, matching pre-refactor
+        // behavior.
+        if context.modeFlagsSeen.count > 1 {
+            throw CLIErrors.modeConflict(
+                context.modeFlagsSeen[0],
+                context.modeFlagsSeen[1]
+            )
+        }
+        // Future cross-flag checks live here.
+    }
+}
+
 // MARK: - Parsing
 
 extension CLIArguments {
@@ -126,19 +178,12 @@ extension CLIArguments {
         result.contextOutputReserve = env["APFEL_CONTEXT_OUTPUT_RESERVE"]
             .flatMap { Int($0) }.flatMap { $0 > 0 ? $0 : nil }
 
-        // Track the first mode-setting flag seen so we can detect conflicts.
-        // --help/-h/--version/-v/--release short-circuit out of parse and do
-        // not participate in conflict detection (they are "give me info and
-        // exit" requests).
-        var firstModeFlag: String? = nil
-
-        func setMode(_ mode: Mode, flagName: String) throws {
-            if let first = firstModeFlag {
-                throw CLIErrors.modeConflict(first, flagName)
-            }
-            firstModeFlag = flagName
-            result.mode = mode
-        }
+        // Parser-phase state. Mode-setting flags are recorded in
+        // `context.modeFlagsSeen` so the post-parse validate() step can detect
+        // conflicts like `apfel --chat --serve`. --help/-h/--version/-v
+        // /--release short-circuit out of parse entirely and do not
+        // participate in conflict detection.
+        var context = ValidationContext()
 
         var i = 0
         while i < args.count {
@@ -196,25 +241,31 @@ extension CLIArguments {
             case "--no-color":
                 result.noColor = true
 
-            // -- Modes (conflict-detected) --
+            // -- Modes (conflict-detected via post-parse validate() step) --
 
             case "--chat":
-                try setMode(.chat, flagName: "--chat")
+                context.modeFlagsSeen.append("--chat")
+                result.mode = .chat
 
             case "--stream":
-                try setMode(.stream, flagName: "--stream")
+                context.modeFlagsSeen.append("--stream")
+                result.mode = .stream
 
             case "--serve":
-                try setMode(.serve, flagName: "--serve")
+                context.modeFlagsSeen.append("--serve")
+                result.mode = .serve
 
             case "--benchmark":
-                try setMode(.benchmark, flagName: "--benchmark")
+                context.modeFlagsSeen.append("--benchmark")
+                result.mode = .benchmark
 
             case "--model-info":
-                try setMode(.modelInfo, flagName: "--model-info")
+                context.modeFlagsSeen.append("--model-info")
+                result.mode = .modelInfo
 
             case "--update":
-                try setMode(.update, flagName: "--update")
+                context.modeFlagsSeen.append("--update")
+                result.mode = .update
 
             // -- Server --
 
@@ -382,6 +433,12 @@ extension CLIArguments {
             }
             i += 1
         }
+
+        // Post-parse semantic validation: mode conflicts, cross-flag
+        // invariants, etc. Runs as the final step so parse() preserves its
+        // end-to-end contract (callers catch the same errors they did
+        // before).
+        try result.validate(context: context)
 
         return result
     }

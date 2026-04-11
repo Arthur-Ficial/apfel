@@ -86,6 +86,7 @@ suite("BufferedLineReaderTests") { runBufferedLineReaderTests() }
 suite("CLIArgumentsTests") { runCLIArgumentsTests() }
 suite("ModelAvailabilityTests") { runModelAvailabilityTests() }
 suite("CLIErrorsTests") { runCLIErrorsTests() }
+suite("CLIValidateTests") { runCLIValidateTests() }
 
 // MARK: - Summary
 
