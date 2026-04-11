@@ -86,4 +86,4 @@ Why this setup works well:
 
 ---
 
-*Have an integration to share? Open an issue at [github.com/Arthur-Ficial/apfel](https://github.com/Arthur-Ficial/apfel/issues).*
+*Have an integration to share? Open an issue at [https://github.com/Arthur-Ficial/apfel/issues](https://github.com/Arthur-Ficial/apfel/issues).*

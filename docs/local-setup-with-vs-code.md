@@ -8,7 +8,7 @@ The shape of the setup is:
 4. Route **edit/apply** to a second model.
 5. Keep `~/.continue/.env` in sync from the shell so Continue can read `OPENAI_API_KEY`.
 
-For the underlying API contract, see the [OpenAI API Compatibility section](../README.md#openai-api-compatibility) in the README and [server-security.md](server-security.md).
+For the underlying API contract, see [openai-api-compatibility.md](openai-api-compatibility.md) and [server-security.md](server-security.md).
 
 ## 1. Start `apfel` as the local server
 

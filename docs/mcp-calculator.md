@@ -1,8 +1,8 @@
 # MCP Tool Support
 
-apfel natively speaks the [Model Context Protocol](https://modelcontextprotocol.io/). Attach tool servers with `--mcp` and apfel discovers tools, executes them, and returns the final answer.
+apfel natively speaks the [https://modelcontextprotocol.io/](https://modelcontextprotocol.io/). Attach tool servers with `--mcp` and apfel discovers tools, executes them, and returns the final answer.
 
-All inference runs on-device with no network calls for the LLM itself. Optional remote MCP tool servers (`--mcp https://...`) do make network calls for tool arguments - see the [Remote MCP servers section in the README](../README.md#remote-mcp-servers) for details.
+All inference runs on-device with no network calls for the LLM itself. Optional remote MCP tool servers (`--mcp https://...`) do make network calls for tool arguments.
 
 ## Quick start
 
@@ -36,6 +36,24 @@ apfel --mcp-timeout 30 --mcp ./remote-server.py "hello"
 # No --mcp = exactly as before. Zero overhead.
 apfel "Hello"
 ```
+
+## Remote MCP servers
+
+Remote MCP uses Streamable HTTP transport (MCP spec `2025-03-26`):
+
+```bash
+# Remote MCP server over HTTPS
+apfel --mcp https://mcp.example.com/v1 "what tools do you have?"
+
+# With bearer token auth - prefer the env var (flag is visible in ps aux)
+APFEL_MCP_TOKEN=mytoken apfel --mcp https://mcp.example.com/v1 "..."
+apfel --mcp https://mcp.example.com/v1 --mcp-token mytoken "..."
+
+# Mixed local + remote
+apfel --mcp /path/to/local.py --mcp https://remote.example.com/v1 "..."
+```
+
+> **Security:** Prefer `APFEL_MCP_TOKEN` over `--mcp-token` because CLI flags are visible in `ps aux`. apfel refuses to send a bearer token over plaintext `http://`; use `https://`.
 
 ## Calculator tools
 
