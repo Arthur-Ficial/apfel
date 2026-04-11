@@ -558,6 +558,7 @@ apfel works with any tool that speaks the OpenAI API. Verified configs:
 - [apfel-chat](https://github.com/Arthur-Ficial/apfel-chat) - Multi-conversation macOS chat client. Private, on-device, no API keys. Streaming markdown, speech I/O, image analysis. Install: `brew install Arthur-Ficial/tap/apfel-chat`
 - [apfel-clip](https://github.com/Arthur-Ficial/apfel-clip) - AI clipboard actions from the menu bar
 - [apfel-gui](https://github.com/Arthur-Ficial/apfel-gui) - Native macOS debug GUI (inspector, MCP viewer, TTS/STT)
+- [apfel-mcp](https://github.com/Arthur-Ficial/apfel-mcp) - Three token-budget-optimized MCP servers (url-fetch, ddg-search, compound search+fetch) tuned for apfel's 4096-token context window. Install: `brew install Arthur-Ficial/tap/apfel-mcp`
 
 ## Community Projects
 
