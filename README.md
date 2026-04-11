@@ -14,7 +14,7 @@ No API keys. No cloud. No subscriptions. No per-token billing. The AI is already
 
 ## What is this
 
-Every Mac with Apple Silicon has a **built-in LLM** - Apple's on-device foundation model, shipped as part of Apple Intelligence. Apple provides the [FoundationModels framework](https://developer.apple.com/documentation/foundationmodels) (macOS 26+) to access it, but only exposes it through Siri and system features. **apfel wraps it** in a CLI and an HTTP server - so you can actually use it. All **inference** runs on-device with no network calls for the LLM itself. Optional remote MCP tool servers (`--mcp https://...`) do make network calls for tool arguments — see [MCP Tool Support](#mcp-tool-support).
+Every Mac with Apple Silicon has a **built-in LLM** - Apple's on-device foundation model, shipped as part of Apple Intelligence. Apple provides the [FoundationModels framework](https://developer.apple.com/documentation/foundationmodels) (macOS 26+) to access it, but only exposes it through Siri and system features. **apfel wraps it** in a CLI and an HTTP server - so you can actually use it.
 
 - **UNIX tool** - `echo "summarize this" | apfel` - pipe-friendly, file attachments, JSON output, exit codes
 - **Interactive chat** - `apfel --chat` - multi-turn conversation with context window management

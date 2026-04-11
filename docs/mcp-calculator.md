@@ -2,6 +2,8 @@
 
 apfel natively speaks the [Model Context Protocol](https://modelcontextprotocol.io/). Attach tool servers with `--mcp` and apfel discovers tools, executes them, and returns the final answer.
 
+All inference runs on-device with no network calls for the LLM itself. Optional remote MCP tool servers (`--mcp https://...`) do make network calls for tool arguments - see the [Remote MCP servers section in the README](../README.md#remote-mcp-servers) for details.
+
 ## Quick start
 
 ```bash
