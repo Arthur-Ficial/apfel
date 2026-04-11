@@ -14,18 +14,19 @@ import Foundation
 /// wording across the parser. Prefer these over hand-written strings.
 public enum CLIErrors {
 
-    /// Build a "requires a value" error for a flag that was given on the
-    /// command line without its argument.
+    /// Build a "\(flag) requires \(kind)" error for a flag whose argument is
+    /// missing or invalid. The `kind` parameter is the full noun phrase that
+    /// follows "requires", so callers have full control over the wording
+    /// ("a value", "a file path", "an address", "at least one non-empty
+    /// origin", etc.). This preserves the exact original message format for
+    /// every call site, so no existing tests (unit or integration) break.
     ///
     /// - Parameters:
     ///   - flag: The flag name, including dashes (e.g., `"--system"`).
-    ///   - hint: Optional detail appended in parentheses (e.g., `"plain or json"`).
-    public static func requiresValue(_ flag: String, hint: String? = nil) -> CLIParseError {
-        let base = "\(flag) requires a value"
-        if let hint = hint {
-            return CLIParseError("\(base) (\(hint))")
-        }
-        return CLIParseError(base)
+    ///   - kind: The noun phrase that follows "requires" (e.g., `"a value"`,
+    ///     `"a file path"`, `"an address"`).
+    public static func requires(_ flag: String, _ kind: String) -> CLIParseError {
+        CLIParseError("\(flag) requires \(kind)")
     }
 
     /// Build an "unknown <kind>: <got>" error for a value that was not in the

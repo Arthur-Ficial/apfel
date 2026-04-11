@@ -11,24 +11,37 @@ import ApfelCLI
 
 func runCLIErrorsTests() {
 
-    // -- requiresValue --
+    // -- requires --
 
-    test("requiresValue returns CLIParseError with flag name and 'requires'") {
-        let err = CLIErrors.requiresValue("--system")
-        try assertTrue(err.message.contains("--system"))
-        try assertTrue(err.message.contains("requires"))
+    test("requires produces '<flag> requires <kind>' verbatim") {
+        let err = CLIErrors.requires("--system", "a value")
+        try assertEqual(err.message, "--system requires a value")
     }
 
-    test("requiresValue with hint appends the hint in parentheses") {
-        let err = CLIErrors.requiresValue("--output", hint: "plain or json")
-        try assertTrue(err.message.contains("--output"))
-        try assertTrue(err.message.contains("requires"))
-        try assertTrue(err.message.contains("plain or json"))
+    test("requires preserves old wording for --file") {
+        let err = CLIErrors.requires("--file", "a file path")
+        try assertEqual(err.message, "--file requires a file path")
     }
 
-    test("requiresValue without hint has no parentheses") {
-        let err = CLIErrors.requiresValue("--host")
-        try assertTrue(!err.message.contains("("))
+    test("requires preserves old wording for --host with article 'an'") {
+        let err = CLIErrors.requires("--host", "an address")
+        try assertEqual(err.message, "--host requires an address")
+    }
+
+    test("requires preserves old wording for --port with embedded parens") {
+        let err = CLIErrors.requires("--port", "a valid port number (1-65535)")
+        try assertEqual(err.message, "--port requires a valid port number (1-65535)")
+    }
+
+    test("requires handles non-article phrases like 'at least one'") {
+        let err = CLIErrors.requires("--allowed-origins", "at least one non-empty origin")
+        try assertEqual(err.message, "--allowed-origins requires at least one non-empty origin")
+    }
+
+    test("requires always contains flag name and 'requires' substring") {
+        let err = CLIErrors.requires("--anything", "something")
+        try assertTrue(err.message.contains("--anything"))
+        try assertTrue(err.message.contains("requires"))
     }
 
     // -- invalidValue --
@@ -90,7 +103,7 @@ func runCLIErrorsTests() {
     // -- type check: all helpers return CLIParseError --
 
     test("all CLIErrors helpers return CLIParseError type") {
-        let a: CLIParseError = CLIErrors.requiresValue("--foo")
+        let a: CLIParseError = CLIErrors.requires("--foo", "a value")
         let b: CLIParseError = CLIErrors.invalidValue(got: "x", kind: "foo kind", hint: "y")
         let c: CLIParseError = CLIErrors.unknownOption("--foo")
         let d: CLIParseError = CLIErrors.modeConflict("--a", "--b")

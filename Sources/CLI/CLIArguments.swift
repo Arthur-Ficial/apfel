@@ -162,12 +162,12 @@ extension CLIArguments {
 
             case "-s", "--system":
                 i += 1
-                guard i < args.count else { throw CLIErrors.requiresValue("--system") }
+                guard i < args.count else { throw CLIErrors.requires("--system", "a value") }
                 result.systemPrompt = args[i]
 
             case "--system-file":
                 i += 1
-                guard i < args.count else { throw CLIErrors.requiresValue("--system-file", hint: "file path") }
+                guard i < args.count else { throw CLIErrors.requires("--system-file", "a file path") }
                 let path = args[i]
                 do {
                     result.systemPrompt = try readFile(path)
@@ -183,7 +183,7 @@ extension CLIArguments {
             case "-o", "--output":
                 i += 1
                 guard i < args.count else {
-                    throw CLIErrors.requiresValue("--output", hint: "plain or json")
+                    throw CLIErrors.requires("--output", "a value (plain or json)")
                 }
                 guard let fmt = OutputFormat(rawValue: args[i]) else {
                     throw CLIErrors.invalidValue(got: args[i], kind: "output format", hint: "use plain or json")
@@ -221,13 +221,13 @@ extension CLIArguments {
             case "--port":
                 i += 1
                 guard i < args.count, let p = Int(args[i]), p > 0, p < 65536 else {
-                    throw CLIErrors.requiresValue("--port", hint: "valid port number 1-65535")
+                    throw CLIErrors.requires("--port", "a valid port number (1-65535)")
                 }
                 result.serverPort = p
 
             case "--host":
                 i += 1
-                guard i < args.count else { throw CLIErrors.requiresValue("--host", hint: "address") }
+                guard i < args.count else { throw CLIErrors.requires("--host", "an address") }
                 result.serverHost = args[i]
 
             case "--cors":
@@ -236,7 +236,7 @@ extension CLIArguments {
             case "--max-concurrent":
                 i += 1
                 guard i < args.count, let n = Int(args[i]), n > 0 else {
-                    throw CLIErrors.requiresValue("--max-concurrent", hint: "positive number")
+                    throw CLIErrors.requires("--max-concurrent", "a positive number")
                 }
                 result.serverMaxConcurrent = n
 
@@ -246,11 +246,11 @@ extension CLIArguments {
             case "--allowed-origins":
                 i += 1
                 guard i < args.count else {
-                    throw CLIErrors.requiresValue("--allowed-origins", hint: "comma-separated list of origins")
+                    throw CLIErrors.requires("--allowed-origins", "a comma-separated list of origins")
                 }
                 let origins = parseAllowedOrigins(args[i])
                 guard !origins.isEmpty else {
-                    throw CLIErrors.requiresValue("--allowed-origins", hint: "at least one non-empty origin")
+                    throw CLIErrors.requires("--allowed-origins", "at least one non-empty origin")
                 }
                 for origin in origins where !result.serverAllowedOrigins.contains(origin) {
                     result.serverAllowedOrigins.append(origin)
@@ -261,7 +261,7 @@ extension CLIArguments {
 
             case "--token":
                 i += 1
-                guard i < args.count else { throw CLIErrors.requiresValue("--token", hint: "secret value") }
+                guard i < args.count else { throw CLIErrors.requires("--token", "a secret value") }
                 result.serverToken = args[i]
 
             case "--token-auto":
@@ -279,21 +279,21 @@ extension CLIArguments {
             case "--mcp":
                 i += 1
                 guard i < args.count else {
-                    throw CLIErrors.requiresValue("--mcp", hint: "path to an MCP server script")
+                    throw CLIErrors.requires("--mcp", "a path to an MCP server script")
                 }
                 result.mcpServerPaths.append(args[i])
 
             case "--mcp-timeout":
                 i += 1
                 guard i < args.count, let t = Int(args[i]), t > 0 else {
-                    throw CLIErrors.requiresValue("--mcp-timeout", hint: "positive number, seconds")
+                    throw CLIErrors.requires("--mcp-timeout", "a positive number (seconds)")
                 }
                 result.mcpTimeoutSeconds = min(t, 300)
 
             case "--mcp-token":
                 i += 1
                 guard i < args.count else {
-                    throw CLIErrors.requiresValue("--mcp-token", hint: "token value")
+                    throw CLIErrors.requires("--mcp-token", "a token value")
                 }
                 result.mcpBearerToken = args[i]
 
@@ -302,21 +302,21 @@ extension CLIArguments {
             case "--temperature":
                 i += 1
                 guard i < args.count, let t = Double(args[i]), t >= 0 else {
-                    throw CLIErrors.requiresValue("--temperature", hint: "non-negative number, e.g. 0.7")
+                    throw CLIErrors.requires("--temperature", "a non-negative number (e.g., 0.7)")
                 }
                 result.temperature = t
 
             case "--seed":
                 i += 1
                 guard i < args.count, let s = UInt64(args[i]) else {
-                    throw CLIErrors.requiresValue("--seed", hint: "positive integer")
+                    throw CLIErrors.requires("--seed", "a positive integer")
                 }
                 result.seed = s
 
             case "--max-tokens":
                 i += 1
                 guard i < args.count, let n = Int(args[i]), n > 0 else {
-                    throw CLIErrors.requiresValue("--max-tokens", hint: "positive number")
+                    throw CLIErrors.requires("--max-tokens", "a positive number")
                 }
                 result.maxTokens = n
 
@@ -338,21 +338,21 @@ extension CLIArguments {
             case "--context-strategy":
                 i += 1
                 guard i < args.count, let s = ContextStrategy(rawValue: args[i]) else {
-                    throw CLIErrors.requiresValue("--context-strategy", hint: "newest-first|oldest-first|sliding-window|summarize|strict")
+                    throw CLIErrors.requires("--context-strategy", "one of: newest-first|oldest-first|sliding-window|summarize|strict")
                 }
                 result.contextStrategy = s
 
             case "--context-max-turns":
                 i += 1
                 guard i < args.count, let n = Int(args[i]), n > 0 else {
-                    throw CLIErrors.requiresValue("--context-max-turns", hint: "positive number")
+                    throw CLIErrors.requires("--context-max-turns", "a positive number")
                 }
                 result.contextMaxTurns = n
 
             case "--context-output-reserve":
                 i += 1
                 guard i < args.count, let n = Int(args[i]), n > 0 else {
-                    throw CLIErrors.requiresValue("--context-output-reserve", hint: "positive number")
+                    throw CLIErrors.requires("--context-output-reserve", "a positive number")
                 }
                 result.contextOutputReserve = n
 
@@ -360,7 +360,7 @@ extension CLIArguments {
 
             case "-f", "--file":
                 i += 1
-                guard i < args.count else { throw CLIErrors.requiresValue("--file", hint: "file path") }
+                guard i < args.count else { throw CLIErrors.requires("--file", "a file path") }
                 let path = args[i]
                 do {
                     result.fileContents.append(try readFile(path))
