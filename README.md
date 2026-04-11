@@ -186,12 +186,49 @@ Every `make build` or `make install` auto-bumps the patch version, updates the R
 - [docs/integrations.md](docs/integrations.md) - verified configs for tools such as opencode
 - [docs/local-setup-with-vs-code.md](docs/local-setup-with-vs-code.md) - local review with `apfel` plus a second edit/apply model in Visual Studio Code
 
-## Related Projects
+## The apfel tree
 
-- [https://apfel-chat.franzai.com](https://apfel-chat.franzai.com) and [https://github.com/Arthur-Ficial/apfel-chat](https://github.com/Arthur-Ficial/apfel-chat) - multi-conversation macOS chat client. Private, on-device, no API keys. Streaming markdown, speech I/O, image analysis. Install with `brew install Arthur-Ficial/tap/apfel-chat`
-- [https://apfel-clip.franzai.com](https://apfel-clip.franzai.com) and [https://github.com/Arthur-Ficial/apfel-clip](https://github.com/Arthur-Ficial/apfel-clip) - AI clipboard actions from the menu bar
-- [https://github.com/Arthur-Ficial/apfel-gui](https://github.com/Arthur-Ficial/apfel-gui) - native SwiftUI debug inspector with request timeline, MCP protocol viewer, chat, and TTS/STT. Install with `brew install Arthur-Ficial/tap/apfel-gui`
-- [https://github.com/Arthur-Ficial/apfel-mcp](https://github.com/Arthur-Ficial/apfel-mcp) - token-budget-optimized MCP servers for apfel's 4096-token context window. Install with `brew install Arthur-Ficial/tap/apfel-mcp`
+Everything that grows out of apfel. Each project ships as its own repo, its own landing page, and its own Homebrew formula or cask.
+
+### Trunk
+
+- **apfel** - on-device Apple FoundationModels CLI and OpenAI-compatible server. The root of the tree; every other project uses it for inference.
+  - Site: [https://apfel.franzai.com](https://apfel.franzai.com)
+  - Repo: [https://github.com/Arthur-Ficial/apfel](https://github.com/Arthur-Ficial/apfel)
+  - Install: `brew install Arthur-Ficial/tap/apfel`
+
+### Apps
+
+- **apfel-chat** - multi-conversation macOS chat client. Streaming markdown, speech I/O, image analysis via Apple Vision. Runs 100% on-device.
+  - Site: [https://apfel-chat.franzai.com](https://apfel-chat.franzai.com)
+  - Repo: [https://github.com/Arthur-Ficial/apfel-chat](https://github.com/Arthur-Ficial/apfel-chat)
+  - Install: `brew install Arthur-Ficial/tap/apfel-chat`
+
+- **apfel-clip** - AI clipboard actions from the macOS menu bar. Summarize, translate, rewrite, and reshape whatever you just copied, without leaving the keyboard.
+  - Site: [https://apfel-clip.franzai.com](https://apfel-clip.franzai.com)
+  - Repo: [https://github.com/Arthur-Ficial/apfel-clip](https://github.com/Arthur-Ficial/apfel-clip)
+  - Install: `brew install Arthur-Ficial/tap/apfel-clip`
+
+- **apfel-quick** - instant AI overlay for macOS. Press a key, ask anything, get an on-device answer - then dismiss.
+  - Site: [https://apfel-quick.franzai.com](https://apfel-quick.franzai.com)
+  - Repo: [https://github.com/Arthur-Ficial/apfel-quick](https://github.com/Arthur-Ficial/apfel-quick)
+  - Install: `brew install Arthur-Ficial/tap/apfel-quick`
+
+- **apfelpad** - a formula notepad for thinking. On-device AI as a first-class function you can call inline from cells, the way a spreadsheet treats `SUM`.
+  - Site: [https://apfelpad.franzai.com](https://apfelpad.franzai.com)
+  - Repo: [https://github.com/Arthur-Ficial/apfelpad](https://github.com/Arthur-Ficial/apfelpad)
+  - Install: `brew install Arthur-Ficial/tap/apfelpad`
+
+### Extensions
+
+- **apfel-mcp** - three token-budget-optimized MCP (Model Context Protocol) servers for apfel's 4096-token context window. `url-fetch` (Readability article extraction with SSRF guards), `ddg-search` (DuckDuckGo web search, no API key), and the flagship compound `search-and-fetch` tool. Open for contributions of more apfel-optimized MCPs.
+  - Site: [https://apfel-mcp.franzai.com](https://apfel-mcp.franzai.com)
+  - Repo: [https://github.com/Arthur-Ficial/apfel-mcp](https://github.com/Arthur-Ficial/apfel-mcp)
+  - Install: `brew install Arthur-Ficial/tap/apfel-mcp`
+
+- **apfel-gui** - native SwiftUI debug inspector for apfel with request timeline, MCP protocol viewer, chat, and TTS/STT. Built for developers who want to watch exactly what apfel sends to the model.
+  - Repo: [https://github.com/Arthur-Ficial/apfel-gui](https://github.com/Arthur-Ficial/apfel-gui)
+  - Install: `brew install Arthur-Ficial/tap/apfel-gui`
 
 ## Community Projects
 
