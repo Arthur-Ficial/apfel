@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![100% On-Device](https://img.shields.io/badge/inference-100%25%20on--device-green)](https://developer.apple.com/documentation/foundationmodels)
 [![Website](https://img.shields.io/badge/web-apfel.franzai.com-16A34A)](https://apfel.franzai.com)
-[![#agentswelcome](https://img.shields.io/badge/%23agentswelcome-AI%20contributions%20welcome-0066cc?labelColor=0d1117)](#contributing)
+[![#agentswelcome](https://img.shields.io/badge/%23agentswelcome-PRs%20welcome-0066cc?style=for-the-badge&labelColor=0d1117&logo=probot&logoColor=white)](#contributing)
 
 Use the free local Apple Intelligence LLM on your Mac as a UNIX tool, an OpenAI-compatible server, and a command-line chat client. No API keys, no cloud, no subscriptions, no per-token billing.
 
