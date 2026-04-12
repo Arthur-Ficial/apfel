@@ -35,7 +35,6 @@ Tool calling works across CLI, chat, and server. Inference stays 100% on-device.
 **Homebrew** (recommended):
 
 ```bash
-brew tap Arthur-Ficial/tap
 brew install apfel
 brew upgrade apfel
 ```
@@ -324,7 +323,7 @@ Everything that grows out of apfel. Each project ships as its own repo, its own 
 - **apfel** — on-device Apple FoundationModels CLI and OpenAI-compatible server. The root of the tree; every other project uses it for inference.
   - Site: [https://apfel.franzai.com](https://apfel.franzai.com)
   - Repo: [https://github.com/Arthur-Ficial/apfel](https://github.com/Arthur-Ficial/apfel)
-  - Install: `brew install Arthur-Ficial/tap/apfel`
+  - Install: `brew install apfel`
 
 ### Apps
 

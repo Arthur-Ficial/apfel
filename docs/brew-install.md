@@ -1,9 +1,8 @@
 # Install with Homebrew
 
-`apfel` is available through the `Arthur-Ficial/tap` tap:
+`apfel` is available in `homebrew-core`:
 
 ```bash
-brew tap Arthur-Ficial/tap
 brew install apfel
 ```
 
@@ -39,4 +38,4 @@ brew --prefix
 
 ## Maintainers
 
-See [release.md](release.md) for the release workflow and Homebrew tap maintenance.
+See [release.md](release.md) for the release workflow.

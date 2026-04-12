@@ -22,8 +22,6 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       RELEASE_TYPE: ${{ inputs.release_type }}
-      TAP_REPOSITORY: Arthur-Ficial/homebrew-tap
-      TAP_BRANCH: main
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -48,16 +46,6 @@ jobs:
           fi
           echo "Active SDK: $(xcrun --show-sdk-version)"
           echo "Swift: $(swift --version 2>&1 | head -1)"
-
-      - name: Verify tap token is configured
-        env:
-          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_PUSH_TOKEN }}
-        run: |
-          if [[ -z "$TAP_TOKEN" ]]; then
-            echo "Missing HOMEBREW_TAP_PUSH_TOKEN repository secret."
-            echo "Create a fine-grained GitHub token with Contents: Read and write on $TAP_REPOSITORY."
-            exit 1
-          fi
 
       - name: Bump version and build release
         run: |
@@ -103,31 +91,3 @@ jobs:
           else
             gh release create "v$version" "$asset" --title "v$version" --notes "Automated release for v$version"
           fi
-
-      - name: Check out homebrew tap
-        uses: actions/checkout@v6
-        with:
-          repository: Arthur-Ficial/homebrew-tap
-          token: ${{ secrets.HOMEBREW_TAP_PUSH_TOKEN }}
-          ref: main
-          path: homebrew-tap
-
-      - name: Update Homebrew formula
-        run: |
-          make update-homebrew-formula \
-            HOMEBREW_FORMULA_OUTPUT="homebrew-tap/Formula/apfel.rb" \
-            HOMEBREW_FORMULA_SHA256="${{ steps.asset.outputs.sha256 }}"
-
-      - name: Push Homebrew tap update
-        working-directory: homebrew-tap
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet -- Formula/apfel.rb; then
-            echo "Homebrew formula already up to date."
-            exit 0
-          fi
-          version="${{ steps.version.outputs.value }}"
-          git add Formula/apfel.rb
-          git commit -m "apfel v$version"
-          git push origin HEAD:$TAP_BRANCH

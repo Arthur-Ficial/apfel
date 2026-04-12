@@ -124,7 +124,7 @@ bash scripts/generate-examples.sh          # ~2 minutes, overwrites docs/EXAMPLE
 | Tests | `Tests/apfelTests/` (188 unit), `Tests/integration/` (139 integration) |
 | Tickets | `open-tickets/` |
 | Docs | `docs/` (brew-install, EXAMPLES, release, tool-calling-guide) |
-| Scripts | `scripts/generate-examples.sh` (regenerates docs/EXAMPLES.md), `scripts/write-homebrew-formula.sh` |
+| Scripts | `scripts/generate-examples.sh` (regenerates docs/EXAMPLES.md) |
 
 ## Handling GitHub Issues
 
@@ -288,7 +288,6 @@ This triggers the **Publish Release** GitHub Actions workflow which runs on `mac
 4. Commits `.version`, `README.md`, `Sources/BuildInfo.swift` and pushes to `main`
 5. Creates a git tag (`v<version>`) and pushes it
 6. Packages `apfel-<version>-arm64-macos.tar.gz` and publishes a GitHub Release
-7. Clones `Arthur-Ficial/homebrew-tap`, regenerates `Formula/apfel.rb` with new URL + SHA256, commits and pushes
 
 After the workflow completes (~3 min), verify locally:
 
@@ -296,9 +295,9 @@ After the workflow completes (~3 min), verify locally:
 brew update && brew upgrade apfel && brew test apfel && apfel --version
 ```
 
-**Do NOT manually run `make install`, `make package-release-asset`, `git tag`, `gh release create`, or push to the Homebrew tap.** The workflow does all of it. Manual steps create version drift, duplicate tags, and half-updated taps. If the workflow fails, fix the workflow - don't work around it.
+**Do NOT manually run `make install`, `make package-release-asset`, `git tag`, or `gh release create`.** The workflow handles the GitHub release path. Manual steps create version drift, duplicate tags, and half-updated releases. If the workflow fails, fix the workflow - don't work around it.
 
-The workflow source is `.github/workflows/publish-release.yml`. The `HOMEBREW_TAP_PUSH_TOKEN` secret must exist on `Arthur-Ficial/apfel` (fine-grained token with Contents R/W on `Arthur-Ficial/homebrew-tap`).
+The workflow source is `.github/workflows/publish-release.yml`.
 
 ### Integration test rules
 
@@ -312,7 +311,6 @@ The workflow source is `.github/workflows/publish-release.yml`. The `HOMEBREW_TA
 - [ ] Unit tests pass (188+)
 - [ ] Integration tests pass (139+, 0 skipped)
 - [ ] GitHub Release created with tarball
-- [ ] Homebrew tap updated and `brew test` passes
 - [ ] CLAUDE.md test counts and version updated
 - [ ] File a ticket on `Arthur-Ficial/apfel-web` if the landing page shows test counts
 
@@ -320,7 +318,6 @@ The workflow source is `.github/workflows/publish-release.yml`. The `HOMEBREW_TA
 
 - **`macos-26` runner** has Xcode-bundled SDKs (not standalone CLT). The workflow selects the latest available Xcode via `xcode-select` before building.
 - apfel requires **SDK 26.4+** for FoundationModels token-counting APIs (`tokenCount`, `contextSize`). If the runner's highest Xcode is older, the build will fail.
-- **`HOMEBREW_TAP_PUSH_TOKEN`** secret must exist on `Arthur-Ficial/apfel` - fine-grained token with Contents R/W on `Arthur-Ficial/homebrew-tap`.
-- The **Publish Release** workflow (`.github/workflows/publish-release.yml`) is the single source of truth for the release pipeline. It handles version bump, build, test, tag, GitHub Release, and homebrew tap update in one run.
+- The **Publish Release** workflow (`.github/workflows/publish-release.yml`) is the single source of truth for the release pipeline. It handles version bump, build, test, tag, and GitHub Release publication in one run.
 - The **CI** workflow (`.github/workflows/ci.yml`) runs on PRs and pushes for build + test validation.
 - Release docs: `docs/release.md`

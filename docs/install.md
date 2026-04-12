@@ -11,7 +11,6 @@
 ## Option 1: Homebrew (recommended)
 
 ```bash
-brew tap Arthur-Ficial/tap
 brew install apfel
 ```
 
