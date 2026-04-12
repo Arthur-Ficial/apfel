@@ -1,5 +1,7 @@
 # apfel
 
+### The free AI already on your Mac.
+
 [![Version 0.9.15](https://img.shields.io/badge/version-0.9.15-blue)](https://github.com/Arthur-Ficial/apfel)
 [![Swift 6.3+](https://img.shields.io/badge/Swift-6.3%2B-F05138?logo=swift&logoColor=white)](https://swift.org)
 [![macOS 26 Tahoe+](https://img.shields.io/badge/macOS-26%20Tahoe%2B-000000?logo=apple&logoColor=white)](https://developer.apple.com/macos/)
@@ -9,7 +11,7 @@
 [![Website](https://img.shields.io/badge/web-apfel.franzai.com-16A34A)](https://apfel.franzai.com)
 [![#agentswelcome](https://img.shields.io/badge/%23agentswelcome-PRs%20welcome-0066cc?style=for-the-badge&labelColor=0d1117&logo=probot&logoColor=white)](#contributing)
 
-Use the free local Apple Intelligence LLM on your Mac as a UNIX tool, an OpenAI-compatible server, and a command-line chat client. No API keys, no cloud, no subscriptions, no per-token billing.
+Every Mac with Apple Silicon ships a built-in language model as part of Apple Intelligence. `apfel` gives you access to it — from the terminal, as a local OpenAI-compatible server, or as an interactive chat. No API keys, no cloud, no downloads. It's already on your machine.
 
 ## What It Is
 

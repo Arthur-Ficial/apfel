@@ -1,5 +1,7 @@
 # apfel - Project Instructions
 
+**The free AI already on your Mac.** This is our claim. Every surface (README, landing page, repo description) must reinforce it.
+
 ## The Golden Goal
 
 apfel has ONE purpose with THREE delivery modes:
