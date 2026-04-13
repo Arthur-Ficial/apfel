@@ -2,7 +2,9 @@ PREFIX ?= /usr/local
 BINARY = apfel
 VERSION_FILE = .version
 
-.PHONY: check-toolchain build install uninstall clean bump-patch bump-minor bump-major generate-build-info update-readme version release release-patch release-minor release-major package-release-asset print-release-asset print-release-sha256 update-homebrew-formula preflight benchmark test
+.PHONY: check-toolchain build install uninstall install-demo-scripts uninstall-demo-scripts clean bump-patch bump-minor bump-major generate-build-info update-readme version release release-patch release-minor release-major package-release-asset print-release-asset print-release-sha256 update-homebrew-formula preflight benchmark test
+
+DEMO_SCRIPTS = cmd explain gitsum mac-narrator naming oneliner port wtd
 
 # --- Environment checks ---
 
@@ -202,6 +204,32 @@ uninstall:
 			brew link apfel 2>/dev/null || true; \
 		fi; \
 	fi
+
+install-demo-scripts:
+	@repo_root=$$(pwd); \
+	for script in $(DEMO_SCRIPTS); do \
+		src="$$repo_root/demo/$$script"; \
+		dest="$(PREFIX)/bin/$$script"; \
+		if [ -w "$(PREFIX)/bin" ]; then \
+			ln -sf "$$src" "$$dest"; \
+		else \
+			sudo ln -sf "$$src" "$$dest"; \
+		fi; \
+		echo "✓ linked: $$script → $(PREFIX)/bin/$$script"; \
+	done
+
+uninstall-demo-scripts:
+	@for script in $(DEMO_SCRIPTS); do \
+		dest="$(PREFIX)/bin/$$script"; \
+		if [ -L "$$dest" ] || [ -f "$$dest" ]; then \
+			if [ -w "$(PREFIX)/bin" ]; then \
+				rm -f "$$dest"; \
+			else \
+				sudo rm -f "$$dest"; \
+			fi; \
+			echo "✓ removed: $(PREFIX)/bin/$$script"; \
+		fi; \
+	done
 
 clean:
 	swift package clean
