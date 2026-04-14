@@ -47,6 +47,10 @@ For the operator-level guide - how prompts are version-controlled, how kill-swit
 | 3 | Distribution-channel sync watch | Deferred until Phase 2 is stable |
 | - | Stale issue sweep, first-time CI approval as standalone, post-release verify | Not planned |
 
+## Status
+
+Phase 1 went live 2026-04-14.
+
 ## Security note
 
 The Claude GitHub App is installed on `Arthur-Ficial/apfel` **only**, with minimum GitHub permissions: Contents (Read), Issues (Read + Write), Pull requests (Read + Write). It is explicitly NOT installed on `Arthur-Ficial/homebrew-tap`, `Arthur-Ficial/nixpkgs`, or `NixOS/nixpkgs` - those are release-side repos and routines must never reach them.
