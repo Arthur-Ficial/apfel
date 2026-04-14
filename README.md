@@ -1,6 +1,6 @@
 # apfel
 
-### The free AI already on your Mac.
+### The free AI already on your Mac. The one that works.
 
 [![Version 1.0.1](https://img.shields.io/badge/version-1.0.1-blue)](https://github.com/Arthur-Ficial/apfel)
 [![Swift 6.3+](https://img.shields.io/badge/Swift-6.3%2B-F05138?logo=swift&logoColor=white)](https://swift.org)
