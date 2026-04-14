@@ -172,3 +172,4 @@ Then invoke them as `apfel-cmd "find large files"`, `apfel-port 3000`, etc.
 - The symlinks point at your current clone. If you move or delete the `apfel/` directory, the symlinks break - re-run the loop from the new location.
 - Make sure `$HOME/.local/bin` is on your `$PATH` (`echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc`).
 - To remove later: `for d in cmd explain gitsum mac-narrator naming oneliner port wtd; do rm -f "$HOME/.local/bin/apfel-$d"; done`
+ 
