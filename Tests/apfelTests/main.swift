@@ -87,6 +87,7 @@ suite("CLIArgumentsTests") { runCLIArgumentsTests() }
 suite("ModelAvailabilityTests") { runModelAvailabilityTests() }
 suite("CLIErrorsTests") { runCLIErrorsTests() }
 suite("CLIValidateTests") { runCLIValidateTests() }
+suite("SchemaParserTests") { runSchemaParserTests() }
 
 // MARK: - Summary
 
