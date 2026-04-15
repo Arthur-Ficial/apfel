@@ -9,6 +9,7 @@ public struct ChatCompletionRequest: Decodable, Sendable {
     public let model: String
     public let messages: [OpenAIMessage]
     public let stream: Bool?
+    public let stream_options: StreamOptions?
     public let temperature: Double?
     public let max_tokens: Int?
     public let seed: Int?
@@ -24,6 +25,10 @@ public struct ChatCompletionRequest: Decodable, Sendable {
     public let x_context_strategy: String?
     public let x_context_max_turns: Int?
     public let x_context_output_reserve: Int?
+}
+
+public struct StreamOptions: Decodable, Sendable, Equatable {
+    public let include_usage: Bool?
 }
 
 public struct OpenAIMessage: Codable, Sendable, Equatable {

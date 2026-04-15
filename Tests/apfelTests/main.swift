@@ -76,6 +76,7 @@ suite("ApfelErrorTests") { runApfelErrorTests() }
 suite("ToolCallHandlerTests") { runToolCallHandlerTests() }
 suite("ContextStrategyTests") { runContextStrategyTests() }
 suite("OpenAIModelsTests") { runOpenAIModelsTests() }
+suite("JSONFenceStripperTests") { runJSONFenceStripperTests() }
 suite("ChatRequestValidatorTests") { runChatRequestValidatorTests() }
 suite("OriginValidatorTests") { runOriginValidatorTests() }
 suite("MCPClientTests") { runMCPClientTests() }

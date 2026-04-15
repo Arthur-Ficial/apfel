@@ -563,7 +563,10 @@ def test_mcp_invalid_json_rejected():
 # ============================================================================
 
 def test_json_mode_with_mcp():
-    """JSON mode still works when MCP tools are enabled."""
+    """JSON mode still works when MCP tools are enabled.
+
+    Per #101, json_object content must be directly parseable, no markdown fence.
+    """
     resp = httpx.post(f"{API_URL}/chat/completions", json={
         "model": MODEL,
         "messages": [
@@ -576,6 +579,9 @@ def test_json_mode_with_mcp():
     assert data["choices"][0]["finish_reason"] == "stop"
     content = data["choices"][0]["message"]["content"]
     assert content is not None
+    assert not content.strip().startswith("```"), \
+        f"json_object must not return a markdown code fence; got: {content!r}"
+    json.loads(content)
 
 
 def test_max_tokens_respected_with_mcp():

@@ -339,8 +339,13 @@ def test_streaming_object_field():
 
 
 def test_streaming_usage_chunk_keeps_openai_chunk_envelope():
-    """Final usage chunk must still include standard chunk metadata for strict clients."""
-    chunks = chat_stream([{"role": "user", "content": "Reply with exactly OK."}])
+    """Final usage chunk (opt-in via stream_options.include_usage) must still
+    include standard chunk metadata for strict clients. Per #100, the chunk is
+    only emitted when the client opts in."""
+    chunks = chat_stream(
+        [{"role": "user", "content": "Reply with exactly OK."}],
+        stream_options={"include_usage": True},
+    )
     usage_chunks = [chunk for chunk in chunks if chunk.get("usage") is not None]
     assert usage_chunks, "Expected a final usage chunk in the stream"
     usage_chunk = usage_chunks[-1]
@@ -351,6 +356,18 @@ def test_streaming_usage_chunk_keeps_openai_chunk_envelope():
     assert usage["prompt_tokens"] > 0
     assert usage["completion_tokens"] > 0
     assert usage["total_tokens"] == usage["prompt_tokens"] + usage["completion_tokens"]
+
+
+def test_streaming_omits_usage_chunk_without_opt_in():
+    """Per OpenAI spec, the empty-choices usage chunk must only be emitted when
+    stream_options.include_usage=true. See #100."""
+    chunks = chat_stream([{"role": "user", "content": "Reply with exactly OK."}])
+    empty_choice_chunks = [c for c in chunks if not c.get("choices")]
+    assert not empty_choice_chunks, \
+        f"empty-choices chunk emitted without opt-in: {empty_choice_chunks!r}"
+    usage_chunks = [c for c in chunks if c.get("usage") is not None]
+    assert not usage_chunks, \
+        f"usage field present on stream chunk without opt-in: {usage_chunks!r}"
 
 
 def test_streaming_tool_call_chunks_include_indexed_deltas():

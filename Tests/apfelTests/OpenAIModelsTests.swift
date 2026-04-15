@@ -49,6 +49,31 @@ func runOpenAIModelsTests() {
         try assertEqual(choice, .auto)
     }
 
+    test("ChatCompletionRequest decodes stream_options.include_usage=true") {
+        let json = #"{"model":"apple-foundationmodel","messages":[{"role":"user","content":"hi"}],"stream":true,"stream_options":{"include_usage":true}}"#
+        let req = try decode(ChatCompletionRequest.self, from: json)
+        try assertEqual(req.stream_options?.include_usage, true)
+    }
+
+    test("ChatCompletionRequest decodes stream_options.include_usage=false") {
+        let json = #"{"model":"apple-foundationmodel","messages":[{"role":"user","content":"hi"}],"stream":true,"stream_options":{"include_usage":false}}"#
+        let req = try decode(ChatCompletionRequest.self, from: json)
+        try assertEqual(req.stream_options?.include_usage, false)
+    }
+
+    test("ChatCompletionRequest stream_options is nil when absent") {
+        let json = #"{"model":"apple-foundationmodel","messages":[{"role":"user","content":"hi"}],"stream":true}"#
+        let req = try decode(ChatCompletionRequest.self, from: json)
+        try assertNil(req.stream_options)
+    }
+
+    test("ChatCompletionRequest stream_options.include_usage is nil when object empty") {
+        let json = #"{"model":"apple-foundationmodel","messages":[{"role":"user","content":"hi"}],"stream":true,"stream_options":{}}"#
+        let req = try decode(ChatCompletionRequest.self, from: json)
+        try assertNotNil(req.stream_options)
+        try assertNil(req.stream_options?.include_usage)
+    }
+
     test("RawJSON preserves nested tool parameter schemas as valid JSON") {
         let tool = try decode(OpenAITool.self, from:
             #"{"type":"function","function":{"name":"weather","description":"lookup","parameters":{"type":"object","properties":{"city":{"type":"string"}}}}}"#

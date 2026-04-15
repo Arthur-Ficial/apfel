@@ -50,6 +50,8 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
         )
     }
     let isStreaming = chatRequest.stream == true
+    let includeUsage = chatRequest.stream_options?.include_usage == true
+    let jsonMode = chatRequest.response_format?.type == "json_object"
 
     if let failure = ChatRequestValidator.validate(chatRequest) {
         return chatFailure(
@@ -93,7 +95,6 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
     let session: LanguageModelSession
     let finalPrompt: String
     do {
-        let jsonMode = chatRequest.response_format?.type == "json_object"
         (session, finalPrompt) = try await ContextManager.makeSession(
             messages: chatRequest.messages,
             tools: effectiveTools,
@@ -132,6 +133,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
             originalMessages: chatRequest.messages, sessionOptions: sessionOpts,
             id: requestId, created: created, genOpts: genOpts,
             promptTokens: promptTokens, streaming: isStreaming,
+            includeUsage: includeUsage, jsonMode: jsonMode,
             requestBody: requestBodyString, events: events
         )
         return (result.response, result.trace)
@@ -141,12 +143,14 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
         let result = streamingResponse(session: session, prompt: finalPrompt,
                                        id: requestId, created: created,
                                        genOpts: genOpts, promptTokens: promptTokens,
+                                       includeUsage: includeUsage,
                                        requestBody: requestBodyString, events: events)
         return (result.response, result.trace)
     } else {
         let result = try await nonStreamingResponse(session: session, prompt: finalPrompt,
                                                      id: requestId, created: created,
                                                      genOpts: genOpts, promptTokens: promptTokens,
+                                                     jsonMode: jsonMode,
                                                      requestBody: requestBodyString, events: events)
         return (result.response, result.trace)
     }
@@ -167,6 +171,8 @@ private func mcpAutoExecuteResponse(
     genOpts: GenerationOptions,
     promptTokens: Int,
     streaming: Bool,
+    includeUsage: Bool,
+    jsonMode: Bool,
     requestBody: String?,
     events: [String]
 ) async throws -> (response: Response, trace: ChatRequestTrace) {
@@ -227,22 +233,25 @@ private func mcpAutoExecuteResponse(
         )
     }
 
-    let completionTokens = await TokenCounter.shared.count(content)
+    let deliveredContent = jsonMode ? JSONFenceStripper.strip(content) : content
+    let completionTokens = await TokenCounter.shared.count(deliveredContent)
     let finishReason = "stop"
 
     if streaming {
-        // Wrap final content as SSE events: role -> content -> stop -> usage -> [DONE]
-        let chunks: [String] = [
+        // SSE event order: role -> content -> stop [-> usage when opted in] -> [DONE]
+        var chunks: [String] = [
             sseDataLine(sseRoleChunk(id: id, created: created)),
-            sseDataLine(sseContentChunk(id: id, created: created, content: content)),
+            sseDataLine(sseContentChunk(id: id, created: created, content: deliveredContent)),
             sseDataLine(ChatCompletionChunk(
                 id: id, object: "chat.completion.chunk", created: created, model: modelName,
                 choices: [.init(index: 0, delta: .init(role: nil, content: nil, tool_calls: nil), finish_reason: finishReason, logprobs: nil)],
                 usage: nil
             )),
-            sseDataLine(sseUsageChunk(id: id, created: created, promptTokens: promptTokens, completionTokens: completionTokens)),
-            sseDone,
         ]
+        if includeUsage {
+            chunks.append(sseDataLine(sseUsageChunk(id: id, created: created, promptTokens: promptTokens, completionTokens: completionTokens)))
+        }
+        chunks.append(sseDone)
         let body = chunks.joined()
         var headers = HTTPFields()
         headers[.contentType] = "text/event-stream"
@@ -262,7 +271,7 @@ private func mcpAutoExecuteResponse(
             )
         )
     } else {
-        let responseMessage = OpenAIMessage(role: "assistant", content: .text(content))
+        let responseMessage = OpenAIMessage(role: "assistant", content: .text(deliveredContent))
         let payload = ChatCompletionResponse(
             id: id,
             object: "chat.completion",
@@ -300,13 +309,14 @@ private func nonStreamingResponse(
     created: Int,
     genOpts: GenerationOptions,
     promptTokens: Int,
+    jsonMode: Bool,
     requestBody: String?,
     events: [String]
 ) async throws -> (response: Response, trace: ChatRequestTrace) {
     let nsRetryMax = serverState.config.retryEnabled ? serverState.config.retryCount : 0
-    let content: String
+    let rawContent: String
     do {
-        content = try await withRetry(maxRetries: nsRetryMax) {
+        rawContent = try await withRetry(maxRetries: nsRetryMax) {
             let result = try await session.respond(to: prompt, options: genOpts)
             return result.content
         }
@@ -325,17 +335,20 @@ private func nonStreamingResponse(
     }
 
     // Detect tool calls in response
-    let toolCalls = ToolCallHandler.detectToolCall(in: content)
+    let toolCalls = ToolCallHandler.detectToolCall(in: rawContent)
     let responseMessage: OpenAIMessage
+    let deliveredContent: String
     if let calls = toolCalls {
         let openAIToolCalls = calls.map { ToolCall(id: $0.id, type: "function",
                                                     function: ToolCallFunction(name: $0.name, arguments: $0.argumentsString)) }
         responseMessage = OpenAIMessage(role: "assistant", content: nil, tool_calls: openAIToolCalls)
+        deliveredContent = rawContent
     } else {
-        responseMessage = OpenAIMessage(role: "assistant", content: .text(content))
+        deliveredContent = jsonMode ? JSONFenceStripper.strip(rawContent) : rawContent
+        responseMessage = OpenAIMessage(role: "assistant", content: .text(deliveredContent))
     }
 
-    let completionTokens = await TokenCounter.shared.count(content)
+    let completionTokens = await TokenCounter.shared.count(deliveredContent)
     let finishReason = FinishReasonResolver.resolve(
         hasToolCalls: toolCalls != nil,
         completionTokens: completionTokens,
@@ -365,7 +378,7 @@ private func nonStreamingResponse(
             error: nil,
             requestBody: requestBody,
             responseBody: captureTruncatedLogBody(body, enabled: serverState.config.debug),
-            events: events + ["non-stream response chars=\(content.count)", "finish_reason=\(finishReason)"]
+            events: events + ["non-stream response chars=\(deliveredContent.count)", "finish_reason=\(finishReason)"]
         )
     )
 }
@@ -379,6 +392,7 @@ private func streamingResponse(
     created: Int,
     genOpts: GenerationOptions,
     promptTokens: Int,
+    includeUsage: Bool,
     requestBody: String?,
     events: [String]
 ) -> (response: Response, trace: ChatRequestTrace) {
@@ -482,11 +496,15 @@ private func streamingResponse(
                     continuation.yield(ByteBuffer(string: stopLine))
                 }
 
-                // Emit usage stats as a proper chunk before [DONE]
-                let usageChunk = sseUsageChunk(id: id, created: created, promptTokens: promptTokens, completionTokens: completionTokens)
-                let usageLine = sseDataLine(usageChunk)
-                responseLines?.append(usageLine.trimmingCharacters(in: .whitespacesAndNewlines))
-                continuation.yield(ByteBuffer(string: usageLine))
+                // Per OpenAI spec, emit the usage chunk only when the client
+                // opted in via stream_options.include_usage=true. Without
+                // opt-in, the empty-choices usage chunk is a spec violation.
+                if includeUsage {
+                    let usageChunk = sseUsageChunk(id: id, created: created, promptTokens: promptTokens, completionTokens: completionTokens)
+                    let usageLine = sseDataLine(usageChunk)
+                    responseLines?.append(usageLine.trimmingCharacters(in: .whitespacesAndNewlines))
+                    continuation.yield(ByteBuffer(string: usageLine))
+                }
 
                 continuation.yield(ByteBuffer(string: sseDone))
                 responseLines?.append("data: [DONE]")

@@ -160,21 +160,87 @@ def test_tool_round_trip_tool_last():
 # MARK: - JSON Mode
 
 def test_json_mode():
-    """response_format: json_object produces valid JSON (may need markdown stripping)."""
+    """response_format: json_object MUST return directly-parseable JSON, no markdown fences.
+
+    Per the OpenAI spec, `{"type": "json_object"}` "ensures the message the model
+    generates is valid JSON". The server strips any fence the model emits before
+    returning the content. See issue #101.
+    """
     resp = client.chat.completions.create(
         model=MODEL,
         messages=[{"role": "user", "content": "Return a JSON object with key 'answer' and value 42."}],
         response_format={"type": "json_object"}
     )
-    content = resp.choices[0].message.content.strip()
-    # Strip markdown code fences if present (model sometimes wraps JSON in ```)
-    if content.startswith("```"):
-        lines = content.split("\n")
-        # Remove first line (```json or ```) and last line (```)
-        lines = [l for l in lines if not l.strip().startswith("```")]
-        content = "\n".join(lines).strip()
+    content = resp.choices[0].message.content
+    assert not content.strip().startswith("```"), \
+        f"json_object must not return a markdown code fence; got: {content!r}"
     parsed = json.loads(content)
     assert isinstance(parsed, dict)
+
+
+def test_streaming_no_usage_chunk_without_opt_in():
+    """Per OpenAI spec, the empty-choices usage chunk must only appear when
+    `stream_options.include_usage=true`. Without opt-in, the stream goes
+    straight from the final content/finish_reason chunk to `[DONE]`. See #100."""
+    chunks = []
+    with httpx.stream(
+        "POST",
+        "http://localhost:11434/v1/chat/completions",
+        json={
+            "model": MODEL,
+            "messages": [{"role": "user", "content": "Say hi in one word."}],
+            "max_tokens": 10,
+            "stream": True,
+        },
+        timeout=60,
+    ) as resp:
+        for line in resp.iter_lines():
+            if line.startswith("data: "):
+                data = line[6:]
+                if data.strip() == "[DONE]":
+                    break
+                chunks.append(json.loads(data))
+
+    # No chunk should have an empty choices array (that's the usage chunk)
+    for chunk in chunks:
+        assert chunk["choices"], \
+            f"empty-choices chunk emitted without stream_options.include_usage: {chunk!r}"
+        assert "usage" not in chunk or chunk["usage"] is None, \
+            f"usage field present on stream chunk without opt-in: {chunk!r}"
+
+
+def test_streaming_usage_chunk_with_opt_in():
+    """When `stream_options.include_usage=true`, the server must emit a usage
+    chunk with empty choices before `[DONE]`. See #100."""
+    chunks = []
+    with httpx.stream(
+        "POST",
+        "http://localhost:11434/v1/chat/completions",
+        json={
+            "model": MODEL,
+            "messages": [{"role": "user", "content": "Say hi in one word."}],
+            "max_tokens": 10,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        },
+        timeout=60,
+    ) as resp:
+        for line in resp.iter_lines():
+            if line.startswith("data: "):
+                data = line[6:]
+                if data.strip() == "[DONE]":
+                    break
+                chunks.append(json.loads(data))
+
+    # Exactly one chunk must have empty choices and usage set
+    usage_chunks = [c for c in chunks if not c["choices"]]
+    assert len(usage_chunks) == 1, \
+        f"expected exactly one usage chunk, got {len(usage_chunks)}"
+    usage = usage_chunks[0].get("usage")
+    assert usage is not None
+    assert usage["prompt_tokens"] > 0
+    assert usage["completion_tokens"] > 0
+    assert usage["total_tokens"] == usage["prompt_tokens"] + usage["completion_tokens"]
 
 
 # MARK: - Models Endpoint
