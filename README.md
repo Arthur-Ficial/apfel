@@ -369,6 +369,7 @@ Built something on top of apfel? Open an issue and it can be added here.
 - [https://apfelclaw.yamanlabs.com/](https://apfelclaw.yamanlabs.com/), [https://github.com/julianyaman/apfelclaw](https://github.com/julianyaman/apfelclaw), by [https://github.com/julianYaman](https://github.com/julianYaman) — local AI agent that reads files, calendar, mail, and Mac status via read-only tools
 - [https://github.com/bhaskarvilles/fruit-chat](https://github.com/bhaskarvilles/fruit-chat), by [https://github.com/bhaskarvilles](https://github.com/bhaskarvilles) — "Apple Intelligence in your browser" — browser-based chat UI that talks to `apfel --serve` over the OpenAI-compatible API
 - [https://github.com/lucaspwo/local-claude](https://github.com/lucaspwo/local-claude), by [https://github.com/lucaspwo](https://github.com/lucaspwo) — Claude Code wrapper that swaps in apfel as a local backend via a small Anthropic↔OpenAI proxy; keeps cloud claude untouched
+- [apfeller](https://github.com/hasit/apfeller), by [hasit](https://github.com/hasit) - [apfeller](https://hasit.github.io/apfeller/) is a small app manager for local shell apps built around apfel. Install the manager once, browse the published [Catalog](https://hasit.github.io/apfeller/catalog/), and install only the apps you want. New apps are welcome at [apfeller-apps](https://github.com/hasit/apfeller-apps).
 
 ## Contributing
 
