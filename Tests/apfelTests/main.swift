@@ -88,6 +88,11 @@ suite("ModelAvailabilityTests") { runModelAvailabilityTests() }
 suite("CLIErrorsTests") { runCLIErrorsTests() }
 suite("CLIValidateTests") { runCLIValidateTests() }
 suite("SchemaParserTests") { runSchemaParserTests() }
+suite("FinishReasonResolverTests") { runFinishReasonResolverTests() }
+suite("ToolResolutionTests") { runToolResolutionTests() }
+suite("BodyLimitsTests") { runBodyLimitsTests() }
+suite("TraceBufferTests") { runTraceBufferTests() }
+suite("StreamTaskBoxTests") { runStreamTaskBoxTests() }
 
 // MARK: - Summary
 

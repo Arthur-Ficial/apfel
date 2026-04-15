@@ -30,7 +30,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
     var events: [String] = []
 
     // Decode request body
-    let body = try await request.body.collect(upTo: 1024 * 1024)
+    let body = try await request.body.collect(upTo: BodyLimits.maxRequestBodyBytes)
     let requestBodyString = capturedRequestBody(body, debugEnabled: serverState.config.debug)
     events.append("request bytes=\(body.readableBytes)")
 
@@ -69,7 +69,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
     let contextConfig = ContextConfig(
         strategy: chatRequest.x_context_strategy.flatMap { ContextStrategy(rawValue: $0) } ?? .newestFirst,
         maxTurns: chatRequest.x_context_max_turns,
-        outputReserve: chatRequest.x_context_output_reserve ?? 512
+        outputReserve: chatRequest.x_context_output_reserve ?? BodyLimits.defaultOutputReserveTokens
     )
 
     // Build session options from request (retry config comes from server config)
@@ -84,18 +84,10 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
     )
 
     // Inject MCP tools if client didn't send any; track source for auto-execution
-    let effectiveTools: [OpenAITool]?
-    let toolsAreMCPInjected: Bool
-    if let clientTools = chatRequest.tools, !clientTools.isEmpty {
-        effectiveTools = clientTools
-        toolsAreMCPInjected = false
-    } else if let mcp = serverState.mcpManager {
-        effectiveTools = await mcp.allTools()
-        toolsAreMCPInjected = true
-    } else {
-        effectiveTools = chatRequest.tools
-        toolsAreMCPInjected = false
-    }
+    let mcpTools = await serverState.mcpManager?.allTools()
+    let resolvedTools = ToolResolution.resolve(clientTools: chatRequest.tools, mcpTools: mcpTools)
+    let effectiveTools = resolvedTools.tools
+    let toolsAreMCPInjected = resolvedTools.injected
 
     // Build session + extract final prompt via ContextManager (Transcript API)
     let session: LanguageModelSession
@@ -334,26 +326,21 @@ private func nonStreamingResponse(
 
     // Detect tool calls in response
     let toolCalls = ToolCallHandler.detectToolCall(in: content)
-    var finishReason: String
     let responseMessage: OpenAIMessage
     if let calls = toolCalls {
-        finishReason = "tool_calls"
         let openAIToolCalls = calls.map { ToolCall(id: $0.id, type: "function",
                                                     function: ToolCallFunction(name: $0.name, arguments: $0.argumentsString)) }
         responseMessage = OpenAIMessage(role: "assistant", content: nil, tool_calls: openAIToolCalls)
     } else {
         responseMessage = OpenAIMessage(role: "assistant", content: .text(content))
-        finishReason = "stop"  // may be overridden below
     }
 
     let completionTokens = await TokenCounter.shared.count(content)
-
-    // Detect truncation: if max_tokens was set and response hit the limit
-    if finishReason == "stop",
-       let maxTok = genOpts.maximumResponseTokens,
-       completionTokens >= maxTok {
-        finishReason = "length"
-    }
+    let finishReason = FinishReasonResolver.resolve(
+        hasToolCalls: toolCalls != nil,
+        completionTokens: completionTokens,
+        maxTokens: genOpts.maximumResponseTokens
+    ).openAIValue
 
     let payload = ChatCompletionResponse(
         id: id,
@@ -427,7 +414,7 @@ private func streamingResponse(
             let roleLine = sseDataLine(sseRoleChunk(id: id, created: created))
             responseLines?.append(roleLine.trimmingCharacters(in: .whitespacesAndNewlines))
             continuation.yield(ByteBuffer(string: roleLine))
-            eventBox.append("sent role chunk")
+            await eventBox.append("sent role chunk")
 
             let stream = session.streamResponse(to: prompt, options: genOpts)
             var prev = ""
@@ -443,7 +430,7 @@ private func streamingResponse(
                         responseLines?.append(chunkLine.trimmingCharacters(in: .whitespacesAndNewlines))
                         continuation.yield(ByteBuffer(string: chunkLine))
                         chunkCount += 1
-                        eventBox.append("chunk #\(chunkCount) delta=\(delta.count) total=\(content.count)")
+                        await eventBox.append("chunk #\(chunkCount) delta=\(delta.count) total=\(content.count)")
                     }
                     prev = content
                 }
@@ -451,7 +438,12 @@ private func streamingResponse(
                 // Check accumulated response for tool calls before emitting final chunk
                 let toolCalls = ToolCallHandler.detectToolCall(in: prev)
                 completionTokens = await TokenCounter.shared.count(prev)
-                let finishReason: String
+                let resolved = FinishReasonResolver.resolve(
+                    hasToolCalls: toolCalls != nil,
+                    completionTokens: completionTokens,
+                    maxTokens: genOpts.maximumResponseTokens
+                )
+                let finishReason = resolved.openAIValue
                 if let calls = toolCalls {
                     let openAIToolCalls = calls.map {
                         ToolCall(id: $0.id, type: "function",
@@ -470,7 +462,7 @@ private func streamingResponse(
                         choices: [.init(
                             index: 0,
                             delta: .init(role: nil, content: nil, tool_calls: chunkToolCalls),
-                            finish_reason: "tool_calls",
+                            finish_reason: finishReason,
                             logprobs: nil
                         )],
                         usage: nil
@@ -478,23 +470,16 @@ private func streamingResponse(
                     let toolLine = sseDataLine(toolChunk)
                     responseLines?.append(toolLine.trimmingCharacters(in: .whitespacesAndNewlines))
                     continuation.yield(ByteBuffer(string: toolLine))
-                    eventBox.append("tool_calls detected: \(calls.map(\.name).joined(separator: ", "))")
-                    finishReason = "tool_calls"
+                    await eventBox.append("tool_calls detected: \(calls.map(\.name).joined(separator: ", "))")
                 } else {
-                    // Detect truncation
-                    var streamFinish = "stop"
-                    if let maxTok = genOpts.maximumResponseTokens, completionTokens >= maxTok {
-                        streamFinish = "length"
-                    }
                     let stopChunk = ChatCompletionChunk(
                         id: id, object: "chat.completion.chunk", created: created, model: modelName,
-                        choices: [.init(index: 0, delta: .init(role: nil, content: nil, tool_calls: nil), finish_reason: streamFinish, logprobs: nil)],
+                        choices: [.init(index: 0, delta: .init(role: nil, content: nil, tool_calls: nil), finish_reason: finishReason, logprobs: nil)],
                         usage: nil
                     )
                     let stopLine = sseDataLine(stopChunk)
                     responseLines?.append(stopLine.trimmingCharacters(in: .whitespacesAndNewlines))
                     continuation.yield(ByteBuffer(string: stopLine))
-                    finishReason = streamFinish
                 }
 
                 // Emit usage stats as a proper chunk before [DONE]
@@ -505,10 +490,10 @@ private func streamingResponse(
 
                 continuation.yield(ByteBuffer(string: sseDone))
                 responseLines?.append("data: [DONE]")
-                eventBox.append("sent [DONE] total_chars=\(prev.count) finish_reason=\(finishReason)")
+                await eventBox.append("sent [DONE] total_chars=\(prev.count) finish_reason=\(finishReason)")
             } catch is CancellationError {
                 streamCancelled = true
-                eventBox.append("stream cancelled by client")
+                await eventBox.append("stream cancelled by client")
             } catch {
                 let classified = ApfelError.classify(error)
                 let errPayload = OpenAIErrorResponse(error: .init(
@@ -519,7 +504,7 @@ private func streamingResponse(
                 continuation.yield(ByteBuffer(string: errMsg))
                 continuation.yield(ByteBuffer(string: sseDone))
                 streamError = classified.openAIMessage
-                eventBox.append("stream error: \(classified.cliLabel) \(classified.openAIMessage)")
+                await eventBox.append("stream error: \(classified.cliLabel) \(classified.openAIMessage)")
             }
 
             let completionLog = RequestLog(
@@ -534,7 +519,7 @@ private func streamingResponse(
                 error: streamError,
                 request_body: requestBody,
                 response_body: responseLines.map { truncateForLog($0.joined(separator: "\n\n")) },
-                events: eventBox.snapshot()
+                events: await eventBox.snapshot()
             )
             await serverState.logStore.append(completionLog)
         }
@@ -564,53 +549,6 @@ private func streamingResponse(
             events: events + ["stream request accepted", "final stream completion logged separately"]
         )
     )
-}
-
-// MARK: - TraceBuffer
-
-final class TraceBuffer: @unchecked Sendable {
-    private var events: [String]
-    private let lock = NSLock()
-
-    init(events: [String]) { self.events = events }
-
-    func append(_ event: String) {
-        lock.lock(); events.append(event); lock.unlock()
-    }
-
-    func snapshot() -> [String] {
-        lock.lock(); defer { lock.unlock() }; return events
-    }
-}
-
-actor StreamCleanup {
-    private var didRun = false
-
-    func run(_ operation: @Sendable () async -> Void) async {
-        if didRun {
-            return
-        }
-        didRun = true
-        await operation()
-    }
-}
-
-final class StreamTaskBox: @unchecked Sendable {
-    private let lock = NSLock()
-    private var task: Task<Void, Never>?
-
-    func set(_ task: Task<Void, Never>) {
-        lock.lock()
-        self.task = task
-        lock.unlock()
-    }
-
-    func cancel() {
-        lock.lock()
-        let task = self.task
-        lock.unlock()
-        task?.cancel()
-    }
 }
 
 private func chatFailure(

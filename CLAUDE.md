@@ -38,6 +38,7 @@ The Debug GUI has been extracted to its own repo: [apfel-gui](https://github.com
 - **Clean code, clean logic.** No hacks. Proper error types. Real token counts.
 - **Swift 6 strict concurrency.** No data races.
 - **Usable security.** Secure defaults that don't get in the way.
+- **TDD always, red-to-green, 100%.** No production code without a failing test first. Write the test, watch it fail for the right reason, write the minimal code to pass, watch it go green. No exceptions, no "I'll add tests after", no "this is too simple to test". Behavior-preserving refactors are covered by existing tests; new behavior gets a new failing test first.
 
 ### Documentation style:
 
