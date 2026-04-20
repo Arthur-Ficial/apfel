@@ -46,7 +46,7 @@ check-toolchain:
 
 # --- Build ---
 
-build: check-toolchain generate-build-info
+build: check-toolchain
 	swift build -c release
 	@$(MAKE) --no-print-directory generate-man-page
 
