@@ -38,6 +38,26 @@ func runMCPClientTests() {
         try assertEqual(args["a"] as! Int, 247)
     }
 
+    test("formatToolsCall falls back to empty object when arguments are invalid JSON") {
+        let msg = MCPProtocol.toolsCallRequest(id: 3, name: "multiply", arguments: "{not json}")
+        let data = msg.data(using: .utf8)!
+        let obj = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        let params = obj["params"] as! [String: Any]
+        let args = params["arguments"] as! [String: Any]
+        try assertEqual(args.count, 0)
+    }
+
+    test("formatToolsCall preserves JSON array arguments") {
+        let msg = MCPProtocol.toolsCallRequest(id: 3, name: "sum", arguments: "[1,2,3]")
+        let data = msg.data(using: .utf8)!
+        let obj = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        let params = obj["params"] as! [String: Any]
+        let args = params["arguments"] as! [Any]
+        try assertEqual(args.count, 3)
+        try assertEqual(args[0] as? Int, 1)
+        try assertEqual(args[2] as? Int, 3)
+    }
+
     test("formatNotificationInitialized has no id") {
         let msg = MCPProtocol.initializedNotification()
         let data = msg.data(using: .utf8)!
@@ -55,6 +75,15 @@ func runMCPClientTests() {
         let info = try MCPProtocol.parseInitializeResponse(json)
         try assertEqual(info.name, "calc")
         try assertEqual(info.version, "1.0")
+    }
+
+    test("parseInitializeResponse defaults missing name and version to unknown") {
+        let json = """
+        {"jsonrpc":"2.0","id":1,"result":{"serverInfo":{}}}
+        """
+        let info = try MCPProtocol.parseInitializeResponse(json)
+        try assertEqual(info.name, "unknown")
+        try assertEqual(info.version, "unknown")
     }
 
     test("parseToolsListResponse extracts tool definitions") {
@@ -78,12 +107,30 @@ func runMCPClientTests() {
         try assertEqual(tools[1].function.name, "multiply")
     }
 
+    test("parseToolsListResponse drops nameless tool entries") {
+        let json = """
+        {"jsonrpc":"2.0","id":2,"result":{"tools":[{"description":"broken","inputSchema":{"type":"object","properties":{}}},{"name":"multiply","description":"Multiply","inputSchema":{"type":"object","properties":{}}}]}}
+        """
+        let tools = try MCPProtocol.parseToolsListResponse(json)
+        try assertEqual(tools.count, 1)
+        try assertEqual(tools[0].function.name, "multiply")
+    }
+
     test("parseToolCallResponse extracts text result") {
         let json = """
         {"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"20501"}],"isError":false}}
         """
         let result = try MCPProtocol.parseToolCallResponse(json)
         try assertEqual(result.text, "20501")
+        try assertTrue(!result.isError)
+    }
+
+    test("parseToolCallResponse returns the first content item when multiple are present") {
+        let json = """
+        {"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"first"},{"type":"text","text":"second"}],"isError":false}}
+        """
+        let result = try MCPProtocol.parseToolCallResponse(json)
+        try assertEqual(result.text, "first")
         try assertTrue(!result.isError)
     }
 
@@ -103,6 +150,15 @@ func runMCPClientTests() {
         let result = try MCPProtocol.parseToolCallResponse(json)
         try assertTrue(result.isError)
         try assertTrue(result.text.contains("Unknown tool"))
+    }
+
+    test("parseToolCallResponse uses fallback text when JSON-RPC error omits message") {
+        let json = """
+        {"jsonrpc":"2.0","id":5,"error":{"code":-32603}}
+        """
+        let result = try MCPProtocol.parseToolCallResponse(json)
+        try assertTrue(result.isError)
+        try assertEqual(result.text, "Unknown MCP error")
     }
 
     // MARK: - Edge cases
