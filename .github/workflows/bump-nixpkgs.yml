@@ -27,7 +27,7 @@ jobs:
     if: ${{ github.repository == 'Arthur-Ficial/apfel' }}
     steps:
       - name: Check out apfel (for scripts/bump-nixpkgs.sh)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Determine target version
         id: version
@@ -54,7 +54,7 @@ jobs:
 
       - name: Check out Arthur-Ficial fork of nixpkgs
         if: env.skip == '0'
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           repository: Arthur-Ficial/nixpkgs
           token: ${{ secrets.NIXPKGS_BUMP_PAT }}
