@@ -24,39 +24,27 @@ Tool calling works in both. 4096-token context.
 
 ## Requirements & Install
 
-- **macOS 26 Tahoe or newer**, Apple Silicon (M1+), and Apple Intelligence enabled: [https://support.apple.com/en-us/121115](https://support.apple.com/en-us/121115)
-- Building from source requires Command Line Tools with the macOS 26.4 SDK (Swift 6.3). No Xcode required.
-
-**Homebrew** (recommended):
+macOS 26 Tahoe+, Apple Silicon (M1+), [Apple Intelligence enabled](https://support.apple.com/en-us/121115). Building from source needs Command Line Tools with the macOS 26.4 SDK (Swift 6.3) - no Xcode.
 
 ```bash
-brew install apfel
-brew upgrade apfel
+brew install apfel                          # homebrew-core
+brew install Arthur-Ficial/tap/apfel        # tap, zero-latency
+git clone https://github.com/Arthur-Ficial/apfel.git && cd apfel && make install
 ```
 
-Latest release immediately via tap: `brew install Arthur-Ficial/tap/apfel` (homebrew-core autobump can lag up to 24h).
-
-**Build from source:**
-
-```bash
-git clone https://github.com/Arthur-Ficial/apfel.git
-cd apfel
-make install
-```
-
-Update with `brew upgrade apfel` or `apfel --update`. Troubleshooting and Apple Intelligence setup notes: [docs/install.md](docs/install.md).
+Update: `brew upgrade apfel` or `apfel --update`. Troubleshooting: [docs/install.md](docs/install.md).
 
 ## Quick Start
 
 ### UNIX tool
 
-Shell note: if your prompt contains `!`, prefer single quotes in `zsh`/`bash` so history expansion does not break copy-paste. Example: `apfel 'Hello, Mac!'`
+Quote prompts with `!` in single quotes (zsh/bash history expansion): `apfel 'Hello, Mac!'`.
 
 ```bash
 # Single prompt
 apfel "What is the capital of Austria?"
 
-# Permissive mode -- reduces guardrail false positives for creative/long prompts
+# Permissive mode - reduces guardrail false positives for creative/long prompts
 apfel --permissive "Write a dramatic opening for a thriller novel"
 
 # Stream output
@@ -92,9 +80,9 @@ result=$(apfel -q "Capital of France? One word.")
 ```bash
 apfel --serve                              # foreground
 brew services start apfel                  # background (like Ollama)
+brew services stop apfel
+APFEL_TOKEN=$(uuidgen) APFEL_MCP=/path/to/tools.py brew services start apfel
 ```
-
-Then in another terminal:
 
 ```bash
 curl http://localhost:11434/v1/chat/completions \
@@ -102,11 +90,8 @@ curl http://localhost:11434/v1/chat/completions \
   -d '{"model":"apple-foundationmodel","messages":[{"role":"user","content":"Hello"}]}'
 ```
 
-Works with the official Python client:
-
 ```python
 from openai import OpenAI
-
 client = OpenAI(base_url="http://localhost:11434/v1", api_key="unused")
 resp = client.chat.completions.create(
     model="apple-foundationmodel",
@@ -115,13 +100,7 @@ resp = client.chat.completions.create(
 print(resp.choices[0].message.content)
 ```
 
-Run in background (auto-restarts, starts at login - [docs/background-service.md](docs/background-service.md)):
-
-```bash
-brew services start apfel
-brew services stop apfel
-APFEL_TOKEN=$(uuidgen) APFEL_MCP=/path/to/tools.py brew services start apfel
-```
+Background service details: [docs/background-service.md](docs/background-service.md).
 
 ### Quick testing chat
 
@@ -138,7 +117,7 @@ Ctrl-C exits. Context is trimmed automatically ([docs/context-strategies.md](doc
 
 ## Demos
 
-See [`demo/`](./demo/) for real-world shell scripts powered by apfel.
+Shell scripts in [`demo/`](./demo/):
 
 **[cmd](./demo/cmd)** - natural language to shell command:
 
@@ -194,7 +173,7 @@ Longer walkthroughs: [docs/demos.md](docs/demos.md).
 
 ## MCP Tool Support
 
-Attach [Model Context Protocol](https://modelcontextprotocol.io/) tool servers with `--mcp`. apfel discovers tools, executes them automatically, and returns the final answer. No glue code needed.
+Attach [Model Context Protocol](https://modelcontextprotocol.io/) servers with `--mcp`. apfel discovers, invokes, and returns.
 
 ```bash
 apfel --mcp ./mcp/calculator/server.py "What is 15 times 27?"
@@ -206,51 +185,39 @@ tool: multiply({"a": 15, "b": 27}) = 405                                        
 15 times 27 is 405.                                                                ← stdout
 ```
 
-Tool info goes to stderr; only the answer goes to stdout. Use `-q` to suppress tool info.
+Use `-q` to suppress tool info.
 
 ```bash
-apfel --mcp ./server_a.py --mcp ./server_b.py "Use both tools"  # multiple servers
-apfel --serve --mcp ./mcp/calculator/server.py                   # server mode
-apfel --chat --mcp ./mcp/calculator/server.py                    # chat mode
+apfel --mcp ./server_a.py --mcp ./server_b.py "Use both tools"
+apfel --serve --mcp ./mcp/calculator/server.py
+apfel --chat --mcp ./mcp/calculator/server.py
 ```
 
-Ships with a calculator MCP server at [`mcp/calculator/`](./mcp/calculator/). See [docs/mcp-calculator.md](docs/mcp-calculator.md) for details.
+Ships with a calculator at [`mcp/calculator/`](./mcp/calculator/) ([docs/mcp-calculator.md](docs/mcp-calculator.md)).
 
-**Remote MCP servers** (Streamable HTTP transport, MCP spec 2025-03-26):
+**Remote MCP servers** (Streamable HTTP, MCP spec 2025-03-26):
 
 ```bash
-# Remote MCP server over HTTPS
 apfel --mcp https://mcp.example.com/v1 "what tools do you have?"
 
-# With bearer token auth - prefer the env var (flag is visible in ps aux)
+# bearer token - prefer env var (flag is visible in ps aux)
 APFEL_MCP_TOKEN=mytoken apfel --mcp https://mcp.example.com/v1 "..."
-apfel --mcp https://mcp.example.com/v1 --mcp-token mytoken "..."
 
-# Mixed local + remote
+# mixed local + remote
 apfel --mcp /path/to/local.py --mcp https://remote.example.com/v1 "..."
 ```
 
-> **Security:** Use `APFEL_MCP_TOKEN` env var rather than `--mcp-token` - CLI flags are visible in `ps aux`. apfel refuses to send a bearer token over plaintext `http://` (use `https://`).
-
-**Ready-made MCPs.** [apfel-mcp.franzai.com](https://apfel-mcp.franzai.com/) ships three token-budget-optimized MCP servers designed for apfel's 4096-token window: `url-fetch` (Readability article extraction with SSRF guards), `ddg-search` (DuckDuckGo web search, no API key), and the flagship compound `search-and-fetch` tool. Install with `brew install Arthur-Ficial/tap/apfel-mcp`. The repo is open for contributions of new apfel-optimized MCPs - rules at [apfel-mcp.franzai.com/#contribute](https://apfel-mcp.franzai.com/#contribute).
-
-**Persistent MCP registry + full config.** [Arthur-Ficial/apfel-run](https://github.com/Arthur-Ficial/apfel-run) is a MIT wrapper that turns apfel into a **configurable, wrangler-style tool**. See the dedicated [apfel-run section below](#apfel-run-the-configuration-layer) for the full feature set.
+> **Security:** prefer `APFEL_MCP_TOKEN` over `--mcp-token` (ps aux). apfel refuses bearer tokens over plaintext `http://`.
 
 ## apfel-run: optional config layer
 
-**apfel has no config file of its own, by design.** It is a pure UNIX-style tool: flags + env vars + stdin/stdout. Config belongs in the shell (`export APFEL_MCP=...`), in shell aliases, in your `.envrc`, or in systemd/launchd units - the same places every other UNIX CLI's config lives. Keeping apfel flag-driven means it composes cleanly with pipes, shell scripts, Docker, CI runners, and anything else that already understands env vars.
-
-If you want a config file anyway (many MCPs, multi-profile workflows, team configs checked into git), [**apfel-run**](https://github.com/Arthur-Ficial/apfel-run) is an optional MIT wrapper that adds one. TOML-based, XDG-compliant file discovery, profiles, schema validation, `execve`-based drop-in replacement for the `apfel` binary.
+apfel itself has no config file - flags + env vars, like any UNIX tool. If you want a TOML config (many MCPs, profiles, team configs in git), [**apfel-run**](https://github.com/Arthur-Ficial/apfel-run) is an MIT wrapper that adds one via `execve` drop-in.
 
 ```bash
 brew install Arthur-Ficial/tap/apfel-run
 apfel-run config init                 # starter ~/.config/apfel/config.toml
-alias apfel=apfel-run                 # optional - every apfel flag still works
+alias apfel=apfel-run                 # optional, every apfel flag still works
 ```
-
-**When to use it:** 2+ MCPs daily (saves typing), different setups per context (profiles), team config in git (`./apfel.toml`), CI validation (`apfel-run config validate`). Otherwise keep using `apfel` directly - nothing changes.
-
-Full docs + schema: [github.com/Arthur-Ficial/apfel-run](https://github.com/Arthur-Ficial/apfel-run).
 
 ## OpenAI API Compatibility
 
@@ -340,47 +307,17 @@ apfel --benchmark -o json                # performance report
 
 ## The apfel tree
 
-Everything that grows out of apfel. Each project ships as its own repo, its own landing page, and its own Homebrew formula or cask.
+Projects built on apfel. Each ships as its own repo + Homebrew formula.
 
-### Trunk
-
-- **apfel** - on-device Apple FoundationModels CLI and OpenAI-compatible server. The root of the tree; every other project uses it for inference.
-  - Site: [https://apfel.franzai.com](https://apfel.franzai.com)
-  - Repo: [https://github.com/Arthur-Ficial/apfel](https://github.com/Arthur-Ficial/apfel)
-  - Install: `brew install apfel`
-
-### Apps
-
-- **apfel-chat** - multi-conversation macOS chat client. Streaming markdown, speech I/O, image analysis via Apple Vision. Runs 100% on-device.
-  - Site: [https://apfel-chat.franzai.com](https://apfel-chat.franzai.com)
-  - Repo: [https://github.com/Arthur-Ficial/apfel-chat](https://github.com/Arthur-Ficial/apfel-chat)
-  - Install: `brew install Arthur-Ficial/tap/apfel-chat`
-
-- **apfel-clip** - AI clipboard actions from the macOS menu bar. Summarize, translate, rewrite, and reshape whatever you just copied, without leaving the keyboard.
-  - Site: [https://apfel-clip.franzai.com](https://apfel-clip.franzai.com)
-  - Repo: [https://github.com/Arthur-Ficial/apfel-clip](https://github.com/Arthur-Ficial/apfel-clip)
-  - Install: `brew install Arthur-Ficial/tap/apfel-clip`
-
-- **apfel-quick** - instant AI overlay for macOS. Press a key, ask anything, get an on-device answer - then dismiss.
-  - Site: [https://apfel-quick.franzai.com](https://apfel-quick.franzai.com)
-  - Repo: [https://github.com/Arthur-Ficial/apfel-quick](https://github.com/Arthur-Ficial/apfel-quick)
-  - Install: `brew install Arthur-Ficial/tap/apfel-quick`
-
-- **apfelpad** - a formula notepad for thinking. On-device AI as a first-class function you can call inline from cells, the way a spreadsheet treats `SUM`.
-  - Site: [https://apfelpad.franzai.com](https://apfelpad.franzai.com)
-  - Repo: [https://github.com/Arthur-Ficial/apfelpad](https://github.com/Arthur-Ficial/apfelpad)
-  - Install: `brew install Arthur-Ficial/tap/apfelpad`
-
-### Extensions
-
-- **apfel-mcp** - three token-budget-optimized MCP servers for apfel's 4096-token context window: `url-fetch` (Readability article extraction with SSRF guards), `ddg-search` (DuckDuckGo web search, no API key), and the flagship compound `search-and-fetch` tool. Open for contributions of more apfel-optimized MCPs.
-  - Site: [https://apfel-mcp.franzai.com](https://apfel-mcp.franzai.com)
-  - Repo: [https://github.com/Arthur-Ficial/apfel-mcp](https://github.com/Arthur-Ficial/apfel-mcp)
-  - Install: `brew install Arthur-Ficial/tap/apfel-mcp`
-
-- **apfel-gui** - native SwiftUI debug inspector for apfel with request timeline, MCP protocol viewer, chat, and TTS/STT. Built for developers who want to watch exactly what apfel sends to the model.
-  - Repo: [https://github.com/Arthur-Ficial/apfel-gui](https://github.com/Arthur-Ficial/apfel-gui)
-  - Install: `brew install Arthur-Ficial/tap/apfel-gui`
+| Project | What it does | Install |
+|---------|--------------|---------|
+| [**apfel**](https://apfel.franzai.com) | The root. On-device FoundationModels CLI + OpenAI-compatible server. | `brew install apfel` |
+| [**apfel-chat**](https://apfel-chat.franzai.com) | macOS chat client: streaming markdown, speech I/O, Apple Vision image analysis. | `brew install Arthur-Ficial/tap/apfel-chat` |
+| [**apfel-clip**](https://apfel-clip.franzai.com) | Menu-bar AI actions on the clipboard: summarize, translate, rewrite. | `brew install Arthur-Ficial/tap/apfel-clip` |
+| [**apfel-quick**](https://apfel-quick.franzai.com) | Instant AI overlay: press a key, ask, answer, dismiss. | `brew install Arthur-Ficial/tap/apfel-quick` |
+| [**apfelpad**](https://apfelpad.franzai.com) | Formula notepad - on-device AI as an inline cell function. | `brew install Arthur-Ficial/tap/apfelpad` |
+| [**apfel-mcp**](https://apfel-mcp.franzai.com) | Token-budget-optimized MCPs for the 4096 window: `url-fetch`, `ddg-search`, `search-and-fetch`. | `brew install Arthur-Ficial/tap/apfel-mcp` |
+| [**apfel-gui**](https://github.com/Arthur-Ficial/apfel-gui) | SwiftUI debug inspector: request timeline, MCP protocol viewer, TTS/STT. | `brew install Arthur-Ficial/tap/apfel-gui` |
 
 ## Community Projects
 
@@ -395,11 +332,9 @@ Built something on top of apfel? Open an issue and it can be added here.
 
 ## Contributing
 
-Bug reports, feature ideas, pull requests, and new community projects all welcome. Open an issue or a PR on the relevant repo.
+Issues and PRs welcome on any `Arthur-Ficial/apfel*` repo.
 
-**#agentswelcome** - AI agent contributions are welcome across the entire apfel tree - apfel itself and every `Arthur-Ficial/apfel-*` repo. Claude Code, Codex, Cursor, Aider, any autonomous coding agent: if you can read the repo's `CLAUDE.md`, run the tests, and open a pull request, you can contribute. Credit your tool in the commit trailer (e.g. `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>`), include a passing test suite, and submit. Humans and agents are reviewed on the same bar: clean code, passing tests, honesty about limits.
-
-The most agent-friendly entry point is [apfel-mcp](https://github.com/Arthur-Ficial/apfel-mcp) - its contribution rules and idea list at [apfel-mcp.franzai.com/#contribute](https://apfel-mcp.franzai.com/#contribute) are written to be unambiguous enough for an agent to follow without human translation.
+**#agentswelcome** - AI agent PRs are fine. Read the repo's `CLAUDE.md`, run the tests, credit the tool in a `Co-Authored-By` trailer. Same bar as humans: clean code, passing tests, honest limits. Most agent-friendly entry point: [apfel-mcp](https://github.com/Arthur-Ficial/apfel-mcp) ([contribution rules](https://apfel-mcp.franzai.com/#contribute)).
 
 ## License
 
