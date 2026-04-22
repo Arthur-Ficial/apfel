@@ -9,10 +9,12 @@ import Foundation
 /// No I/O, no subprocesses - just JSON-RPC 2.0 over MCP.
 public enum MCPProtocol {
 
+    /// The MCP protocol version ApfelCore speaks on the wire.
     public static let protocolVersion = "2025-06-18"
 
     // MARK: - Request formatting
 
+    /// Formats the MCP `initialize` JSON-RPC request.
     public static func initializeRequest(id: Int) -> String {
         return jsonRPC(id: id, method: "initialize", params: [
             "protocolVersion": protocolVersion,
@@ -21,14 +23,22 @@ public enum MCPProtocol {
         ])
     }
 
+    /// Formats the MCP `notifications/initialized` JSON-RPC notification.
     public static func initializedNotification() -> String {
         return jsonRPC(method: "notifications/initialized")
     }
 
+    /// Formats the MCP `tools/list` JSON-RPC request.
     public static func toolsListRequest(id: Int) -> String {
         return jsonRPC(id: id, method: "tools/list")
     }
 
+    /// Formats the MCP `tools/call` JSON-RPC request.
+    ///
+    /// - Parameters:
+    ///   - id: The JSON-RPC request identifier.
+    ///   - name: The tool name to invoke.
+    ///   - arguments: JSON text describing the tool-call arguments.
     public static func toolsCallRequest(id: Int, name: String, arguments: String) -> String {
         let argsObj = (try? JSONSerialization.jsonObject(with: Data(arguments.utf8))) ?? [:]
         return jsonRPC(id: id, method: "tools/call", params: [
@@ -39,11 +49,15 @@ public enum MCPProtocol {
 
     // MARK: - Response parsing
 
+    /// MCP server identity returned from the initialize handshake.
     public struct ServerInfo: Sendable {
+        /// The server name.
         public let name: String
+        /// The server version string.
         public let version: String
     }
 
+    /// Parses the result of an MCP `initialize` response.
     public static func parseInitializeResponse(_ json: String) throws -> ServerInfo {
         let obj = try parseJSON(json)
         guard let result = obj["result"] as? [String: Any],
@@ -56,6 +70,7 @@ public enum MCPProtocol {
         )
     }
 
+    /// Parses the result of an MCP `tools/list` response into OpenAI-style tools.
     public static func parseToolsListResponse(_ json: String) throws -> [OpenAITool] {
         let obj = try parseJSON(json)
         guard let result = obj["result"] as? [String: Any],
@@ -85,11 +100,15 @@ public enum MCPProtocol {
         }
     }
 
+    /// Result of an MCP `tools/call` response.
     public struct ToolCallResult: Sendable {
+        /// The text returned by the tool.
         public let text: String
+        /// Whether the MCP server marked the result as an error.
         public let isError: Bool
     }
 
+    /// Parses an MCP `tools/call` response.
     public static func parseToolCallResponse(_ json: String) throws -> ToolCallResult {
         let obj = try parseJSON(json)
 
@@ -134,11 +153,17 @@ public enum MCPProtocol {
     }
 }
 
+/// Stable MCP protocol and transport failures surfaced by ApfelCore.
 public enum MCPError: Error, Sendable, Equatable {
+    /// The server returned malformed or incomplete JSON.
     case invalidResponse(String)
+    /// The remote MCP server returned an application-level error.
     case serverError(String)
+    /// The requested tool does not exist.
     case toolNotFound(String)
+    /// The local subprocess or transport failed.
     case processError(String)
+    /// The request exceeded its timeout budget.
     case timedOut(String)
 }
 

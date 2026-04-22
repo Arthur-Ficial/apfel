@@ -142,6 +142,24 @@ func runApfelErrorMessageTests() {
         try assertEqual(MCPError.timedOut("x").errorDescription,         "x")
     }
 
+    test("ApfelError.localizedDescription equals openAIMessage for every case") {
+        let cases: [ApfelError] = [
+            .guardrailViolation,
+            .contextOverflow,
+            .rateLimited,
+            .concurrentRequest,
+            .assetsUnavailable,
+            .unsupportedGuide,
+            .decodingFailure("bad JSON"),
+            .unsupportedLanguage("tlh"),
+            .toolExecution("calculator exploded"),
+            .unknown("mystery"),
+        ]
+        for error in cases {
+            try assertEqual((error as Error).localizedDescription, error.openAIMessage)
+        }
+    }
+
     // MARK: - ChatRequestValidationFailure.message (HTTP 400 body for bad requests)
 
     test("ChatRequestValidationFailure.message for every case") {

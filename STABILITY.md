@@ -14,6 +14,7 @@ These are covered by semantic versioning. Breaking changes require a major versi
 - `brew services` integration
 - Configuration via environment variables (`APFEL_TOKEN`, `APFEL_MCP`, `APFEL_SYSTEM_PROMPT`)
 - Documented unsupported endpoints (501 responses for embeddings, legacy completions)
+- The public `ApfelCore` Swift Package API
 
 ## What is NOT stable (may change without version bump)
 
@@ -29,6 +30,16 @@ apfel follows semantic versioning:
 - **PATCH** (1.0.x): bug fixes, documentation, CI changes
 - **MINOR** (1.x.0): new flags, new endpoints, new features (backward-compatible)
 - **MAJOR** (x.0.0): removed flags, changed exit codes, breaking API changes
+
+`ApfelCore` follows the same version numbers as apfel itself. There is no separate library version line.
+
+## Deprecation Policy
+
+- Public `ApfelCore` APIs deprecate before removal.
+- A deprecation lands in one released version with `@available(*, deprecated, ...)`.
+- The deprecated API remains available through the next compatible release line.
+- Removal happens only in a major release.
+- Public-surface changes must be called out in [CHANGELOG.md](CHANGELOG.md).
 
 Model output changes from macOS updates are NOT version bumps. See "What is NOT stable" above.
 

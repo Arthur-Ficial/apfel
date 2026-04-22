@@ -9,10 +9,9 @@
 //      call finishes before the next starts) and the leftover buffer remains
 //      consistent.
 //
-// NOT tested here: simultaneous readLine() calls on the same reader. That is
-// the actual race the Mutex refactor targets; today it is a data race and a
-// green test would be meaningless. A TSan-gated test for that belongs in the
-// same commit as the refactor.
+// The key future-safe guarantee added by #105 is that simultaneous readLine()
+// calls on the same reader are serialized safely instead of racing on the
+// leftover buffer.
 // ============================================================================
 
 import Foundation
@@ -141,6 +140,26 @@ func runBufferedLineReaderConcurrencyTests() {
             guard collected[i] == "line-\(i)" else {
                 throw TestFailure("order broken at index \(i): \(collected[i])")
             }
+        }
+    }
+
+    testAsync("simultaneous reads on one reader return distinct complete lines") {
+        let (r, w) = makePipePair()
+        defer { close(r); close(w) }
+
+        writeString(w, "alpha\nbeta\n")
+        let reader = BufferedLineReader(fileDescriptor: r)
+
+        async let first: String = Task.detached {
+            try reader.readLine(timeoutMilliseconds: 2000, operationDescription: "parallel-a")
+        }.value
+        async let second: String = Task.detached {
+            try reader.readLine(timeoutMilliseconds: 2000, operationDescription: "parallel-b")
+        }.value
+
+        let got = try await [first, second].sorted()
+        guard got == ["alpha", "beta"] else {
+            throw TestFailure("simultaneous same-reader reads lost or duplicated lines: \(got)")
         }
     }
 }

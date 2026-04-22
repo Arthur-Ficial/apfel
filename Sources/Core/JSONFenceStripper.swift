@@ -5,15 +5,17 @@
 
 import Foundation
 
-/// Strips a surrounding Markdown code fence (```json ... ``` or ``` ... ```)
-/// from JSON content. When `response_format: { "type": "json_object" }` is
+/// Strips a surrounding Markdown code fence from JSON content.
+///
+/// Supports both JSON-tagged and untagged fences. When
+/// `response_format: { "type": "json_object" }` is
 /// requested, the OpenAI spec requires the message content to be valid JSON.
 /// Apple's on-device model often emits a fenced block despite explicit
 /// instructions, so we post-process the output to deliver raw JSON.
 ///
 /// - Returns the trimmed inner content when the input is fenced with an
-///   opening ```` ``` ```` (optionally followed by `json`/`JSON`) on its own
-///   line and a closing ```` ``` ```` on its own line.
+///   opening three-backtick fence (optionally followed by `json`/`JSON`) on
+///   its own line and a closing three-backtick fence on its own line.
 /// - Returns the input trimmed of surrounding whitespace otherwise.
 public enum JSONFenceStripper {
     public static func strip(_ content: String) -> String {

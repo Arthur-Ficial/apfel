@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Select latest Xcode
         run: |
@@ -53,3 +55,53 @@ jobs:
 
           # Note: performance_test.py requires Apple Intelligence (benchmark runs inference).
           # It runs locally via make preflight / make release.
+
+  apfelcore-public-api:
+    runs-on: macos-26
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Select latest Xcode
+        run: |
+          latest=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          if [[ -n "$latest" ]]; then
+            echo "Selecting $latest"
+            sudo xcode-select -s "$latest/Contents/Developer"
+          fi
+          echo "Active SDK: $(xcrun --show-sdk-version)"
+          echo "Swift: $(swift --version 2>&1 | head -1)"
+
+      - name: Build ApfelCore target
+        run: swift build --target ApfelCore
+
+      - name: Strict concurrency build for ApfelCore
+        run: swift build --target ApfelCore -Xswiftc -strict-concurrency=complete
+
+      - name: Build ApfelCore docs
+        run: |
+          mkdir -p "$RUNNER_TEMP/apfelcore-docs"
+          swift package \
+            --allow-writing-to-directory "$RUNNER_TEMP/apfelcore-docs" \
+            generate-documentation \
+            --target ApfelCore \
+            --disable-indexing \
+            --warnings-as-errors \
+            --output-path "$RUNNER_TEMP/apfelcore-docs"
+
+      - name: Diagnose API breakage for ApfelCore
+        run: |
+          baseline=$(git describe --tags --abbrev=0)
+          if git show "${baseline}:Package.swift" | grep -Fq '.library(name: "ApfelCore"'; then
+            swift package diagnose-api-breaking-changes "$baseline" --products ApfelCore
+          else
+            echo "Skipping API breakage check: ${baseline} predates the ApfelCore product."
+          fi
+
+      - name: Install Python test dependencies
+        run: pip3 install --break-system-packages pytest
+
+      - name: Downstream consumer smoke test
+        run: python3 -m pytest Tests/integration/test_apfelcore_package.py -v --tb=short

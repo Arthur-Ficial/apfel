@@ -15,7 +15,7 @@ import Foundation
 ///
 /// See:
 /// https://developer.apple.com/documentation/foundationmodels/systemlanguagemodel/availability-swift.enum/unavailablereason
-public enum ModelAvailability: Sendable, Equatable {
+public enum ModelAvailability: Sendable, Equatable, Hashable, CustomStringConvertible, CustomDebugStringConvertible {
     case available
     case appleIntelligenceNotEnabled
     case deviceNotEligible
@@ -101,6 +101,23 @@ public enum ModelAvailability: Sendable, Equatable {
                   - Filing an issue at
                     https://github.com/Arthur-Ficial/apfel/issues
                 """
+        }
+    }
+
+    public var description: String { shortLabel }
+
+    public var debugDescription: String {
+        switch self {
+        case .available:
+            return "ModelAvailability.available"
+        case .appleIntelligenceNotEnabled:
+            return "ModelAvailability.appleIntelligenceNotEnabled"
+        case .deviceNotEligible:
+            return "ModelAvailability.deviceNotEligible"
+        case .modelNotReady:
+            return "ModelAvailability.modelNotReady"
+        case .unknownUnavailable:
+            return "ModelAvailability.unknownUnavailable"
         }
     }
 }

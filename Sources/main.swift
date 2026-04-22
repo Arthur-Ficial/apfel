@@ -102,7 +102,7 @@ default:
 if let fmt = parsed.outputFormat { outputFormat = fmt }
 if parsed.quiet { quietMode = true }
 if parsed.noColor { noColorFlag = true }
-if parsed.debug { apfelDebugEnabled = true }
+if parsed.debug { ApfelDebugConfiguration.isEnabled = true }
 
 // Build the prompt: positional args + piped stdin + attached files.
 var prompt = parsed.prompt

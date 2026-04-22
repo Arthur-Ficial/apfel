@@ -2,13 +2,13 @@ import Foundation
 import ApfelCore
 
 func runDebugLoggerTests() {
-    test("apfelDebugEnabled defaults to false") {
-        try assertEqual(apfelDebugEnabled, false)
+    test("ApfelDebugConfiguration defaults to false") {
+        try assertEqual(ApfelDebugConfiguration.isEnabled, false)
     }
-    test("apfelDebugEnabled can be toggled") {
-        let original = apfelDebugEnabled
-        defer { apfelDebugEnabled = original }
-        apfelDebugEnabled = true
-        try assertEqual(apfelDebugEnabled, true)
+    test("ApfelDebugConfiguration can be toggled") {
+        let original = ApfelDebugConfiguration.isEnabled
+        defer { ApfelDebugConfiguration.isEnabled = original }
+        ApfelDebugConfiguration.isEnabled = true
+        try assertEqual(ApfelDebugConfiguration.isEnabled, true)
     }
 }

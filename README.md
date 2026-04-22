@@ -51,6 +51,29 @@ make install
 
 Update with `brew upgrade apfel` or `apfel --update`. Troubleshooting and Apple Intelligence setup notes: [docs/install.md](docs/install.md).
 
+## Swift Package
+
+`ApfelCore` is a public Swift Package library product for the pure, FoundationModels-free pieces of apfel. It is for downstream Swift developers who want the OpenAI-compatible types, validation, MCP helpers, schema parsing, retry classification, and context-strategy policies without depending on the `apfel` executable target.
+
+Add the package and import `ApfelCore`:
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/Arthur-Ficial/apfel.git", from: "1.0.5")
+]
+```
+
+```swift
+import ApfelCore
+
+let request = ChatCompletionRequest(
+    model: "apple-foundationmodel",
+    messages: [OpenAIMessage(role: "user", content: .text("Hello"))]
+)
+```
+
+Library docs live in [Sources/Core/ApfelCore.docc/](Sources/Core/ApfelCore.docc/). Runnable examples live in [Examples/](Examples/).
+
 ## Quick Start
 
 ### UNIX tool

@@ -48,6 +48,12 @@ The preflight script checks:
 
 Do not release if preflight fails.
 
+Before cutting a release, review whether the branch changes the public `ApfelCore` Swift Package API.
+
+- Additive `ApfelCore` API changes belong in [../CHANGELOG.md](../CHANGELOG.md) and require at least a minor bump.
+- Deprecated or removed `ApfelCore` API changes belong in [../CHANGELOG.md](../CHANGELOG.md) and require the deprecation policy from [../STABILITY.md](../STABILITY.md) to be followed.
+- Any removal or incompatible signature change to public `ApfelCore` API is a major release.
+
 ## Release commands
 
 ```bash
@@ -119,8 +125,8 @@ All three channels are "owned" in the sense that we file PRs against them and re
 apfel follows semver. See [STABILITY.md](../STABILITY.md) for the full stability policy.
 
 - **PATCH** (1.0.x): bug fixes, documentation, CI improvements
-- **MINOR** (1.x.0): new flags, new endpoints, backward-compatible features
-- **MAJOR** (x.0.0): removed flags, changed exit codes, breaking API changes
+- **MINOR** (1.x.0): new flags, new endpoints, backward-compatible features, additive public `ApfelCore` API
+- **MAJOR** (x.0.0): removed flags, changed exit codes, breaking API changes, removed or incompatible public `ApfelCore` API
 
 Model output changes from macOS updates are NOT version bumps.
 

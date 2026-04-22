@@ -4,11 +4,15 @@
 
 import Foundation
 
-public enum FinishReason: Sendable, Equatable {
+public enum FinishReason: Sendable, Equatable, Hashable, CustomStringConvertible, CustomDebugStringConvertible {
+    /// The response completed normally.
     case stop
+    /// The response stopped because it reached the requested token cap.
     case length
+    /// The response ended in a tool-call payload instead of plain text.
     case toolCalls
 
+    /// The OpenAI-compatible wire value for this finish reason.
     public var openAIValue: String {
         switch self {
         case .stop: return "stop"
@@ -16,6 +20,10 @@ public enum FinishReason: Sendable, Equatable {
         case .toolCalls: return "tool_calls"
         }
     }
+
+    public var description: String { openAIValue }
+
+    public var debugDescription: String { "FinishReason.\(openAIValue)" }
 }
 
 public enum FinishReasonResolver {

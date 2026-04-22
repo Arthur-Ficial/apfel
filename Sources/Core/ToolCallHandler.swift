@@ -14,7 +14,7 @@ public struct ToolDef: Sendable {
 }
 
 /// Result of executing a prompt through the unified processPrompt() pipeline.
-public struct ProcessPromptResult: Sendable {
+package struct ProcessPromptResult: Sendable {
     public let content: String
     public let toolLog: [ToolLogEntry]
 
@@ -24,7 +24,7 @@ public struct ProcessPromptResult: Sendable {
 }
 
 /// A log entry from executing a tool call.
-public struct ToolLogEntry: Sendable, Equatable {
+package struct ToolLogEntry: Sendable, Equatable {
     public let name: String
     public let args: String
     public let result: String

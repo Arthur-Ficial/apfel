@@ -4,7 +4,7 @@
 
 import Foundation
 
-public actor TraceBuffer {
+package actor TraceBuffer {
     private var events: [String]
 
     public init(events: [String]) {

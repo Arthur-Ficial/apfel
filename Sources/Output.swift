@@ -62,14 +62,14 @@ func printError(_ message: String) {
 
 // MARK: - Debug Output
 
-/// Print a debug message to stderr. Zero-cost when apfelDebugEnabled is false.
+/// Print a debug message to stderr. Zero-cost when debug logging is disabled.
 func debugLog(_ message: @autoclosure () -> String) {
-    guard apfelDebugEnabled else { return }
+    guard ApfelDebugConfiguration.isEnabled else { return }
     printStderr("\(styled("debug:", .dim)) \(message())")
 }
 
-/// Print a categorized debug message to stderr. Zero-cost when apfelDebugEnabled is false.
+/// Print a categorized debug message to stderr. Zero-cost when debug logging is disabled.
 func debugLog(_ category: String, _ message: @autoclosure () -> String) {
-    guard apfelDebugEnabled else { return }
+    guard ApfelDebugConfiguration.isEnabled else { return }
     printStderr("\(styled("debug[\(category)]:", .dim)) \(message())")
 }

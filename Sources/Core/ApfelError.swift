@@ -1,6 +1,6 @@
 import Foundation
 
-public enum ApfelError: Error, Equatable, Sendable {
+public enum ApfelError: Error, Equatable, Hashable, Sendable {
     case guardrailViolation
     case contextOverflow
     case rateLimited
@@ -149,6 +149,37 @@ public enum ApfelError: Error, Equatable, Sendable {
             return true
         default:
             return false
+        }
+    }
+}
+
+extension ApfelError: LocalizedError, CustomStringConvertible, CustomDebugStringConvertible {
+    public var errorDescription: String? { openAIMessage }
+
+    public var description: String { openAIMessage }
+
+    public var debugDescription: String {
+        switch self {
+        case .guardrailViolation:
+            return "ApfelError.guardrailViolation"
+        case .contextOverflow:
+            return "ApfelError.contextOverflow"
+        case .rateLimited:
+            return "ApfelError.rateLimited"
+        case .concurrentRequest:
+            return "ApfelError.concurrentRequest"
+        case .assetsUnavailable:
+            return "ApfelError.assetsUnavailable"
+        case .unsupportedGuide:
+            return "ApfelError.unsupportedGuide"
+        case .decodingFailure(let message):
+            return "ApfelError.decodingFailure(\(String(reflecting: message)))"
+        case .unsupportedLanguage(let message):
+            return "ApfelError.unsupportedLanguage(\(String(reflecting: message)))"
+        case .toolExecution(let message):
+            return "ApfelError.toolExecution(\(String(reflecting: message)))"
+        case .unknown(let message):
+            return "ApfelError.unknown(\(String(reflecting: message)))"
         }
     }
 }

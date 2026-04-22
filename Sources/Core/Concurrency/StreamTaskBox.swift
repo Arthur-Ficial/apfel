@@ -13,7 +13,7 @@
 import Foundation
 import os
 
-public final class StreamTaskBox: Sendable {
+package final class StreamTaskBox: Sendable {
     private let storage = OSAllocatedUnfairLock<Task<Void, Never>?>(initialState: nil)
 
     public init() {}

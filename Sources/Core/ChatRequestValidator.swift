@@ -5,15 +5,23 @@
 
 import Foundation
 
-public enum UnsupportedChatParameter: String, Sendable, Equatable {
+/// Chat-completions request fields that ApfelCore rejects explicitly.
+public enum UnsupportedChatParameter: String, Sendable, Equatable, Hashable, CustomStringConvertible, CustomDebugStringConvertible {
+    /// Requests token log probabilities in the response.
     case logprobs
+    /// Requests multiple completions from one prompt.
     case n
+    /// Requests stop-sequence handling that Apple's local model does not expose.
     case stop
+    /// Requests OpenAI presence-penalty tuning.
     case presencePenalty = "presence_penalty"
+    /// Requests OpenAI frequency-penalty tuning.
     case frequencyPenalty = "frequency_penalty"
 
+    /// The JSON field name for the unsupported parameter.
     public var name: String { rawValue }
 
+    /// The stable user-facing explanation for why the parameter is unsupported.
     public var message: String {
         switch self {
         case .logprobs:
@@ -29,6 +37,16 @@ public enum UnsupportedChatParameter: String, Sendable, Equatable {
         }
     }
 
+    public var description: String { name }
+
+    public var debugDescription: String { "UnsupportedChatParameter.\(rawValue)" }
+
+    /// Detects the first unsupported parameter present in a request.
+    ///
+    /// Detection is intentionally ordered so error reporting stays stable.
+    ///
+    /// - Parameter request: The decoded chat-completions request.
+    /// - Returns: The first unsupported parameter found, or `nil`.
     public static func detect(in request: ChatCompletionRequest) -> UnsupportedChatParameter? {
         if request.logprobs == true {
             return .logprobs
@@ -49,14 +67,22 @@ public enum UnsupportedChatParameter: String, Sendable, Equatable {
     }
 }
 
-public enum ChatRequestValidationFailure: Sendable, Equatable {
+/// Stable validation failures for OpenAI-compatible chat-completions requests.
+public enum ChatRequestValidationFailure: Sendable, Equatable, Hashable, CustomStringConvertible, CustomDebugStringConvertible {
+    /// The request did not include any messages.
     case emptyMessages
+    /// The request used a parameter ApfelCore does not support.
     case unsupportedParameter(UnsupportedChatParameter)
+    /// The final message role was not `user` or `tool`.
     case invalidLastRole
+    /// The request included image content.
     case imageContent
+    /// A numeric or string parameter had an invalid value.
     case invalidParameterValue(String)
+    /// The request asked for a model name other than `apple-foundationmodel`.
     case invalidModel(String)
 
+    /// The stable HTTP-facing error message for this validation failure.
     public var message: String {
         switch self {
         case .emptyMessages:
@@ -74,6 +100,7 @@ public enum ChatRequestValidationFailure: Sendable, Equatable {
         }
     }
 
+    /// The stable log/debug event string for this validation failure.
     public var event: String {
         switch self {
         case .emptyMessages:
@@ -90,12 +117,20 @@ public enum ChatRequestValidationFailure: Sendable, Equatable {
             return "validation failed: unknown model \(model)"
         }
     }
+
+    public var description: String { message }
+
+    public var debugDescription: String { event }
 }
 
 public enum ChatRequestValidator {
     /// The only model name this server accepts.
     public static let validModel = "apple-foundationmodel"
 
+    /// Validates a decoded chat-completions request.
+    ///
+    /// - Parameter request: The request to validate.
+    /// - Returns: The first validation failure encountered, or `nil`.
     public static func validate(_ request: ChatCompletionRequest) -> ChatRequestValidationFailure? {
         guard !request.messages.isEmpty else {
             return .emptyMessages
