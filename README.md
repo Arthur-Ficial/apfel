@@ -11,20 +11,14 @@
 [![Website](https://img.shields.io/badge/web-apfel.franzai.com-16A34A)](https://apfel.franzai.com)
 [![#agentswelcome](https://img.shields.io/badge/%23agentswelcome-PRs%20welcome-0066cc?style=for-the-badge&labelColor=0d1117&logo=probot&logoColor=white)](#contributing)
 
-Every Mac with Apple Silicon ships a built-in language model as part of Apple Intelligence. `apfel` gives you access to it as a proper UNIX tool and as a local OpenAI-compatible server. No API keys, no cloud, no downloads. It's already on your machine.
-
-## What It Is
-
-Every Apple Silicon Mac with Apple Intelligence includes Apple's on-device foundation model. `apfel` exposes it through [https://developer.apple.com/documentation/foundationmodels](https://developer.apple.com/documentation/foundationmodels) so you can use it directly from the shell and from any OpenAI SDK.
+Apple Silicon Macs ship a built-in LLM via [Apple FoundationModels](https://developer.apple.com/documentation/foundationmodels). `apfel` exposes it as a UNIX tool and a local OpenAI-compatible server. 100% on-device. No API keys, no cloud.
 
 | Mode | Command | What you get |
 |------|---------|--------------|
 | UNIX tool | `apfel "prompt"` / `echo "text" \| apfel` | Pipe-friendly answers, file attachments, JSON output, exit codes |
 | OpenAI-compatible server | `apfel --serve` | Drop-in local `http://localhost:11434/v1` backend for OpenAI SDKs |
 
-Tool calling works in both modes. Inference stays 100% on-device. The context window is 4096 tokens.
-
-An interactive mini chat (`apfel --chat`) also ships for quick testing - see [Quick testing chat](#quick-testing-chat) below. For a more sophisticated chat, use [apfel-chat](https://github.com/Arthur-Ficial/apfel-chat).
+Tool calling works in both. 4096-token context.
 
 ![apfel CLI](screenshots/cli.png)
 
@@ -131,7 +125,7 @@ APFEL_TOKEN=$(uuidgen) APFEL_MCP=/path/to/tools.py brew services start apfel
 
 ### Quick testing chat
 
-A small interactive chat is included for kicking the tyres on a prompt or a local MCP server without writing a client. It is a byproduct of the UNIX tool and server work, not the main surface - for a more sophisticated chat, use [apfel-chat](https://github.com/Arthur-Ficial/apfel-chat).
+`apfel --chat` is a small REPL for testing prompts or MCP servers. For a real chat app, see [apfel-chat](https://github.com/Arthur-Ficial/apfel-chat).
 
 ```bash
 apfel --chat
@@ -140,7 +134,7 @@ apfel --chat --mcp ./mcp/calculator/server.py      # chat with MCP tools
 apfel --chat --debug                                # debug output to stderr
 ```
 
-Ctrl-C exits cleanly. Context window is managed automatically with configurable strategies ([docs/context-strategies.md](docs/context-strategies.md)).
+Ctrl-C exits. Context is trimmed automatically ([docs/context-strategies.md](docs/context-strategies.md)).
 
 ## Demos
 
