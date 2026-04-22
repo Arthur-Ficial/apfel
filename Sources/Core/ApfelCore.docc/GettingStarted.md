@@ -1,10 +1,10 @@
 # Getting Started
 
-Add apfel as a package dependency and depend on the `ApfelCore` product:
+The first tagged release that contains `ApfelCore` is `1.1.0`. Add apfel as a package dependency and depend on the `ApfelCore` product:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/Arthur-Ficial/apfel.git", from: "1.0.5")
+    .package(url: "https://github.com/Arthur-Ficial/apfel.git", from: "1.1.0")
 ],
 targets: [
     .executableTarget(

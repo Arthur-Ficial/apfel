@@ -41,8 +41,8 @@ jobs:
       - name: Integration tests (model-free subset)
         run: |
           # GitHub-hosted macos-26 runners are Intel with no Apple Intelligence.
-          # We run every test that does NOT need the model. Full 7-suite
-          # qualification (157 tests) runs locally via `make preflight`/`make release`.
+          # We run every test that does NOT need the model. Full integration
+          # qualification runs locally via `make preflight` / `make release`.
 
           # CLI flag/help/version/file tests (no model needed)
           python3 -m pytest Tests/integration/cli_e2e_test.py \
@@ -105,3 +105,6 @@ jobs:
 
       - name: Downstream consumer smoke test
         run: python3 -m pytest Tests/integration/test_apfelcore_package.py -v --tb=short
+
+      - name: ApfelCore examples smoke test
+        run: python3 -m pytest Tests/integration/test_apfelcore_examples.py -v --tb=short

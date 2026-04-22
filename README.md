@@ -55,11 +55,19 @@ Update with `brew upgrade apfel` or `apfel --update`. Troubleshooting and Apple 
 
 `ApfelCore` is a public Swift Package library product for the pure, FoundationModels-free pieces of apfel. It is for downstream Swift developers who want the OpenAI-compatible types, validation, MCP helpers, schema parsing, retry classification, and context-strategy policies without depending on the `apfel` executable target.
 
-Add the package and import `ApfelCore`:
+The first tagged release that contains `ApfelCore` is `1.1.0`. Depend on the package product directly:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/Arthur-Ficial/apfel.git", from: "1.0.5")
+    .package(url: "https://github.com/Arthur-Ficial/apfel.git", from: "1.1.0")
+],
+targets: [
+    .executableTarget(
+        name: "MyTool",
+        dependencies: [
+            .product(name: "ApfelCore", package: "apfel")
+        ]
+    )
 ]
 ```
 
@@ -331,17 +339,21 @@ Swift 6.3 strict concurrency. Three targets: `ApfelCore` (pure logic, unit-testa
 ## Build & Test
 
 ```bash
+make test                                # release build + all unit/integration tests
+make preflight                           # full release qualification
 make install                             # build release + install to /usr/local/bin
 make build                               # build release only
 make version                             # print current version
-make release-minor                       # bump minor: 0.6.x -> 0.7.0
+make release                             # patch release
+make release TYPE=minor                  # minor release
+make release TYPE=major                  # major release
 swift build                              # quick debug build (no version bump)
 swift run apfel-tests                    # unit tests
 python3 -m pytest Tests/integration/ -v  # integration tests
 apfel --benchmark -o json                # performance report
 ```
 
-`.version` is the single source of truth. Only `make release` (via CI) bumps versions. Local builds do not change the version.
+`.version` is the single source of truth. Only `make release` bumps versions. Local builds do not change the version.
 
 ## The apfel tree
 
