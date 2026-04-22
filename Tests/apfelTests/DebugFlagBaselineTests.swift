@@ -1,11 +1,11 @@
 // ============================================================================
-// DebugFlagBaselineTests.swift — Public contract for the future-safe debug
+// DebugFlagBaselineTests.swift — Package-internal contract for the future-safe debug
 // configuration introduced by issue #105.
 //
 // The old `nonisolated(unsafe) var apfelDebugEnabled` was data-race-prone and
 // not library-grade. The replacement must still be easy to use from sync and
-// async contexts, but the public surface should now be a namespaced
-// configuration API instead of a bare global variable.
+// async contexts, but it should remain package-scoped instead of leaking into
+// the public `ApfelCore` semver surface.
 // ============================================================================
 
 import Foundation

@@ -180,25 +180,29 @@ func runApfelCorePublicAPIUsageTests() {
         let _: ToolChoice = .specific(name: "x")
         let _: Set<ToolChoice> = [.auto, .required]
 
-        // ResponseFormat (Decodable-only, so construct via JSON)
-        let fmt = try JSONDecoder().decode(
-            ResponseFormat.self, from: Data(#"{"type":"text"}"#.utf8)
-        )
+        // ResponseFormat
+        let fmt = ResponseFormat(type: "text")
         let _: String = fmt.type
         let _ = requireSendable(fmt)
         let _: Set<ResponseFormat> = [fmt]
-
-        // StreamOptions (Decodable-only, construct via JSON)
-        let opts = try JSONDecoder().decode(
-            StreamOptions.self, from: Data(#"{"include_usage":true}"#.utf8)
+        try assertEqual(
+            try JSONDecoder().decode(ResponseFormat.self, from: Data(#"{"type":"text"}"#.utf8)),
+            fmt
         )
+
+        // StreamOptions
+        let opts = StreamOptions(include_usage: true)
         let _: Bool? = opts.include_usage
         let _ = requireSendable(opts)
+        try assertEqual(
+            try JSONDecoder().decode(StreamOptions.self, from: Data(#"{"include_usage":true}"#.utf8)),
+            opts
+        )
 
-        // ChatCompletionRequest (Decodable-only)
-        let req = try JSONDecoder().decode(
-            ChatCompletionRequest.self,
-            from: Data(#"{"model":"apple-foundationmodel","messages":[{"role":"user","content":"hi"}]}"#.utf8)
+        // ChatCompletionRequest
+        let req = ChatCompletionRequest(
+            model: "apple-foundationmodel",
+            messages: [OpenAIMessage(role: "user", content: .text("hi"))]
         )
         let _: String              = req.model
         let _: [OpenAIMessage]     = req.messages
@@ -221,6 +225,13 @@ func runApfelCorePublicAPIUsageTests() {
         let _: Int?                = req.x_context_output_reserve
         let _ = requireSendable(req)
         let _: Set<ChatCompletionRequest> = [req]
+        try assertEqual(
+            try JSONDecoder().decode(
+                ChatCompletionRequest.self,
+                from: Data(#"{"model":"apple-foundationmodel","messages":[{"role":"user","content":"hi"}]}"#.utf8)
+            ),
+            req
+        )
     }
 
     // MARK: - ChatRequestValidator surface
@@ -326,15 +337,6 @@ func runApfelCorePublicAPIUsageTests() {
         let _: ContextConfig   = ContextConfig.defaults
         try assertEqual(ContextConfig.defaults.strategy, .newestFirst)
         let _: Set<ContextConfig> = [cfg, .defaults]
-    }
-
-    // MARK: - Debug configuration
-
-    test("ApfelDebugConfiguration.isEnabled is a public Bool with sync read/write") {
-        let original = ApfelDebugConfiguration.isEnabled
-        defer { ApfelDebugConfiguration.isEnabled = original }
-        ApfelDebugConfiguration.isEnabled = true
-        try assertEqual(ApfelDebugConfiguration.isEnabled, true)
     }
 
     // MARK: - JSONFenceStripper

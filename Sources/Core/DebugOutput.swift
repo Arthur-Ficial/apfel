@@ -5,11 +5,11 @@ import os
 /// The value is intentionally synchronous to keep hot logging call-sites cheap,
 /// but the storage is lock-protected so reads and writes remain data-race-safe
 /// under Swift 6 strict concurrency.
-public enum ApfelDebugConfiguration {
+package enum ApfelDebugConfiguration {
     private static let storage = OSAllocatedUnfairLock<Bool>(initialState: false)
 
     /// Enables or disables debug logging.
-    public static var isEnabled: Bool {
+    package static var isEnabled: Bool {
         get { storage.withLock { $0 } }
         set { storage.withLock { $0 = newValue } }
     }
