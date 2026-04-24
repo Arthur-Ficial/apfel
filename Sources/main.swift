@@ -29,6 +29,7 @@ let exitRateLimited: Int32 = 6
 func exitCode(for error: ApfelError) -> Int32 {
     switch error {
     case .guardrailViolation:  return exitGuardrail
+    case .refusal:             return exitGuardrail
     case .contextOverflow:     return exitContextOverflow
     case .rateLimited:         return exitRateLimited
     case .concurrentRequest:   return exitRateLimited

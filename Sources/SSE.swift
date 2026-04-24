@@ -24,7 +24,7 @@ func sseRoleChunk(id: String, created: Int) -> ChatCompletionChunk {
         model: modelName,
         choices: [.init(
             index: 0,
-            delta: .init(role: "assistant", content: nil, tool_calls: nil),
+            delta: .init(role: "assistant", content: nil, refusal: nil, tool_calls: nil),
             finish_reason: nil,
             logprobs: nil
         )],
@@ -41,8 +41,42 @@ func sseContentChunk(id: String, created: Int, content: String) -> ChatCompletio
         model: modelName,
         choices: [.init(
             index: 0,
-            delta: .init(role: nil, content: content, tool_calls: nil),
+            delta: .init(role: nil, content: content, refusal: nil, tool_calls: nil),
             finish_reason: nil,
+            logprobs: nil
+        )],
+        usage: nil
+    )
+}
+
+/// Create a refusal delta SSE chunk.
+func sseRefusalChunk(id: String, created: Int, refusal: String) -> ChatCompletionChunk {
+    ChatCompletionChunk(
+        id: id,
+        object: "chat.completion.chunk",
+        created: created,
+        model: modelName,
+        choices: [.init(
+            index: 0,
+            delta: .init(role: nil, content: nil, refusal: refusal, tool_calls: nil),
+            finish_reason: nil,
+            logprobs: nil
+        )],
+        usage: nil
+    )
+}
+
+/// Create a finish chunk with a specific finish reason and no delta content.
+func sseFinishChunk(id: String, created: Int, finishReason: String) -> ChatCompletionChunk {
+    ChatCompletionChunk(
+        id: id,
+        object: "chat.completion.chunk",
+        created: created,
+        model: modelName,
+        choices: [.init(
+            index: 0,
+            delta: .init(role: nil, content: nil, refusal: nil, tool_calls: nil),
+            finish_reason: finishReason,
             logprobs: nil
         )],
         usage: nil

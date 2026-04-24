@@ -34,6 +34,7 @@ func runApfelCorePublicAPIUsageTests() {
     test("ApfelError cases, accessors, and classify(_:) are public") {
         let cases: [ApfelError] = [
             .guardrailViolation,
+            .refusal("r"),
             .contextOverflow,
             .rateLimited,
             .concurrentRequest,
@@ -283,7 +284,7 @@ func runApfelCorePublicAPIUsageTests() {
     // MARK: - FinishReason / FinishReasonResolver
 
     test("FinishReason and FinishReasonResolver public surface compiles") {
-        let cases: [FinishReason] = [.stop, .length, .toolCalls]
+        let cases: [FinishReason] = [.stop, .length, .toolCalls, .contentFilter]
         for c in cases {
             let _: String = c.openAIValue
             let _: String = c.description

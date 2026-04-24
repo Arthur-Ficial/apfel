@@ -47,6 +47,7 @@ func runFinishReasonResolverTests() {
         try assertEqual(FinishReason.stop.openAIValue, "stop")
         try assertEqual(FinishReason.length.openAIValue, "length")
         try assertEqual(FinishReason.toolCalls.openAIValue, "tool_calls")
+        try assertEqual(FinishReason.contentFilter.openAIValue, "content_filter")
     }
 
     test("zero completion tokens with max set -> stop (not length)") {

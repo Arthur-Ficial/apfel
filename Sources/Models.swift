@@ -90,6 +90,7 @@ struct ChatCompletionChunk: Encodable, Sendable {
     struct Delta: Encodable, Sendable {
         let role: String?
         let content: String?
+        let refusal: String?
         let tool_calls: [ToolCallDelta]?
     }
     struct ToolCallDelta: Encodable, Sendable {

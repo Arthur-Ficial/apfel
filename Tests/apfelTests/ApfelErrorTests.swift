@@ -50,6 +50,7 @@ func runApfelErrorTests() {
     }
     test("CLI labels") {
         try assertEqual(ApfelError.guardrailViolation.cliLabel, "[guardrail]")
+        try assertEqual(ApfelError.refusal("x").cliLabel, "[refusal]")
         try assertEqual(ApfelError.contextOverflow.cliLabel, "[context overflow]")
         try assertEqual(ApfelError.rateLimited.cliLabel, "[rate limited]")
         try assertEqual(ApfelError.concurrentRequest.cliLabel, "[busy]")
@@ -58,6 +59,7 @@ func runApfelErrorTests() {
     }
     test("OpenAI error types") {
         try assertEqual(ApfelError.guardrailViolation.openAIType, "content_policy_violation")
+        try assertEqual(ApfelError.refusal("x").openAIType, "content_policy_violation")
         try assertEqual(ApfelError.contextOverflow.openAIType, "context_length_exceeded")
         try assertEqual(ApfelError.rateLimited.openAIType, "rate_limit_error")
         try assertEqual(ApfelError.concurrentRequest.openAIType, "rate_limit_error")
@@ -65,6 +67,7 @@ func runApfelErrorTests() {
     }
     test("HTTP status codes") {
         try assertEqual(ApfelError.guardrailViolation.httpStatusCode, 400)
+        try assertEqual(ApfelError.refusal("x").httpStatusCode, 200)
         try assertEqual(ApfelError.contextOverflow.httpStatusCode, 400)
         try assertEqual(ApfelError.rateLimited.httpStatusCode, 429)
         try assertEqual(ApfelError.concurrentRequest.httpStatusCode, 429)
@@ -74,6 +77,7 @@ func runApfelErrorTests() {
     test("classify passes through existing ApfelError unchanged") {
         try assertEqual(ApfelError.classify(ApfelError.contextOverflow), .contextOverflow)
         try assertEqual(ApfelError.classify(ApfelError.guardrailViolation), .guardrailViolation)
+        try assertEqual(ApfelError.classify(ApfelError.refusal("nope")), .refusal("nope"))
         try assertEqual(ApfelError.classify(ApfelError.rateLimited), .rateLimited)
         try assertEqual(ApfelError.classify(ApfelError.concurrentRequest), .concurrentRequest)
         try assertEqual(ApfelError.classify(ApfelError.assetsUnavailable), .assetsUnavailable)
@@ -90,7 +94,7 @@ func runApfelErrorTests() {
             ("decodingFailure", .decodingFailure(localized)),
             ("rateLimited", .rateLimited),
             ("concurrentRequests", .concurrentRequest),
-            ("refusal", .guardrailViolation),
+            ("refusal", .refusal(localized)),
         ]
 
         for item in cases {
@@ -99,7 +103,8 @@ func runApfelErrorTests() {
         }
     }
     test("openAIMessage is non-empty for all cases") {
-        let cases: [ApfelError] = [.guardrailViolation, .contextOverflow, .rateLimited,
+        let cases: [ApfelError] = [.guardrailViolation, .refusal("refused"),
+                                    .contextOverflow, .rateLimited,
                                     .concurrentRequest, .assetsUnavailable,
                                     .toolExecution("tool failed"), .unknown("oops"),
                                     .unsupportedGuide, .decodingFailure("decode failed"),
@@ -196,5 +201,35 @@ func runApfelErrorTests() {
         if case .decodingFailure = ApfelError.classify(ApfelError.decodingFailure("x")) { } else {
             throw TestFailure("expected .decodingFailure passthrough")
         }
+    }
+
+    // --- refusal (#118) ---
+
+    test("refusal error properties") {
+        let err = ApfelError.refusal("I can't help with that.")
+        try assertEqual(err.cliLabel, "[refusal]")
+        try assertEqual(err.openAIType, "content_policy_violation")
+        try assertEqual(err.httpStatusCode, 200)
+        try assertEqual(err.openAIMessage, "I can't help with that.")
+        try assertTrue(!err.isRetryable)
+    }
+    test("classify detects GenerationError.refusal separately from guardrailViolation") {
+        let err = FoundationModelsGenerationErrorStub(
+            caseName: "refusal",
+            localizedMsg: "The model declined this request."
+        )
+        let classified = ApfelError.classify(err)
+        if case .refusal(let msg) = classified {
+            try assertTrue(msg.contains("declined"))
+        } else {
+            throw TestFailure("expected .refusal, got \(classified)")
+        }
+    }
+    test("classify passthrough for refusal") {
+        let original = ApfelError.refusal("nope")
+        try assertEqual(ApfelError.classify(original), .refusal("nope"))
+    }
+    test("refusal is not retryable") {
+        try assertTrue(!isRetryableError(ApfelError.refusal("no")))
     }
 }
