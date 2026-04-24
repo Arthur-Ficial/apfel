@@ -9,6 +9,13 @@ private struct GenErrSim: Error, LocalizedError, CustomStringConvertible {
     var description: String { "GenerationError.\(caseName)(Context(debugDescription: \"\(localizedMsg)\"))" }
 }
 
+// Test helper: simulate FoundationModels ToolCallError
+private struct ToolCallErrSim: Error, LocalizedError, CustomStringConvertible {
+    let localizedMsg: String
+    var errorDescription: String? { localizedMsg }
+    var description: String { "ToolCallError(tool: test_tool, underlyingError: \(localizedMsg))" }
+}
+
 func runApfelErrorTests() {
     test("guardrail keyword → .guardrailViolation") {
         let err = NSError(domain: "FM", code: 0,
@@ -87,9 +94,9 @@ func runApfelErrorTests() {
         try assertEqual(ApfelError.classify(ApfelError.toolExecution("x")), .toolExecution("x"))
     }
     test("openAIMessage is non-empty for all cases") {
-        let cases: [ApfelError] = [.guardrailViolation, .contextOverflow, .rateLimited,
-                                    .concurrentRequest, .toolExecution("tool failed"), .unknown("oops"),
-                                    .unsupportedGuide, .decodingFailure("decode failed")]
+        let cases: [ApfelError] = [.guardrailViolation, .refusal("reason"), .contextOverflow,
+                                    .rateLimited, .concurrentRequest, .toolExecution("tool failed"),
+                                    .unknown("oops"), .unsupportedGuide, .decodingFailure("decode failed")]
         for c in cases {
             try assertTrue(!c.openAIMessage.isEmpty, "\(c)")
         }
@@ -136,6 +143,64 @@ func runApfelErrorTests() {
         try assertEqual(err.openAIType, "invalid_request_error")
         try assertEqual(err.cliLabel, "[unsupported language]")
         try assertTrue(err.openAIMessage.contains("Klingon"))
+    }
+
+    // --- refusal (#115) ---
+
+    test("classify detects GenerationError.refusal separately from guardrailViolation") {
+        let refusal = GenErrSim(caseName: "refusal", localizedMsg: "Content not appropriate")
+        let guardrail = GenErrSim(caseName: "guardrailViolation", localizedMsg: "Safety check failed")
+        if case .refusal(let msg) = ApfelError.classify(refusal) {
+            try assertTrue(msg == "Content not appropriate")
+        } else {
+            throw TestFailure("expected .refusal for GenerationError.refusal")
+        }
+        try assertEqual(ApfelError.classify(guardrail), .guardrailViolation)
+    }
+    test("refusal error properties") {
+        let err = ApfelError.refusal("Not allowed")
+        try assertEqual(err.cliLabel, "[refusal]")
+        try assertEqual(err.openAIType, "content_policy_violation")
+        try assertEqual(err.httpStatusCode, 400)
+        try assertTrue(err.openAIMessage.contains("Not allowed"))
+        try assertTrue(!err.isRetryable)
+    }
+    test("classify passthrough for refusal") {
+        let original = ApfelError.refusal("reason")
+        try assertEqual(ApfelError.classify(original), .refusal("reason"))
+    }
+    test("refusal string fallback matches 'refused'") {
+        let err = NSError(domain: "FM", code: 0,
+            userInfo: [NSLocalizedDescriptionKey: "The model refused to answer"])
+        if case .refusal = ApfelError.classify(err) { } else {
+            throw TestFailure("expected .refusal for 'refused' keyword")
+        }
+    }
+    test("refusal string fallback matches 'refusal'") {
+        let err = NSError(domain: "FM", code: 0,
+            userInfo: [NSLocalizedDescriptionKey: "Content refusal triggered"])
+        if case .refusal = ApfelError.classify(err) { } else {
+            throw TestFailure("expected .refusal for 'refusal' keyword")
+        }
+    }
+
+    // --- ToolCallError (#115) ---
+
+    test("classify detects FoundationModels ToolCallError as toolExecution") {
+        let err = ToolCallErrSim(localizedMsg: "Tool 'search' failed: no results")
+        if case .toolExecution(let msg) = ApfelError.classify(err) {
+            try assertTrue(msg == "Tool 'search' failed: no results")
+        } else {
+            throw TestFailure("expected .toolExecution for ToolCallError")
+        }
+    }
+    test("ToolCallError classification is locale-independent") {
+        let err = ToolCallErrSim(localizedMsg: "Werkzeugfehler: Division durch Null")
+        if case .toolExecution(let msg) = ApfelError.classify(err) {
+            try assertTrue(msg.contains("Werkzeugfehler"))
+        } else {
+            throw TestFailure("expected .toolExecution regardless of locale")
+        }
     }
 
     // --- unsupportedGuide (#41) ---

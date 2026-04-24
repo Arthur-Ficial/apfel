@@ -2,6 +2,7 @@ import Foundation
 
 public enum ApfelError: Error, Equatable, Hashable, Sendable {
     case guardrailViolation
+    case refusal(String)
     case contextOverflow
     case rateLimited
     case concurrentRequest
@@ -23,8 +24,17 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
         // Try typed match first (FoundationModels errors)
         let typeName = String(describing: type(of: error))
         let mirror = String(reflecting: error)
+
+        // FoundationModels ToolCallError - separate type from GenerationError
+        if typeName.contains("ToolCallError") || mirror.contains("ToolCallError") {
+            return .toolExecution(error.localizedDescription)
+        }
+
         if typeName.contains("GenerationError") || mirror.contains("GenerationError") {
-            if mirror.contains("guardrailViolation") || mirror.contains("refusal") {
+            if mirror.contains("refusal") {
+                return .refusal(error.localizedDescription)
+            }
+            if mirror.contains("guardrailViolation") {
                 return .guardrailViolation
             }
             if mirror.contains("exceededContextWindowSize") {
@@ -52,6 +62,9 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
 
         // Fallback: string matching for unknown error types
         let desc = error.localizedDescription.lowercased()
+        if desc.contains("refused") || desc.contains("refusal") {
+            return .refusal(error.localizedDescription)
+        }
         if desc.contains("guardrail") || desc.contains("content policy") || desc.contains("unsafe") {
             return .guardrailViolation
         }
@@ -73,6 +86,7 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
     public var cliLabel: String {
         switch self {
         case .guardrailViolation:  return "[guardrail]"
+        case .refusal:             return "[refusal]"
         case .contextOverflow:     return "[context overflow]"
         case .rateLimited:         return "[rate limited]"
         case .concurrentRequest:   return "[busy]"
@@ -88,6 +102,7 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
     public var openAIType: String {
         switch self {
         case .guardrailViolation:  return "content_policy_violation"
+        case .refusal:             return "content_policy_violation"
         case .contextOverflow:     return "context_length_exceeded"
         case .rateLimited:         return "rate_limit_error"
         case .concurrentRequest:   return "rate_limit_error"
@@ -104,6 +119,7 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
     public var httpStatusCode: Int {
         switch self {
         case .guardrailViolation:  return 400
+        case .refusal:             return 400
         case .contextOverflow:     return 400
         case .rateLimited:         return 429
         case .concurrentRequest:   return 429
@@ -120,6 +136,8 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
         switch self {
         case .guardrailViolation:
             return "The request was blocked by Apple's safety guardrails. Try rephrasing."
+        case .refusal(let msg):
+            return "The on-device model refused the request: \(msg)"
         case .contextOverflow:
             return "Input exceeds the 4096-token context window. Shorten the conversation history."
         case .rateLimited:
@@ -162,6 +180,8 @@ extension ApfelError: LocalizedError, CustomStringConvertible, CustomDebugString
         switch self {
         case .guardrailViolation:
             return "ApfelError.guardrailViolation"
+        case .refusal(let message):
+            return "ApfelError.refusal(\(String(reflecting: message)))"
         case .contextOverflow:
             return "ApfelError.contextOverflow"
         case .rateLimited:
