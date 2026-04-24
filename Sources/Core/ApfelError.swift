@@ -20,54 +20,53 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
             return .toolExecution(mcpError.description)
         }
 
-        // Try typed match first (FoundationModels errors)
         let typeName = String(describing: type(of: error))
         let mirror = String(reflecting: error)
-        if typeName.contains("GenerationError") || mirror.contains("GenerationError") {
-            if mirror.contains("guardrailViolation") || mirror.contains("refusal") {
-                return .guardrailViolation
-            }
-            if mirror.contains("exceededContextWindowSize") {
-                return .contextOverflow
-            }
-            if mirror.contains("rateLimited") {
-                return .rateLimited
-            }
-            if mirror.contains("concurrentRequests") {
-                return .concurrentRequest
-            }
-            if mirror.contains("unsupportedLanguageOrLocale") {
-                return .unsupportedLanguage(error.localizedDescription)
-            }
-            if mirror.contains("assetsUnavailable") {
-                return .assetsUnavailable
-            }
-            if mirror.contains("unsupportedGuide") {
-                return .unsupportedGuide
-            }
-            if mirror.contains("decodingFailure") {
-                return .decodingFailure(error.localizedDescription)
-            }
+        if let generationError = classifyGenerationError(
+            typeName: typeName,
+            mirror: mirror,
+            localizedDescription: error.localizedDescription
+        ) {
+            return generationError
         }
 
-        // Fallback: string matching for unknown error types
-        let desc = error.localizedDescription.lowercased()
-        if desc.contains("guardrail") || desc.contains("content policy") || desc.contains("unsafe") {
+        return classifyLocalizedDescription(error.localizedDescription)
+    }
+
+    private static func classifyGenerationError(
+        typeName: String,
+        mirror: String,
+        localizedDescription: String
+    ) -> ApfelError? {
+        guard typeName.contains("GenerationError") || mirror.contains("GenerationError") else {
+            return nil
+        }
+
+        guard let generationCase = FoundationModelsGenerationErrorCase.firstMatch(in: mirror) else {
+            return nil
+        }
+
+        return generationCase.apfelError(localizedDescription: localizedDescription)
+    }
+
+    private static func classifyLocalizedDescription(_ description: String) -> ApfelError {
+        let desc = description.lowercased()
+        if desc.contains(anyOf: ["guardrail", "content policy", "unsafe"]) {
             return .guardrailViolation
         }
-        if desc.contains("context window") || desc.contains("exceeded") {
+        if desc.contains(anyOf: ["context window", "exceeded"]) {
             return .contextOverflow
         }
-        if desc.contains("rate limit") || desc.contains("ratelimited") || desc.contains("rate_limit") {
+        if desc.contains(anyOf: ["rate limit", "ratelimited", "rate_limit"]) {
             return .rateLimited
         }
         if desc.contains("concurrent") {
             return .concurrentRequest
         }
         if desc.contains("unsupported language") {
-            return .unsupportedLanguage(error.localizedDescription)
+            return .unsupportedLanguage(description)
         }
-        return .unknown(error.localizedDescription)
+        return .unknown(description)
     }
 
     public var cliLabel: String {
@@ -150,6 +149,49 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
         default:
             return false
         }
+    }
+}
+
+private enum FoundationModelsGenerationErrorCase: String, CaseIterable {
+    case guardrailViolation
+    case refusal
+    case exceededContextWindowSize
+    case rateLimited
+    case concurrentRequests
+    case unsupportedLanguageOrLocale
+    case assetsUnavailable
+    case unsupportedGuide
+    case decodingFailure
+
+    static func firstMatch(in mirror: String) -> FoundationModelsGenerationErrorCase? {
+        allCases.first { mirror.contains($0.rawValue) }
+    }
+
+    func apfelError(localizedDescription: String) -> ApfelError {
+        switch self {
+        case .guardrailViolation, .refusal:
+            return .guardrailViolation
+        case .exceededContextWindowSize:
+            return .contextOverflow
+        case .rateLimited:
+            return .rateLimited
+        case .concurrentRequests:
+            return .concurrentRequest
+        case .unsupportedLanguageOrLocale:
+            return .unsupportedLanguage(localizedDescription)
+        case .assetsUnavailable:
+            return .assetsUnavailable
+        case .unsupportedGuide:
+            return .unsupportedGuide
+        case .decodingFailure:
+            return .decodingFailure(localizedDescription)
+        }
+    }
+}
+
+private extension String {
+    func contains(anyOf needles: [String]) -> Bool {
+        needles.contains { contains($0) }
     }
 }
 

@@ -1,14 +1,6 @@
 import Foundation
 import ApfelCore
 
-// Test helper: simulate FoundationModels GenerationError by name
-private struct GenErrSim: Error, LocalizedError, CustomStringConvertible {
-    let caseName: String
-    let localizedMsg: String
-    var errorDescription: String? { localizedMsg }
-    var description: String { "GenerationError.\(caseName)(Context(debugDescription: \"\(localizedMsg)\"))" }
-}
-
 func runApfelErrorTests() {
     test("guardrail keyword → .guardrailViolation") {
         let err = NSError(domain: "FM", code: 0,
@@ -84,12 +76,34 @@ func runApfelErrorTests() {
         try assertEqual(ApfelError.classify(ApfelError.guardrailViolation), .guardrailViolation)
         try assertEqual(ApfelError.classify(ApfelError.rateLimited), .rateLimited)
         try assertEqual(ApfelError.classify(ApfelError.concurrentRequest), .concurrentRequest)
+        try assertEqual(ApfelError.classify(ApfelError.assetsUnavailable), .assetsUnavailable)
         try assertEqual(ApfelError.classify(ApfelError.toolExecution("x")), .toolExecution("x"))
+    }
+    test("classify maps every known FoundationModels GenerationError case") {
+        let localized = "localized details"
+        let cases: [(caseName: String, expected: ApfelError)] = [
+            ("exceededContextWindowSize", .contextOverflow),
+            ("assetsUnavailable", .assetsUnavailable),
+            ("guardrailViolation", .guardrailViolation),
+            ("unsupportedGuide", .unsupportedGuide),
+            ("unsupportedLanguageOrLocale", .unsupportedLanguage(localized)),
+            ("decodingFailure", .decodingFailure(localized)),
+            ("rateLimited", .rateLimited),
+            ("concurrentRequests", .concurrentRequest),
+            ("refusal", .guardrailViolation),
+        ]
+
+        for item in cases {
+            let err = FoundationModelsGenerationErrorStub(caseName: item.caseName, localizedMsg: localized)
+            try assertEqual(ApfelError.classify(err), item.expected, "case=\(item.caseName)")
+        }
     }
     test("openAIMessage is non-empty for all cases") {
         let cases: [ApfelError] = [.guardrailViolation, .contextOverflow, .rateLimited,
-                                    .concurrentRequest, .toolExecution("tool failed"), .unknown("oops"),
-                                    .unsupportedGuide, .decodingFailure("decode failed")]
+                                    .concurrentRequest, .assetsUnavailable,
+                                    .toolExecution("tool failed"), .unknown("oops"),
+                                    .unsupportedGuide, .decodingFailure("decode failed"),
+                                    .unsupportedLanguage("Klingon")]
         for c in cases {
             try assertTrue(!c.openAIMessage.isEmpty, "\(c)")
         }
@@ -149,7 +163,10 @@ func runApfelErrorTests() {
         try assertTrue(!err.isRetryable)
     }
     test("classify detects GenerationError.unsupportedGuide") {
-        let err = GenErrSim(caseName: "unsupportedGuide", localizedMsg: "Nicht unterstuetzte Anleitung")
+        let err = FoundationModelsGenerationErrorStub(
+            caseName: "unsupportedGuide",
+            localizedMsg: "Nicht unterstuetzte Anleitung"
+        )
         try assertEqual(ApfelError.classify(err), .unsupportedGuide)
     }
     test("classify passthrough for unsupportedGuide") {
@@ -167,7 +184,10 @@ func runApfelErrorTests() {
         try assertTrue(!err.isRetryable)
     }
     test("classify detects GenerationError.decodingFailure") {
-        let err = GenErrSim(caseName: "decodingFailure", localizedMsg: "Dekodierungsfehler")
+        let err = FoundationModelsGenerationErrorStub(
+            caseName: "decodingFailure",
+            localizedMsg: "Dekodierungsfehler"
+        )
         if case .decodingFailure = ApfelError.classify(err) { } else {
             throw TestFailure("expected .decodingFailure")
         }

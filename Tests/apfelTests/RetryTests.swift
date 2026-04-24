@@ -6,47 +6,6 @@
 import Foundation
 import ApfelCore
 
-// MARK: - Test Errors (simulating FoundationModels errors)
-
-/// Simulates a FoundationModels GenerationError by embedding the case name in its
-/// String(reflecting:) output. ApfelError.classify() matches on this mirror string,
-/// NOT on localizedDescription — making it locale-independent.
-private struct FakeGenerationError: Error, LocalizedError {
-    let caseName: String
-    let localizedMsg: String
-
-    var errorDescription: String? { localizedMsg }
-}
-
-extension FakeGenerationError: CustomDebugStringConvertible {
-    /// Mirror output includes "GenerationError.<caseName>" so ApfelError.classify() picks it up.
-    var debugDescription: String {
-        "FoundationModels.LanguageModelSession.GenerationError.\(caseName)"
-    }
-}
-
-extension FakeGenerationError: CustomReflectable {
-    var customMirror: Mirror {
-        Mirror(self, children: [], displayStyle: .enum, ancestorRepresentation: .suppressed)
-    }
-}
-
-/// Create a fake GenerationError whose String(reflecting:) contains the case name.
-/// The localizedDescription can be in ANY language — the classify() path should still work.
-private func fakeGenerationError(_ caseName: String, localized: String) -> Error {
-    // We need String(reflecting:) to contain "GenerationError.<caseName>"
-    // The simplest way: wrap in a type whose description matches.
-    return GenerationErrorWrapper(caseName: caseName, localizedMsg: localized)
-}
-
-/// Wrapper that ensures String(reflecting:) contains "GenerationError" and the case name.
-private struct GenerationErrorWrapper: Error, LocalizedError, CustomStringConvertible {
-    let caseName: String
-    let localizedMsg: String
-    var errorDescription: String? { localizedMsg }
-    var description: String { "GenerationError.\(caseName)(Context(debugDescription: \"\(localizedMsg)\"))" }
-}
-
 // MARK: - isRetryableError Tests
 
 func runRetryTests() {
@@ -59,6 +18,10 @@ func runRetryTests() {
 
     test("isRetryableError: concurrentRequest ApfelError is retryable") {
         try assertTrue(isRetryableError(ApfelError.concurrentRequest))
+    }
+
+    test("isRetryableError: assetsUnavailable ApfelError is retryable") {
+        try assertTrue(isRetryableError(ApfelError.assetsUnavailable))
     }
 
     test("isRetryableError: guardrailViolation is NOT retryable") {
@@ -106,14 +69,14 @@ func runRetryTests() {
     for lt in localeTests {
         test("isRetryableError: rateLimited detected on \(lt.lang) locale") {
             // GenerationError.rateLimited — the mirror string has "rateLimited" regardless of locale
-            let err = GenerationErrorWrapper(caseName: "rateLimited", localizedMsg: lt.rateLimitedMsg)
+            let err = FoundationModelsGenerationErrorStub(caseName: "rateLimited", localizedMsg: lt.rateLimitedMsg)
             let classified = ApfelError.classify(err)
             try assertEqual(classified, .rateLimited, "locale=\(lt.lang)")
             try assertTrue(isRetryableError(err), "isRetryableError should be true for \(lt.lang) rateLimited")
         }
 
         test("isRetryableError: concurrentRequests detected on \(lt.lang) locale") {
-            let err = GenerationErrorWrapper(caseName: "concurrentRequests", localizedMsg: lt.concurrentMsg)
+            let err = FoundationModelsGenerationErrorStub(caseName: "concurrentRequests", localizedMsg: lt.concurrentMsg)
             let classified = ApfelError.classify(err)
             try assertEqual(classified, .concurrentRequest, "locale=\(lt.lang)")
             try assertTrue(isRetryableError(err), "isRetryableError should be true for \(lt.lang) concurrentRequests")
@@ -123,18 +86,36 @@ func runRetryTests() {
     // ---- Non-retryable errors on non-English locales ----
 
     test("isRetryableError: guardrailViolation NOT retryable on German locale") {
-        let err = GenerationErrorWrapper(caseName: "guardrailViolation", localizedMsg: "Inhaltsrichtlinie verletzt")
+        let err = FoundationModelsGenerationErrorStub(
+            caseName: "guardrailViolation",
+            localizedMsg: "Inhaltsrichtlinie verletzt"
+        )
         try assertTrue(!isRetryableError(err))
     }
 
     test("isRetryableError: exceededContextWindowSize NOT retryable on Japanese locale") {
-        let err = GenerationErrorWrapper(caseName: "exceededContextWindowSize", localizedMsg: "コンテキストウィンドウサイズを超えました")
+        let err = FoundationModelsGenerationErrorStub(
+            caseName: "exceededContextWindowSize",
+            localizedMsg: "コンテキストウィンドウサイズを超えました"
+        )
         try assertTrue(!isRetryableError(err))
     }
 
     test("isRetryableError: unsupportedLanguageOrLocale NOT retryable on Chinese locale") {
-        let err = GenerationErrorWrapper(caseName: "unsupportedLanguageOrLocale", localizedMsg: "不支持的语言或区域设置")
+        let err = FoundationModelsGenerationErrorStub(
+            caseName: "unsupportedLanguageOrLocale",
+            localizedMsg: "不支持的语言或区域设置"
+        )
         try assertTrue(!isRetryableError(err))
+    }
+
+    test("isRetryableError: assetsUnavailable GenerationError is retryable") {
+        let err = FoundationModelsGenerationErrorStub(
+            caseName: "assetsUnavailable",
+            localizedMsg: "Model assets are still loading"
+        )
+        try assertEqual(ApfelError.classify(err), .assetsUnavailable)
+        try assertTrue(isRetryableError(err))
     }
 
     // ---- withRetry tests ----
