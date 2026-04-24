@@ -132,10 +132,14 @@ func runApfelErrorTests() {
         try assertEqual(ApfelError.classify(original), .refusal("preserve me"))
     }
     test("refusal error properties") {
+        // Per OpenAI wire format, an output-side refusal is a successful
+        // completion (HTTP 200) with finish_reason=content_filter and the
+        // refusal text populated on the assistant message. CLI semantics
+        // remain separate: the CLI still exits with the guardrail code (3).
         let err = ApfelError.refusal("Model says no")
         try assertEqual(err.cliLabel, "[refusal]")
         try assertEqual(err.openAIType, "content_policy_violation")
-        try assertEqual(err.httpStatusCode, 400)
+        try assertEqual(err.httpStatusCode, 200)
         try assertTrue(err.openAIMessage.contains("Model says no"))
         try assertTrue(!err.isRetryable)
     }

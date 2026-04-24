@@ -11,6 +11,9 @@ public enum FinishReason: Sendable, Equatable, Hashable, CustomStringConvertible
     case length
     /// The response ended in a tool-call payload instead of plain text.
     case toolCalls
+    /// The model refused to produce a completion; the refusal text is on the
+    /// assistant message. OpenAI wire value: "content_filter".
+    case contentFilter
 
     /// The OpenAI-compatible wire value for this finish reason.
     public var openAIValue: String {
@@ -18,6 +21,7 @@ public enum FinishReason: Sendable, Equatable, Hashable, CustomStringConvertible
         case .stop: return "stop"
         case .length: return "length"
         case .toolCalls: return "tool_calls"
+        case .contentFilter: return "content_filter"
         }
     }
 

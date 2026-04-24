@@ -4,6 +4,7 @@
 // ============================================================================
 
 import Foundation
+import ApfelCore
 
 /// Format a single SSE data line from a ChatCompletionChunk.
 /// Returns: "data: {json}\n\n"
@@ -43,6 +44,40 @@ func sseContentChunk(id: String, created: Int, content: String) -> ChatCompletio
             index: 0,
             delta: .init(role: nil, content: content, tool_calls: nil),
             finish_reason: nil,
+            logprobs: nil
+        )],
+        usage: nil
+    )
+}
+
+/// Create a refusal delta SSE chunk (streams the model's refusal text).
+func sseRefusalChunk(id: String, created: Int, refusal: String) -> ChatCompletionChunk {
+    ChatCompletionChunk(
+        id: id,
+        object: "chat.completion.chunk",
+        created: created,
+        model: modelName,
+        choices: [.init(
+            index: 0,
+            delta: .init(refusal: refusal),
+            finish_reason: nil,
+            logprobs: nil
+        )],
+        usage: nil
+    )
+}
+
+/// Create the final SSE chunk that carries `finish_reason: "content_filter"`.
+func sseContentFilterFinishChunk(id: String, created: Int) -> ChatCompletionChunk {
+    ChatCompletionChunk(
+        id: id,
+        object: "chat.completion.chunk",
+        created: created,
+        model: modelName,
+        choices: [.init(
+            index: 0,
+            delta: .init(),
+            finish_reason: FinishReason.contentFilter.openAIValue,
             logprobs: nil
         )],
         usage: nil

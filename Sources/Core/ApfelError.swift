@@ -106,10 +106,15 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
     }
 
     /// HTTP status code for this error type.
+    ///
+    /// `.refusal` returns 200 because an output-side refusal is a successful
+    /// completion per the OpenAI wire format: HTTP 200 with
+    /// `finish_reason: "content_filter"` and the refusal text on the assistant
+    /// message. The CLI exit-code mapping stays separate (`ApfelExitCodes`).
     public var httpStatusCode: Int {
         switch self {
         case .guardrailViolation:  return 400
-        case .refusal:             return 400
+        case .refusal:             return 200
         case .contextOverflow:     return 400
         case .rateLimited:         return 429
         case .concurrentRequest:   return 429

@@ -91,6 +91,14 @@ struct ChatCompletionChunk: Encodable, Sendable {
         let role: String?
         let content: String?
         let tool_calls: [ToolCallDelta]?
+        let refusal: String?
+
+        init(role: String? = nil, content: String? = nil, tool_calls: [ToolCallDelta]? = nil, refusal: String? = nil) {
+            self.role = role
+            self.content = content
+            self.tool_calls = tool_calls
+            self.refusal = refusal
+        }
     }
     struct ToolCallDelta: Encodable, Sendable {
         let index: Int

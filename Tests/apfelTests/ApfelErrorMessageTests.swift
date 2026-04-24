@@ -121,7 +121,10 @@ func runApfelErrorMessageTests() {
 
     test("ApfelError httpStatusCode lockdown for every case") {
         try assertEqual(ApfelError.guardrailViolation.httpStatusCode,  400)
-        try assertEqual(ApfelError.refusal("x").httpStatusCode,        400)
+        // Output-side refusal is HTTP 200 per OpenAI wire format: the response
+        // carries finish_reason=content_filter and the refusal text on the
+        // assistant message. Not an HTTP-level error.
+        try assertEqual(ApfelError.refusal("x").httpStatusCode,        200)
         try assertEqual(ApfelError.contextOverflow.httpStatusCode,     400)
         try assertEqual(ApfelError.rateLimited.httpStatusCode,         429)
         try assertEqual(ApfelError.concurrentRequest.httpStatusCode,   429)

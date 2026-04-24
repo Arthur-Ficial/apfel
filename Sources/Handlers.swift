@@ -188,6 +188,21 @@ private func mcpAutoExecuteResponse(
         }
     } catch {
         let classified = ApfelError.classify(error)
+        if case .refusal(let explanation) = classified {
+            if streaming {
+                return await refusalStreamingResponse(
+                    id: id, created: created, promptTokens: promptTokens,
+                    refusal: explanation, includeUsage: includeUsage,
+                    requestBody: requestBody,
+                    events: events + ["refusal: \(classified.cliLabel)"]
+                )
+            }
+            return await refusalNonStreamingResponse(
+                id: id, created: created, promptTokens: promptTokens,
+                refusal: explanation, requestBody: requestBody,
+                events: events + ["refusal: \(classified.cliLabel)"]
+            )
+        }
         let msg = classified.openAIMessage
         return chatFailure(
             status: .init(code: classified.httpStatusCode),
@@ -322,6 +337,13 @@ private func nonStreamingResponse(
         }
     } catch {
         let classified = ApfelError.classify(error)
+        if case .refusal(let explanation) = classified {
+            return await refusalNonStreamingResponse(
+                id: id, created: created, promptTokens: promptTokens,
+                refusal: explanation, requestBody: requestBody,
+                events: events + ["refusal: \(classified.cliLabel)"]
+            )
+        }
         let msg = classified.openAIMessage
         return chatFailure(
             status: .init(code: classified.httpStatusCode),
@@ -514,15 +536,42 @@ private func streamingResponse(
                 await eventBox.append("stream cancelled by client")
             } catch {
                 let classified = ApfelError.classify(error)
-                let errPayload = OpenAIErrorResponse(error: .init(
-                    message: classified.openAIMessage, type: classified.openAIType, param: nil, code: nil))
-                let errJSON = jsonString(errPayload, pretty: false)
-                let errMsg = "data: \(errJSON)\n\n"
-                responseLines?.append(errMsg.trimmingCharacters(in: .whitespacesAndNewlines))
-                continuation.yield(ByteBuffer(string: errMsg))
-                continuation.yield(ByteBuffer(string: sseDone))
-                streamError = classified.openAIMessage
-                await eventBox.append("stream error: \(classified.cliLabel) \(classified.openAIMessage)")
+                if case .refusal(let explanation) = classified {
+                    // OpenAI wire format: stream a refusal delta, then a final
+                    // chunk with finish_reason=content_filter, then [DONE].
+                    let refusalLine = sseDataLine(sseRefusalChunk(id: id, created: created, refusal: explanation))
+                    responseLines?.append(refusalLine.trimmingCharacters(in: .whitespacesAndNewlines))
+                    continuation.yield(ByteBuffer(string: refusalLine))
+
+                    let finishLine = sseDataLine(sseContentFilterFinishChunk(id: id, created: created))
+                    responseLines?.append(finishLine.trimmingCharacters(in: .whitespacesAndNewlines))
+                    continuation.yield(ByteBuffer(string: finishLine))
+
+                    completionTokens = await TokenCounter.shared.count(explanation)
+                    if includeUsage {
+                        let usageChunk = sseUsageChunk(
+                            id: id, created: created,
+                            promptTokens: promptTokens, completionTokens: completionTokens
+                        )
+                        let usageLine = sseDataLine(usageChunk)
+                        responseLines?.append(usageLine.trimmingCharacters(in: .whitespacesAndNewlines))
+                        continuation.yield(ByteBuffer(string: usageLine))
+                    }
+
+                    continuation.yield(ByteBuffer(string: sseDone))
+                    responseLines?.append("data: [DONE]")
+                    await eventBox.append("sent refusal stream finish_reason=content_filter")
+                } else {
+                    let errPayload = OpenAIErrorResponse(error: .init(
+                        message: classified.openAIMessage, type: classified.openAIType, param: nil, code: nil))
+                    let errJSON = jsonString(errPayload, pretty: false)
+                    let errMsg = "data: \(errJSON)\n\n"
+                    responseLines?.append(errMsg.trimmingCharacters(in: .whitespacesAndNewlines))
+                    continuation.yield(ByteBuffer(string: errMsg))
+                    continuation.yield(ByteBuffer(string: sseDone))
+                    streamError = classified.openAIMessage
+                    await eventBox.append("stream error: \(classified.cliLabel) \(classified.openAIMessage)")
+                }
             }
 
             let completionLog = RequestLog(
@@ -587,6 +636,100 @@ private func chatFailure(
             requestBody: requestBody,
             responseBody: captureTruncatedLogBody(message, enabled: serverState.config.debug),
             events: events + [event]
+        )
+    )
+}
+
+// MARK: - Refusal Response (OpenAI wire-format parity: 200 + content_filter)
+
+/// Build a non-streaming 200 OK response for an on-device model refusal.
+///
+/// OpenAI wire format: `choices[0].message.refusal` populated,
+/// `choices[0].message.content: null`, `choices[0].finish_reason: "content_filter"`.
+private func refusalNonStreamingResponse(
+    id: String,
+    created: Int,
+    promptTokens: Int,
+    refusal: String,
+    requestBody: String?,
+    events: [String]
+) async -> (response: Response, trace: ChatRequestTrace) {
+    let responseMessage = OpenAIMessage(role: "assistant", content: nil, refusal: refusal)
+    let completionTokens = await TokenCounter.shared.count(refusal)
+    let finishReason = FinishReason.contentFilter.openAIValue
+    let payload = ChatCompletionResponse(
+        id: id,
+        object: "chat.completion",
+        created: created,
+        model: modelName,
+        choices: [.init(index: 0, message: responseMessage, finish_reason: finishReason, logprobs: nil)],
+        usage: .init(
+            prompt_tokens: promptTokens,
+            completion_tokens: completionTokens,
+            total_tokens: promptTokens + completionTokens
+        )
+    )
+    let body = jsonString(payload)
+    var headers = HTTPFields()
+    headers[.contentType] = "application/json"
+    let response = Response(status: .ok, headers: headers,
+                             body: .init(byteBuffer: ByteBuffer(string: body)))
+    return (
+        response,
+        ChatRequestTrace(
+            stream: false,
+            estimatedTokens: promptTokens + completionTokens,
+            error: nil,
+            requestBody: requestBody,
+            responseBody: captureTruncatedLogBody(body, enabled: serverState.config.debug),
+            events: events + ["refusal non-stream finish_reason=\(finishReason)"]
+        )
+    )
+}
+
+/// Build a streaming 200 OK response for an on-device model refusal.
+///
+/// SSE order: role chunk -> refusal delta -> content_filter finish chunk
+/// -> [optional usage chunk when include_usage=true] -> [DONE].
+private func refusalStreamingResponse(
+    id: String,
+    created: Int,
+    promptTokens: Int,
+    refusal: String,
+    includeUsage: Bool,
+    requestBody: String?,
+    events: [String]
+) async -> (response: Response, trace: ChatRequestTrace) {
+    let completionTokens = await TokenCounter.shared.count(refusal)
+    let finishReason = FinishReason.contentFilter.openAIValue
+    var chunks: [String] = [
+        sseDataLine(sseRoleChunk(id: id, created: created)),
+        sseDataLine(sseRefusalChunk(id: id, created: created, refusal: refusal)),
+        sseDataLine(sseContentFilterFinishChunk(id: id, created: created)),
+    ]
+    if includeUsage {
+        chunks.append(sseDataLine(sseUsageChunk(
+            id: id, created: created,
+            promptTokens: promptTokens, completionTokens: completionTokens
+        )))
+    }
+    chunks.append(sseDone)
+    let body = chunks.joined()
+    var headers = HTTPFields()
+    headers[.contentType] = "text/event-stream"
+    headers[.cacheControl] = "no-cache"
+    headers[.init("Connection")!] = "keep-alive"
+    let response = Response(status: .ok, headers: headers,
+                             body: .init(byteBuffer: ByteBuffer(string: body)))
+    return (
+        response,
+        ChatRequestTrace(
+            stream: true,
+            estimatedTokens: promptTokens + completionTokens,
+            error: nil,
+            requestBody: requestBody,
+            responseBody: captureTruncatedLogBody(body, enabled: serverState.config.debug),
+            events: events + ["refusal sse finish_reason=\(finishReason)"]
         )
     )
 }

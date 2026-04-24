@@ -7,7 +7,8 @@
 //
 // What's covered:
 //   - OpenAIMessage.encode (custom encoder): content always present (null when
-//     nil), refusal always encoded as null, optional fields omitted when nil
+//     nil), refusal encoded as the explanation string when set and null when
+//     absent, optional fields omitted when nil
 //   - MessageContent encodes as string for .text and array for .parts
 //   - ContentPart default synthesized encoding (nil text omitted)
 //   - ToolCall / ToolCallFunction default encoding
@@ -15,7 +16,7 @@
 //   - ToolChoice string and object forms, plus "none" case
 //   - ResponseFormat decoding
 //   - ContextStrategy raw values (used as x_context_strategy wire parameter)
-//   - FinishReason.openAIValue
+//   - FinishReason.openAIValue (stop, length, tool_calls, content_filter)
 // ============================================================================
 
 import Foundation
@@ -56,15 +57,33 @@ func runOpenAIWireFormatTests() {
         )
     }
 
-    test("OpenAIMessage refusal is always serialized as null, even when set") {
-        // Our model never refuses, so the encoder hard-codes refusal=null.
-        // Third-party tooling relies on this: a non-null refusal means a
-        // different model/server.
-        let msg = OpenAIMessage(role: "assistant", content: .text("ok"), refusal: "this should be ignored")
+    test("OpenAIMessage refusal is serialized as the explanation string when set") {
+        // Per OpenAI spec, refusals come back as assistant messages with the
+        // refusal text populated. Apple's on-device model can refuse, and the
+        // explanation text must reach the wire.
+        let msg = OpenAIMessage(role: "assistant", content: nil, refusal: "I cannot help with that.")
+        let json = try sortedEncode(msg)
+        try assertEqual(
+            json,
+            #"{"content":null,"refusal":"I cannot help with that.","role":"assistant"}"#
+        )
+    }
+
+    test("OpenAIMessage refusal is serialized as null when nil") {
+        let msg = OpenAIMessage(role: "assistant", content: .text("ok"), refusal: nil)
         let json = try sortedEncode(msg)
         try assertEqual(
             json,
             #"{"content":"ok","refusal":null,"role":"assistant"}"#
+        )
+    }
+
+    test("OpenAIMessage refusal escapes control characters safely") {
+        let msg = OpenAIMessage(role: "assistant", content: nil, refusal: #"Line1\nhe said "no""#)
+        let json = try sortedEncode(msg)
+        try assertEqual(
+            json,
+            #"{"content":null,"refusal":"Line1\\nhe said \"no\"","role":"assistant"}"#
         )
     }
 
@@ -294,9 +313,10 @@ func runOpenAIWireFormatTests() {
     // MARK: - FinishReason wire values
 
     test("FinishReason.openAIValue for every case") {
-        try assertEqual(FinishReason.stop.openAIValue,      "stop")
-        try assertEqual(FinishReason.length.openAIValue,    "length")
-        try assertEqual(FinishReason.toolCalls.openAIValue, "tool_calls")
+        try assertEqual(FinishReason.stop.openAIValue,          "stop")
+        try assertEqual(FinishReason.length.openAIValue,        "length")
+        try assertEqual(FinishReason.toolCalls.openAIValue,     "tool_calls")
+        try assertEqual(FinishReason.contentFilter.openAIValue, "content_filter")
     }
 
     // MARK: - StreamOptions equality (public Equatable conformance)
