@@ -283,7 +283,7 @@ func runApfelCorePublicAPIUsageTests() {
     // MARK: - FinishReason / FinishReasonResolver
 
     test("FinishReason and FinishReasonResolver public surface compiles") {
-        let cases: [FinishReason] = [.stop, .length, .toolCalls]
+        let cases: [FinishReason] = [.stop, .length, .toolCalls, .contentFilter]
         for c in cases {
             let _: String = c.openAIValue
             let _: String = c.description

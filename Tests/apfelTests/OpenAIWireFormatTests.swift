@@ -7,7 +7,8 @@
 //
 // What's covered:
 //   - OpenAIMessage.encode (custom encoder): content always present (null when
-//     nil), refusal always encoded as null, optional fields omitted when nil
+//     nil), refusal present (null when nil, string when set), optional fields
+//     omitted when nil
 //   - MessageContent encodes as string for .text and array for .parts
 //   - ContentPart default synthesized encoding (nil text omitted)
 //   - ToolCall / ToolCallFunction default encoding
@@ -56,11 +57,17 @@ func runOpenAIWireFormatTests() {
         )
     }
 
-    test("OpenAIMessage refusal is always serialized as null, even when set") {
-        // Our model never refuses, so the encoder hard-codes refusal=null.
-        // Third-party tooling relies on this: a non-null refusal means a
-        // different model/server.
-        let msg = OpenAIMessage(role: "assistant", content: .text("ok"), refusal: "this should be ignored")
+    test("OpenAIMessage refusal is serialized as string when set") {
+        let msg = OpenAIMessage(role: "assistant", content: nil, refusal: "I cannot help with that.")
+        let json = try sortedEncode(msg)
+        try assertEqual(
+            json,
+            #"{"content":null,"refusal":"I cannot help with that.","role":"assistant"}"#
+        )
+    }
+
+    test("OpenAIMessage refusal is serialized as null when not set") {
+        let msg = OpenAIMessage(role: "assistant", content: .text("ok"))
         let json = try sortedEncode(msg)
         try assertEqual(
             json,
@@ -294,9 +301,10 @@ func runOpenAIWireFormatTests() {
     // MARK: - FinishReason wire values
 
     test("FinishReason.openAIValue for every case") {
-        try assertEqual(FinishReason.stop.openAIValue,      "stop")
-        try assertEqual(FinishReason.length.openAIValue,    "length")
-        try assertEqual(FinishReason.toolCalls.openAIValue, "tool_calls")
+        try assertEqual(FinishReason.stop.openAIValue,          "stop")
+        try assertEqual(FinishReason.length.openAIValue,        "length")
+        try assertEqual(FinishReason.toolCalls.openAIValue,     "tool_calls")
+        try assertEqual(FinishReason.contentFilter.openAIValue, "content_filter")
     }
 
     // MARK: - StreamOptions equality (public Equatable conformance)

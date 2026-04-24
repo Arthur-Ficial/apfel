@@ -49,6 +49,40 @@ func sseContentChunk(id: String, created: Int, content: String) -> ChatCompletio
     )
 }
 
+/// Create a refusal delta SSE chunk.
+func sseRefusalChunk(id: String, created: Int, refusal: String) -> ChatCompletionChunk {
+    ChatCompletionChunk(
+        id: id,
+        object: "chat.completion.chunk",
+        created: created,
+        model: modelName,
+        choices: [.init(
+            index: 0,
+            delta: .init(role: nil, content: nil, tool_calls: nil, refusal: refusal),
+            finish_reason: nil,
+            logprobs: nil
+        )],
+        usage: nil
+    )
+}
+
+/// Create a finish-reason-only SSE chunk (no content delta).
+func sseFinishChunk(id: String, created: Int, finishReason: String) -> ChatCompletionChunk {
+    ChatCompletionChunk(
+        id: id,
+        object: "chat.completion.chunk",
+        created: created,
+        model: modelName,
+        choices: [.init(
+            index: 0,
+            delta: .init(role: nil, content: nil, tool_calls: nil),
+            finish_reason: finishReason,
+            logprobs: nil
+        )],
+        usage: nil
+    )
+}
+
 /// Create a usage-only SSE chunk (empty choices, usage stats).
 func sseUsageChunk(id: String, created: Int, promptTokens: Int, completionTokens: Int) -> ChatCompletionChunk {
     ChatCompletionChunk(

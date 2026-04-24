@@ -109,7 +109,7 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
     public var httpStatusCode: Int {
         switch self {
         case .guardrailViolation:  return 400
-        case .refusal:             return 400
+        case .refusal:             return 200
         case .contextOverflow:     return 400
         case .rateLimited:         return 429
         case .concurrentRequest:   return 429

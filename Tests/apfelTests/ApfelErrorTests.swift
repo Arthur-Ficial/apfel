@@ -135,7 +135,7 @@ func runApfelErrorTests() {
         let err = ApfelError.refusal("Model says no")
         try assertEqual(err.cliLabel, "[refusal]")
         try assertEqual(err.openAIType, "content_policy_violation")
-        try assertEqual(err.httpStatusCode, 400)
+        try assertEqual(err.httpStatusCode, 200)
         try assertTrue(err.openAIMessage.contains("Model says no"))
         try assertTrue(!err.isRetryable)
     }

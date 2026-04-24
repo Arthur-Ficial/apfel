@@ -113,7 +113,7 @@ public struct OpenAIMessage: Codable, Sendable, Equatable, Hashable {
     public let tool_call_id: String?
     /// Optional sender name.
     public let name: String?
-    /// OpenAI refusal text. Always encoded as `null` for the local model.
+    /// OpenAI refusal text. Populated when the model refuses a request.
     public let refusal: String?
 
     /// Creates an OpenAI-compatible message value.
@@ -151,8 +151,12 @@ public struct OpenAIMessage: Codable, Sendable, Equatable, Hashable {
         try c.encodeIfPresent(tool_calls, forKey: .tool_calls)
         try c.encodeIfPresent(tool_call_id, forKey: .tool_call_id)
         try c.encodeIfPresent(name, forKey: .name)
-        // refusal: always present in responses (null when absent)
-        try c.encodeNil(forKey: .refusal)
+        // refusal: always present in responses (null when absent, string when set)
+        if let refusal = refusal {
+            try c.encode(refusal, forKey: .refusal)
+        } else {
+            try c.encodeNil(forKey: .refusal)
+        }
     }
 
     private enum CodingKeys: String, CodingKey {
