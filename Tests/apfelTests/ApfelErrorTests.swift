@@ -77,6 +77,7 @@ func runApfelErrorTests() {
         try assertEqual(ApfelError.classify(ApfelError.rateLimited), .rateLimited)
         try assertEqual(ApfelError.classify(ApfelError.concurrentRequest), .concurrentRequest)
         try assertEqual(ApfelError.classify(ApfelError.assetsUnavailable), .assetsUnavailable)
+        try assertEqual(ApfelError.classify(ApfelError.refusal("r")), .refusal("r"))
         try assertEqual(ApfelError.classify(ApfelError.toolExecution("x")), .toolExecution("x"))
     }
     test("classify maps every known FoundationModels GenerationError case") {
@@ -90,7 +91,7 @@ func runApfelErrorTests() {
             ("decodingFailure", .decodingFailure(localized)),
             ("rateLimited", .rateLimited),
             ("concurrentRequests", .concurrentRequest),
-            ("refusal", .guardrailViolation),
+            ("refusal", .refusal(localized)),
         ]
 
         for item in cases {
@@ -98,9 +99,49 @@ func runApfelErrorTests() {
             try assertEqual(ApfelError.classify(err), item.expected, "case=\(item.caseName)")
         }
     }
+    test("classify preserves refusal explanation text, distinct from guardrailViolation") {
+        let refusal = FoundationModelsGenerationErrorStub(
+            caseName: "refusal",
+            localizedMsg: "I cannot provide that information."
+        )
+        let classified = ApfelError.classify(refusal)
+        if case .refusal(let text) = classified {
+            try assertEqual(text, "I cannot provide that information.")
+        } else {
+            throw TestFailure("expected .refusal, got \(classified)")
+        }
+        // And guardrailViolation stays distinct
+        let guardrail = FoundationModelsGenerationErrorStub(
+            caseName: "guardrailViolation",
+            localizedMsg: "Blocked by safety policy"
+        )
+        try assertEqual(ApfelError.classify(guardrail), .guardrailViolation)
+    }
+    test("classify string fallback detects refusal keywords") {
+        for keyword in ["refused", "refusal", "declined"] {
+            let err = NSError(domain: "FM", code: 0,
+                userInfo: [NSLocalizedDescriptionKey: "The model \(keyword) to respond"])
+            if case .refusal = ApfelError.classify(err) {
+                continue
+            }
+            throw TestFailure("expected .refusal for keyword '\(keyword)'")
+        }
+    }
+    test("classify passthrough for refusal") {
+        let original = ApfelError.refusal("preserve me")
+        try assertEqual(ApfelError.classify(original), .refusal("preserve me"))
+    }
+    test("refusal error properties") {
+        let err = ApfelError.refusal("Model says no")
+        try assertEqual(err.cliLabel, "[refusal]")
+        try assertEqual(err.openAIType, "content_policy_violation")
+        try assertEqual(err.httpStatusCode, 400)
+        try assertTrue(err.openAIMessage.contains("Model says no"))
+        try assertTrue(!err.isRetryable)
+    }
     test("openAIMessage is non-empty for all cases") {
-        let cases: [ApfelError] = [.guardrailViolation, .contextOverflow, .rateLimited,
-                                    .concurrentRequest, .assetsUnavailable,
+        let cases: [ApfelError] = [.guardrailViolation, .refusal("text"), .contextOverflow,
+                                    .rateLimited, .concurrentRequest, .assetsUnavailable,
                                     .toolExecution("tool failed"), .unknown("oops"),
                                     .unsupportedGuide, .decodingFailure("decode failed"),
                                     .unsupportedLanguage("Klingon")]

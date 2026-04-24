@@ -5,7 +5,7 @@
 // change must be deliberate and visible in this test's diff).
 //
 // Covers:
-//   - ApfelError.openAIMessage (all 10 cases)
+//   - ApfelError.openAIMessage (all 11 cases)
 //   - ApfelError.cliLabel, .openAIType, .httpStatusCode (stable enumerations)
 //   - MCPError.description / errorDescription (all 5 cases)
 //   - ChatRequestValidationFailure.message and .event (all 6 cases)
@@ -22,6 +22,12 @@ func runApfelErrorMessageTests() {
         try assertEqual(
             ApfelError.guardrailViolation.openAIMessage,
             "The request was blocked by Apple's safety guardrails. Try rephrasing."
+        )
+    }
+    test("ApfelError.refusal.openAIMessage embeds the explanation") {
+        try assertEqual(
+            ApfelError.refusal("I cannot answer that question.").openAIMessage,
+            "The on-device model refused the request: I cannot answer that question."
         )
     }
     test("ApfelError.contextOverflow.openAIMessage") {
@@ -83,6 +89,7 @@ func runApfelErrorMessageTests() {
 
     test("ApfelError cliLabel lockdown for every case") {
         try assertEqual(ApfelError.guardrailViolation.cliLabel,  "[guardrail]")
+        try assertEqual(ApfelError.refusal("x").cliLabel,        "[refusal]")
         try assertEqual(ApfelError.contextOverflow.cliLabel,     "[context overflow]")
         try assertEqual(ApfelError.rateLimited.cliLabel,         "[rate limited]")
         try assertEqual(ApfelError.concurrentRequest.cliLabel,   "[busy]")
@@ -98,6 +105,7 @@ func runApfelErrorMessageTests() {
 
     test("ApfelError openAIType lockdown for every case") {
         try assertEqual(ApfelError.guardrailViolation.openAIType,  "content_policy_violation")
+        try assertEqual(ApfelError.refusal("x").openAIType,        "content_policy_violation")
         try assertEqual(ApfelError.contextOverflow.openAIType,     "context_length_exceeded")
         try assertEqual(ApfelError.rateLimited.openAIType,         "rate_limit_error")
         try assertEqual(ApfelError.concurrentRequest.openAIType,   "rate_limit_error")
@@ -113,6 +121,7 @@ func runApfelErrorMessageTests() {
 
     test("ApfelError httpStatusCode lockdown for every case") {
         try assertEqual(ApfelError.guardrailViolation.httpStatusCode,  400)
+        try assertEqual(ApfelError.refusal("x").httpStatusCode,        400)
         try assertEqual(ApfelError.contextOverflow.httpStatusCode,     400)
         try assertEqual(ApfelError.rateLimited.httpStatusCode,         429)
         try assertEqual(ApfelError.concurrentRequest.httpStatusCode,   429)
@@ -145,6 +154,7 @@ func runApfelErrorMessageTests() {
     test("ApfelError.localizedDescription equals openAIMessage for every case") {
         let cases: [ApfelError] = [
             .guardrailViolation,
+            .refusal("model said no"),
             .contextOverflow,
             .rateLimited,
             .concurrentRequest,
@@ -257,6 +267,7 @@ func runApfelErrorMessageTests() {
 
     test("ApfelError.isRetryable lockdown for every case") {
         try assertEqual(ApfelError.guardrailViolation.isRetryable,  false)
+        try assertEqual(ApfelError.refusal("x").isRetryable,        false)
         try assertEqual(ApfelError.contextOverflow.isRetryable,     false)
         try assertEqual(ApfelError.rateLimited.isRetryable,         true)
         try assertEqual(ApfelError.concurrentRequest.isRetryable,   true)
@@ -274,5 +285,6 @@ func runApfelErrorMessageTests() {
         try assertEqual(isRetryableError(ApfelError.assetsUnavailable),  true)
         try assertEqual(isRetryableError(ApfelError.contextOverflow),    false)
         try assertEqual(isRetryableError(ApfelError.guardrailViolation), false)
+        try assertEqual(isRetryableError(ApfelError.refusal("x")),       false)
     }
 }
