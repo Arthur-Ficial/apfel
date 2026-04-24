@@ -139,6 +139,71 @@ func runApfelErrorTests() {
         try assertTrue(err.openAIMessage.contains("Model says no"))
         try assertTrue(!err.isRetryable)
     }
+    test("refusal Equatable: same text equal, different text unequal, distinct from guardrailViolation") {
+        try assertEqual(ApfelError.refusal("a"), ApfelError.refusal("a"))
+        try assertTrue(ApfelError.refusal("a") != ApfelError.refusal("b"))
+        try assertTrue(ApfelError.refusal("") != ApfelError.guardrailViolation)
+        try assertTrue(ApfelError.refusal("text") != ApfelError.unknown("text"))
+    }
+    test("refusal Hashable: round-trips through Set with associated text") {
+        let set: Set<ApfelError> = [
+            .refusal("one"),
+            .refusal("two"),
+            .refusal("one"),            // dupe of the first
+            .guardrailViolation,
+        ]
+        try assertEqual(set.count, 3, "duplicate refusal('one') must collapse, guardrailViolation stays distinct")
+        try assertTrue(set.contains(.refusal("one")))
+        try assertTrue(set.contains(.refusal("two")))
+        try assertTrue(set.contains(.guardrailViolation))
+        try assertTrue(!set.contains(.refusal("three")))
+    }
+    test("refusal debugDescription is a stable, reflective format") {
+        try assertEqual(
+            ApfelError.refusal("I cannot help with that.").debugDescription,
+            #"ApfelError.refusal("I cannot help with that.")"#
+        )
+        // Internal quotes in the explanation must be escaped by String(reflecting:).
+        try assertEqual(
+            ApfelError.refusal(#"he said "no""#).debugDescription,
+            #"ApfelError.refusal("he said \"no\"")"#
+        )
+    }
+    test("refusal with empty explanation still produces a non-empty openAIMessage") {
+        let empty = ApfelError.refusal("")
+        try assertTrue(!empty.openAIMessage.isEmpty, "empty refusal must not produce empty message")
+        try assertEqual(empty.openAIMessage, "The on-device model refused the request: ")
+        try assertEqual(empty.cliLabel, "[refusal]")
+    }
+    test("refusal localizedDescription equals openAIMessage for non-trivial text") {
+        let err = ApfelError.refusal("multi-sentence reason. Another clause.")
+        try assertEqual((err as Error).localizedDescription, err.openAIMessage)
+    }
+    // Locale-independence of the typed refusal classification path.
+    // The mirror string contains "refusal" regardless of the user's locale;
+    // localizedMsg is rendered by Apple in whatever language the system is set to.
+    // Each case must still classify as .refusal with the localized text preserved.
+    let refusalLocaleFixtures: [(lang: String, localizedMsg: String)] = [
+        ("en", "The model refused to answer."),
+        ("de", "Das Modell hat die Antwort verweigert."),
+        ("fr", "Le modele a refuse de repondre."),
+        ("ja", "モデルは回答を拒否しました。"),
+        ("zh", "模型拒绝回答。"),
+    ]
+    for fixture in refusalLocaleFixtures {
+        test("refusal is detected and explanation preserved on \(fixture.lang) locale") {
+            let err = FoundationModelsGenerationErrorStub(
+                caseName: "refusal",
+                localizedMsg: fixture.localizedMsg
+            )
+            let classified = ApfelError.classify(err)
+            if case .refusal(let text) = classified {
+                try assertEqual(text, fixture.localizedMsg, "locale=\(fixture.lang)")
+            } else {
+                throw TestFailure("expected .refusal on \(fixture.lang), got \(classified)")
+            }
+        }
+    }
     test("openAIMessage is non-empty for all cases") {
         let cases: [ApfelError] = [.guardrailViolation, .refusal("text"), .contextOverflow,
                                     .rateLimited, .concurrentRequest, .assetsUnavailable,

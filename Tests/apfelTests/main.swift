@@ -73,6 +73,7 @@ func suite(_ name: String, _ block: () -> Void) {
 // MARK: - Run all test suites
 
 suite("ApfelErrorTests") { runApfelErrorTests() }
+suite("ExitCodeMapTests") { runExitCodeMapTests() }
 suite("ToolCallHandlerTests") { runToolCallHandlerTests() }
 suite("ContextStrategyTests") { runContextStrategyTests() }
 suite("OpenAIModelsTests") { runOpenAIModelsTests() }

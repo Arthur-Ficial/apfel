@@ -24,6 +24,7 @@ MAN_PAGE = ROOT / ".build" / "release" / "apfel.1"
 MAN_SOURCE = ROOT / "man" / "apfel.1.in"
 VERSION_FILE = ROOT / ".version"
 MAIN_SWIFT = ROOT / "Sources" / "main.swift"
+EXIT_CODES_SWIFT = ROOT / "Sources" / "CLI" / "ExitCodes.swift"
 
 FLAG_RE = re.compile(r"(--[a-z][a-z0-9-]+)")
 SHORT_FLAG_RE = re.compile(r"(?<![\w-])(-[a-z])(?=[ ,])")
@@ -179,14 +180,17 @@ def test_bidirectional_env_var_coverage():
 
 
 def test_bidirectional_exit_code_coverage():
-    """Every exit code declared in main.swift must appear in the man page."""
-    main_src = MAIN_SWIFT.read_text()
-    # e.g. `let exitGuardrail: Int32 = 3`
-    declared = set(re.findall(r"let\s+exit\w+\s*:\s*Int32\s*=\s*(\d+)", main_src))
-    assert declared, "No exit codes found in Sources/main.swift - pattern changed?"
+    """Every exit code declared in ApfelCLI must appear in the man page."""
+    # Constants live in Sources/CLI/ExitCodes.swift (testable); main.swift
+    # re-exposes them via `let exit...: Int32 = ApfelExitCodes.xxx` for local
+    # readability. Scrape the literal values from ExitCodes.swift.
+    src = EXIT_CODES_SWIFT.read_text()
+    # e.g. `public static let guardrail: Int32 = 3`
+    declared = set(re.findall(r"public\s+static\s+let\s+\w+\s*:\s*Int32\s*=\s*(\d+)", src))
+    assert declared, "No exit codes found in Sources/CLI/ExitCodes.swift - pattern changed?"
 
     man_text = _man_page_text()
     for code in sorted(declared, key=int):
         assert f".B {code}\n" in man_text, (
-            f"Exit code {code} declared in main.swift but not documented in man page"
+            f"Exit code {code} declared in ApfelExitCodes but not documented in man page"
         )

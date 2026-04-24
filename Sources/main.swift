@@ -16,30 +16,24 @@ let appName = "apfel"
 let modelName = "apple-foundationmodel"
 
 // MARK: - Exit Codes
+// Declared as `let` here (not the ApfelExitCodes struct) so the
+// man-page bidirectional-coverage test (test_bidirectional_exit_code_coverage)
+// can still scrape them via its `let\s+exit\w+` regex. Values are delegated
+// to ApfelCLI.ApfelExitCodes to keep the mapping unit-testable.
 
-let exitSuccess: Int32 = 0
-let exitRuntimeError: Int32 = 1
-let exitUsageError: Int32 = 2
-let exitGuardrail: Int32 = 3
-let exitContextOverflow: Int32 = 4
-let exitModelUnavailable: Int32 = 5
-let exitRateLimited: Int32 = 6
+let exitSuccess: Int32 = ApfelExitCodes.success
+let exitRuntimeError: Int32 = ApfelExitCodes.runtimeError
+let exitUsageError: Int32 = ApfelExitCodes.usageError
+let exitGuardrail: Int32 = ApfelExitCodes.guardrail
+let exitContextOverflow: Int32 = ApfelExitCodes.contextOverflow
+let exitModelUnavailable: Int32 = ApfelExitCodes.modelUnavailable
+let exitRateLimited: Int32 = ApfelExitCodes.rateLimited
 
 /// Map an ApfelError to the appropriate exit code.
+/// Thin wrapper around ApfelExitCodes.code(for:) (see Sources/CLI/ExitCodes.swift)
+/// so the mapping is unit-testable.
 func exitCode(for error: ApfelError) -> Int32 {
-    switch error {
-    case .guardrailViolation:  return exitGuardrail
-    case .refusal:             return exitGuardrail
-    case .contextOverflow:     return exitContextOverflow
-    case .rateLimited:         return exitRateLimited
-    case .concurrentRequest:   return exitRateLimited
-    case .assetsUnavailable:   return exitRuntimeError
-    case .unsupportedGuide:    return exitRuntimeError
-    case .decodingFailure:     return exitRuntimeError
-    case .unsupportedLanguage: return exitRuntimeError
-    case .toolExecution:       return exitRuntimeError
-    case .unknown:             return exitRuntimeError
-    }
+    ApfelExitCodes.code(for: error)
 }
 
 // MARK: - Signal Handling
