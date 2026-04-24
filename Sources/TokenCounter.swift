@@ -67,8 +67,18 @@ actor TokenCounter {
     }
 
     /// Supported languages as locale identifier strings.
+    /// Callers should fetch this ONCE at startup (see Server.swift) - it touches
+    /// the FoundationModels SDK, and a crash observed in apfel-gui#4 suggests
+    /// repeated mid-flight access on Hummingbird's dispatch queue can destabilize
+    /// the process in some macOS 26.4 environments.
     var supportedLanguages: [String] {
-        model.supportedLanguages.compactMap { $0.languageCode?.identifier }
+        var ids: [String] = []
+        for language in model.supportedLanguages {
+            if let id = language.languageCode?.identifier {
+                ids.append(id)
+            }
+        }
+        return ids
     }
 
     /// Count tokens for transcript entries using the real API.

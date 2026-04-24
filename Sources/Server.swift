@@ -49,26 +49,38 @@ nonisolated(unsafe) var serverState: ServerState!
 /// Start the OpenAI-compatible HTTP server.
 func startServer(config: ServerConfig, mcpManager: MCPManager? = nil) async throws {
     serverState = ServerState(config: config, mcpManager: mcpManager)
+
+    // Pre-fetch static model properties BEFORE binding so:
+    // (a) the first /health or /v1/models request does not pay the cold-start
+    //     SDK cost (12-second GUI health-probe timeouts observed in apfel-gui#4),
+    // (b) any SDK-level crash inside SystemLanguageModel.supportedLanguages
+    //     fails visibly during startup instead of SIGSEGV on a routine health
+    //     probe (also apfel-gui#4).
+    // Availability stays a per-request read because it can flip at runtime
+    // (user toggles Apple Intelligence, assets re-download, etc.).
+    let tc = TokenCounter.shared
+    let cachedContextSize = await tc.contextSize
+    let cachedLangs = await tc.supportedLanguages
+
     let router = Router()
 
     // Security middleware: origin check, token auth, CORS headers
     router.add(middleware: SecurityMiddleware<BasicRequestContext>(config: config))
 
-    // Health - includes model availability from SDK
+    // Health - includes model availability from SDK.
+    // contextSize and supportedLanguages captured from startup to avoid
+    // per-request SDK calls (cold-start safety, apfel-gui#4).
     router.get("/health") { _, _ -> Response in
         let active = await serverState.logStore.activeRequests
-        let tc = TokenCounter.shared
-        let available = await tc.isAvailable
-        let contextSize = await tc.contextSize
-        let langs = await tc.supportedLanguages
+        let available = await TokenCounter.shared.isAvailable
         let health: [String: Any] = [
             "status": available ? "ok" : "model_unavailable",
             "model": modelName,
             "version": version,
             "active_requests": active,
-            "context_window": contextSize,
+            "context_window": cachedContextSize,
             "model_available": available,
-            "supported_languages": langs
+            "supported_languages": cachedLangs
         ]
         if let data = try? JSONSerialization.data(withJSONObject: health, options: [.sortedKeys]),
            let json = String(data: data, encoding: .utf8) {
@@ -77,19 +89,17 @@ func startServer(config: ServerConfig, mcpManager: MCPManager? = nil) async thro
         return jsonResponse("{\"status\":\"ok\"}")
     }
 
-    // Models — includes context_window and supported_languages from SDK
+    // Models — includes context_window and supported_languages from SDK.
+    // Uses the same startup-cached values as /health.
     router.get("/v1/models") { _, _ -> Response in
-        let tc = TokenCounter.shared
-        let contextSize = await tc.contextSize
-        let langs = await tc.supportedLanguages
         return jsonResponse(jsonString(ModelsListResponse(
             object: "list",
             data: [.init(
                 id: modelName, object: "model", created: 1719792000, owned_by: "apple",
-                context_window: contextSize,
+                context_window: cachedContextSize,
                 supported_parameters: ["temperature", "max_tokens", "seed", "stream", "tools", "tool_choice", "response_format", "x_context_strategy", "x_context_max_turns", "x_context_output_reserve"],
                 unsupported_parameters: ["logprobs", "n", "stop", "presence_penalty", "frequency_penalty"],
-                notes: "Apple on-device model via FoundationModels framework. Unsupported parameters are rejected with 400 when present (except n=1 and logprobs=false). Supported languages: \(langs.joined(separator: ", "))"
+                notes: "Apple on-device model via FoundationModels framework. Unsupported parameters are rejected with 400 when present (except n=1 and logprobs=false). Supported languages: \(cachedLangs.joined(separator: ", "))"
             )]
         )))
     }

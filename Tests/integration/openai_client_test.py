@@ -29,6 +29,50 @@ def test_apple_intelligence_enabled():
         "Apple Intelligence is NOT enabled. Go to System Settings → Apple Intelligence & Siri → Turn on."
 
 
+def test_health_returns_fast_without_cold_start():
+    """Repeated /health requests must be fast because contextSize and
+    supportedLanguages are cached at server startup.
+
+    Regression guard for apfel-gui#4: the GUI polls /health every 500ms
+    with a 12-second deadline. If /health synchronously hit the
+    FoundationModels SDK on every request, the GUI would time out on
+    cold starts. Budget: 20 consecutive requests should complete in
+    well under 2 seconds total.
+    """
+    import time
+    url = f"{BASE_URL.replace('/v1', '')}/health"
+    start = time.monotonic()
+    for _ in range(20):
+        resp = httpx.get(url, timeout=2)
+        assert resp.status_code == 200
+    elapsed = time.monotonic() - start
+    assert elapsed < 2.0, (
+        f"20 /health requests took {elapsed:.2f}s, expected < 2s. "
+        f"This means /health is hitting the SDK on every request -- "
+        f"regressing apfel-gui#4 (GUI cold-start timeout)."
+    )
+
+
+def test_health_supported_languages_populated():
+    """Startup cache must include a non-empty supported_languages list.
+
+    Regression guard for apfel-gui#4: pre-caching
+    SystemLanguageModel.supportedLanguages at startup must actually
+    produce a non-empty list on a machine with Apple Intelligence
+    enabled. If the SDK starts returning an empty Set we want to
+    notice immediately rather than silently shipping an empty list.
+    """
+    resp = httpx.get(f"{BASE_URL.replace('/v1', '')}/health")
+    data = resp.json()
+    langs = data.get("supported_languages", [])
+    assert isinstance(langs, list)
+    assert len(langs) > 0, (
+        "supported_languages is empty. Either Apple Intelligence is "
+        "disabled or SystemLanguageModel.supportedLanguages changed."
+    )
+    assert "en" in langs, f"expected 'en' in supported_languages, got {langs}"
+
+
 # MARK: - Basic Completions
 
 def test_basic_completion():
