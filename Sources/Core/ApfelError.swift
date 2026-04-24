@@ -19,6 +19,7 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
         if let mcpError = error as? MCPError {
             return .toolExecution(mcpError.description)
         }
+        // FoundationModels ToolCallError is unreachable - apfel runs tools out-of-band; see #119
 
         let typeName = String(describing: type(of: error))
         let mirror = String(reflecting: error)
