@@ -77,7 +77,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
     // Build session options from request (retry config comes from server config)
     let sessionOpts = SessionOptions(
         temperature: chatRequest.temperature,
-        maxTokens: chatRequest.max_tokens,
+        maxTokens: chatRequest.max_tokens ?? BodyLimits.defaultMaxResponseTokens,
         seed: chatRequest.seed.map { UInt64($0) },
         permissive: false,
         contextConfig: contextConfig,

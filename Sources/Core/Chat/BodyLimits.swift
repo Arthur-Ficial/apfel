@@ -12,4 +12,8 @@ package enum BodyLimits {
     /// Tokens reserved for the model's response when fitting the prompt
     /// into the 4096-token context window.
     public static let defaultOutputReserveTokens: Int = 512
+
+    /// Server-side cap applied when a client omits max_tokens.
+    /// Matches the output reserve to stay within the 4096-token context window.
+    public static let defaultMaxResponseTokens: Int = 512
 }
