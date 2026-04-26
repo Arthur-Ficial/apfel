@@ -435,3 +435,46 @@ def test_health_endpoint():
     assert "model" in data
     assert "context_window" in data
     assert "model_available" in data
+
+
+# MARK: - Non-Prefixed Route Aliases (#134)
+
+def test_chat_completions_without_v1_prefix():
+    """POST /chat/completions (no /v1/ prefix) works for clients like Zed."""
+    resp = httpx.post(
+        f"{BASE_URL.replace('/v1', '')}/chat/completions",
+        json={"model": MODEL, "messages": [{"role": "user", "content": "Say hi."}], "max_tokens": 10},
+        timeout=60,
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["object"] == "chat.completion"
+    assert len(data["choices"]) > 0
+
+
+def test_models_without_v1_prefix():
+    """GET /models (no /v1/ prefix) works for clients like Zed."""
+    resp = httpx.get(f"{BASE_URL.replace('/v1', '')}/models")
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["object"] == "list"
+    assert len(data["data"]) > 0
+    assert data["data"][0]["id"] == MODEL
+
+
+def test_completions_stub_without_v1_prefix():
+    """POST /completions (no /v1/ prefix) returns 501."""
+    resp = httpx.post(
+        f"{BASE_URL.replace('/v1', '')}/completions",
+        json={"model": MODEL, "prompt": "hi"},
+    )
+    assert resp.status_code == 501
+
+
+def test_embeddings_stub_without_v1_prefix():
+    """POST /embeddings (no /v1/ prefix) returns 501."""
+    resp = httpx.post(
+        f"{BASE_URL.replace('/v1', '')}/embeddings",
+        json={"model": MODEL, "input": "hi"},
+    )
+    assert resp.status_code == 501

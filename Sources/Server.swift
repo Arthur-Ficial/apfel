@@ -92,7 +92,8 @@ func startServer(config: ServerConfig, mcpManager: MCPManager? = nil) async thro
 
     // Models — includes context_window and supported_languages from SDK.
     // Uses the same startup-cached values as /health.
-    router.get("/v1/models") { _, _ -> Response in
+    // Registered at both /v1/models and /models for client compatibility (#134).
+    let modelsHandler: @Sendable (Request, BasicRequestContext) async throws -> Response = { _, _ in
         return jsonResponse(jsonString(ModelsListResponse(
             object: "list",
             data: [.init(
@@ -104,9 +105,12 @@ func startServer(config: ServerConfig, mcpManager: MCPManager? = nil) async thro
             )]
         )))
     }
+    router.get("/v1/models") { req, ctx in try await modelsHandler(req, ctx) }
+    router.get("/models") { req, ctx in try await modelsHandler(req, ctx) }
 
     // Chat completions (with logging, retry, concurrency)
-    router.post("/v1/chat/completions") { request, context -> Response in
+    // Registered at both /v1/chat/completions and /chat/completions for client compatibility (#134).
+    let chatCompletionsHandler: @Sendable (Request, BasicRequestContext) async throws -> Response = { request, context in
         let start = Date()
         let requestId = "chatcmpl-\(UUID().uuidString.prefix(12).lowercased())"
 
@@ -160,6 +164,8 @@ func startServer(config: ServerConfig, mcpManager: MCPManager? = nil) async thro
 
         return result.response
     }
+    router.post("/v1/chat/completions") { req, ctx in try await chatCompletionsHandler(req, ctx) }
+    router.post("/chat/completions") { req, ctx in try await chatCompletionsHandler(req, ctx) }
 
     // Logs query
     router.get("/v1/logs") { request, _ -> Response in
@@ -202,10 +208,17 @@ func startServer(config: ServerConfig, mcpManager: MCPManager? = nil) async thro
     }
 
     // Stub endpoints - honest about unsupported features
+    // Non-prefixed aliases included for client compatibility (#134).
     router.post("/v1/completions") { _, _ -> Response in
         openAIError(status: .init(code: 501), message: "Text completions not supported. Use /v1/chat/completions.", type: "invalid_request_error")
     }
+    router.post("/completions") { _, _ -> Response in
+        openAIError(status: .init(code: 501), message: "Text completions not supported. Use /v1/chat/completions.", type: "invalid_request_error")
+    }
     router.post("/v1/embeddings") { _, _ -> Response in
+        openAIError(status: .init(code: 501), message: "Embeddings not supported by Apple's on-device model.", type: "invalid_request_error")
+    }
+    router.post("/embeddings") { _, _ -> Response in
         openAIError(status: .init(code: 501), message: "Embeddings not supported by Apple's on-device model.", type: "invalid_request_error")
     }
 
