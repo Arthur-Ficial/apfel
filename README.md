@@ -233,7 +233,7 @@ alias apfel=apfel-run                 # optional, every apfel flag still works
 | `GET /v1/logs`, `/v1/logs/stats` | Debug only | Requires `--debug` |
 | Tool calling | Supported | Native `ToolDefinition` + JSON detection. See [docs/tool-calling-guide.md](docs/tool-calling-guide.md) |
 | `response_format: json_object` | Supported | System-prompt injection; markdown fences stripped from output |
-| `temperature`, `max_tokens`, `seed` | Supported | Mapped to `GenerationOptions` |
+| `temperature`, `max_tokens`, `seed` | Supported | Mapped to `GenerationOptions`. **`max_tokens` defaults to 512 when omitted** - see [Default response cap](#default-response-cap-max_tokens) |
 | `stream: true` | Supported | SSE; final usage chunk only when `stream_options: {"include_usage": true}` (per OpenAI spec) |
 | `finish_reason` | Supported | `stop`, `tool_calls`, `length` |
 | Context strategies | Supported | `x_context_strategy`, `x_context_max_turns`, `x_context_output_reserve` extension fields |
@@ -245,6 +245,55 @@ alias apfel=apfel-run                 # optional, every apfel flag still works
 | `Authorization` header | Supported | Required when `--token` is set. See [docs/server-security.md](docs/server-security.md) |
 
 Full API spec: [openai/openai-openapi](https://github.com/openai/openai-openapi).
+
+## Default response cap (`max_tokens`)
+
+When a `/v1/chat/completions` request **omits `max_tokens`**, the server applies a default cap of **512 tokens**. Best practice: **always set `max_tokens` explicitly** to a value that matches your use case.
+
+### Why a default exists
+
+The on-device model has a **4096-token context window** that holds input *and* output combined. With no cap, generation runs until that window overflows, which produces an unrecoverable `[context overflow]` error after ~50 seconds of wasted generation - the client gets nothing usable. The 512-token default matches the output budget the context trimmer already reserves, so a typical short prompt gets a usable reply in ~1 second instead of hanging.
+
+### When the cap is hit
+
+The response sets `finish_reason: "length"` (per the OpenAI spec) so the client can detect a truncated reply. If 512 tokens is too short for your prompt, raise it explicitly - up to whatever leaves room for your input inside the 4096-token window.
+
+### Examples
+
+Without `max_tokens` (default 512 applied, fast and bounded):
+
+```bash
+curl -sS http://localhost:11434/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"apple-foundationmodel",
+       "messages":[{"role":"user","content":"Reply SKIP, MOVE, or RENAME."}]}'
+# ~1s, returns a short reply, finish_reason: "stop" or "length"
+```
+
+With explicit `max_tokens` (recommended - sized to your need):
+
+```bash
+curl -sS http://localhost:11434/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"apple-foundationmodel","max_tokens":1024,
+       "messages":[{"role":"user","content":"Summarise this paragraph: ..."}]}'
+```
+
+### Picking a value
+
+| Use case                               | `max_tokens`  |
+|----------------------------------------|---------------|
+| Single-word / classification reply     | 16 - 32       |
+| One-line instruction                   | 64 - 128      |
+| Short paragraph                        | 256 - 512     |
+| Long paragraph / structured JSON       | 1024 - 2048   |
+| As long as the context window allows   | 4096 minus your input token count |
+
+Keep `input_tokens + max_tokens` comfortably below 4096. The context trimmer drops oldest history first to fit the input, but if the requested `max_tokens` leaves no room for any output, generation overflows and the request fails with `[context overflow]`. The validator only rejects non-positive values (`max_tokens <= 0`), so sizing is your responsibility.
+
+### CLI parity
+
+The CLI (`apfel "prompt"`) does **not** apply this default - it streams to stdout with no server in front of it, so a runaway response is visible in real time and you can `Ctrl-C`. Use `--max-tokens N` if you want a hard cap.
 
 ## Limitations
 
