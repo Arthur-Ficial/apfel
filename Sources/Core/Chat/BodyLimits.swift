@@ -13,7 +13,11 @@ package enum BodyLimits {
     /// into the 4096-token context window.
     public static let defaultOutputReserveTokens: Int = 512
 
-    /// Server-side cap applied when a client omits max_tokens.
-    /// Matches the output reserve to stay within the 4096-token context window.
-    public static let defaultMaxResponseTokens: Int = 512
+    /// Default cap applied to model responses when neither the CLI nor the
+    /// HTTP client provides max_tokens. Sized to cover typical short-to-medium
+    /// chat replies and structured JSON output, while leaving 3072 tokens of
+    /// the 4096-token context window for input.
+    /// Read by both surfaces (CLI: main.swift, server: Handlers.swift) so the
+    /// two stay in lock-step.
+    public static let defaultMaxResponseTokens: Int = 1024
 }

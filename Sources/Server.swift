@@ -22,6 +22,7 @@ struct ServerConfig: Sendable {
     let publicHealth: Bool
     let retryEnabled: Bool
     let retryCount: Int
+    let permissive: Bool
 
     var healthRequiresAuthentication: Bool {
         token != nil && !publicHealth && !isLoopbackHost(host)

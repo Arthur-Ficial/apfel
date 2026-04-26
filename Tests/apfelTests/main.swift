@@ -93,6 +93,7 @@ suite("SchemaParserTests") { runSchemaParserTests() }
 suite("FinishReasonResolverTests") { runFinishReasonResolverTests() }
 suite("ToolResolutionTests") { runToolResolutionTests() }
 suite("BodyLimitsTests") { runBodyLimitsTests() }
+suite("CLIServerParityTests") { runCLIServerParityTests() }
 suite("TraceBufferTests") { runTraceBufferTests() }
 suite("StreamTaskBoxTests") { runStreamTaskBoxTests() }
 suite("ManPageTests") { runManPageTests() }

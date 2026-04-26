@@ -233,7 +233,7 @@ alias apfel=apfel-run                 # optional, every apfel flag still works
 | `GET /v1/logs`, `/v1/logs/stats` | Debug only | Requires `--debug` |
 | Tool calling | Supported | Native `ToolDefinition` + JSON detection. See [docs/tool-calling-guide.md](docs/tool-calling-guide.md) |
 | `response_format: json_object` | Supported | System-prompt injection; markdown fences stripped from output |
-| `temperature`, `max_tokens`, `seed` | Supported | Mapped to `GenerationOptions`. **`max_tokens` defaults to 512 when omitted** - see [Default response cap](#default-response-cap-max_tokens) |
+| `temperature`, `max_tokens`, `seed` | Supported | Mapped to `GenerationOptions`. **`max_tokens` defaults to 1024 when omitted** (CLI + server share the constant) - see [Default response cap](#default-response-cap-max_tokens) |
 | `stream: true` | Supported | SSE; final usage chunk only when `stream_options: {"include_usage": true}` (per OpenAI spec) |
 | `finish_reason` | Supported | `stop`, `tool_calls`, `length` |
 | Context strategies | Supported | `x_context_strategy`, `x_context_max_turns`, `x_context_output_reserve` extension fields |
@@ -248,19 +248,19 @@ Full API spec: [openai/openai-openapi](https://github.com/openai/openai-openapi)
 
 ## Default response cap (`max_tokens`)
 
-When a `/v1/chat/completions` request **omits `max_tokens`**, the server applies a default cap of **512 tokens**. Best practice: **always set `max_tokens` explicitly** to a value that matches your use case.
+When `max_tokens` is not specified, **both the CLI and the OpenAI-compatible server** apply a default cap of **1024 tokens**. Same value, single source of truth ([`BodyLimits.defaultMaxResponseTokens`](https://github.com/Arthur-Ficial/apfel/blob/main/Sources/Core/Chat/BodyLimits.swift)). Best practice: **always set `max_tokens` explicitly** to a value that matches your use case.
 
 ### Why a default exists
 
-The on-device model has a **4096-token context window** that holds input *and* output combined. With no cap, generation runs until that window overflows, which produces an unrecoverable `[context overflow]` error after ~50 seconds of wasted generation - the client gets nothing usable. The 512-token default matches the output budget the context trimmer already reserves, so a typical short prompt gets a usable reply in ~1 second instead of hanging.
+The on-device model has a **4096-token context window** that holds input *and* output combined. With no cap, generation runs until that window overflows, which produces an unrecoverable `[context overflow]` error after ~50 seconds of wasted generation - the client gets nothing usable. 1024 tokens covers typical structured JSON, short-to-medium chat replies, and most single-pass code blocks, while leaving 3072 tokens of the window for input.
 
 ### When the cap is hit
 
-The response sets `finish_reason: "length"` (per the OpenAI spec) so the client can detect a truncated reply. If 512 tokens is too short for your prompt, raise it explicitly - up to whatever leaves room for your input inside the 4096-token window.
+The response sets `finish_reason: "length"` (per the OpenAI spec) so the client can detect a truncated reply. If 1024 tokens is too short, raise it explicitly with `max_tokens` (or `--max-tokens` on the CLI) - up to whatever leaves room for your input inside the 4096-token window.
 
 ### Examples
 
-Without `max_tokens` (default 512 applied, fast and bounded):
+Without `max_tokens` (default 1024 applied, fast and bounded):
 
 ```bash
 curl -sS http://localhost:11434/v1/chat/completions \
@@ -293,7 +293,21 @@ Keep `input_tokens + max_tokens` comfortably below 4096. The context trimmer dro
 
 ### CLI parity
 
-The CLI (`apfel "prompt"`) applies the same 512-token default when `--max-tokens` is not set. This prevents context overflow in piped and scripted usage (`apfel "..." | jq`, cron jobs, CI pipelines) where a runaway response is not visible. Override with `--max-tokens N` or via the `APFEL_MAX_TOKENS` environment variable.
+The CLI applies the **same 1024-token default** as the server. The two surfaces read from the same `BodyLimits.defaultMaxResponseTokens` constant - they cannot drift. Override with `--max-tokens N` or `APFEL_MAX_TOKENS=N`.
+
+```bash
+apfel "Reply SKIP."                    # default cap (1024) applies
+apfel --max-tokens 64 "Reply SKIP."    # explicit cap
+APFEL_MAX_TOKENS=2048 apfel "..."      # via env var
+```
+
+### Permissive guardrails for the server
+
+`apfel --serve --permissive` makes the server use Apple's `.permissiveContentTransformations` guardrails for **every request** the process handles. Same flag, same semantics as the CLI's `--permissive` ([docs/PERMISSIVE.md](docs/PERMISSIVE.md)). There is no per-request override - the server operator decides for the whole process.
+
+```bash
+apfel --serve --permissive             # every request uses permissive guardrails
+```
 
 ## Limitations
 

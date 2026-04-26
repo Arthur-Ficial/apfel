@@ -79,7 +79,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
         temperature: chatRequest.temperature,
         maxTokens: chatRequest.max_tokens ?? BodyLimits.defaultMaxResponseTokens,
         seed: chatRequest.seed.map { UInt64($0) },
-        permissive: false,
+        permissive: serverState.config.permissive,
         contextConfig: contextConfig,
         retryEnabled: serverState.config.retryEnabled,
         retryCount: serverState.config.retryCount

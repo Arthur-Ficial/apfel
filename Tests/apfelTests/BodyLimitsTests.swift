@@ -14,12 +14,13 @@ func runBodyLimitsTests() {
         try assertEqual(BodyLimits.defaultOutputReserveTokens, 512)
     }
 
-    test("defaultMaxResponseTokens is 512") {
-        try assertEqual(BodyLimits.defaultMaxResponseTokens, 512)
+    test("defaultMaxResponseTokens is 1024") {
+        try assertEqual(BodyLimits.defaultMaxResponseTokens, 1024)
     }
 
-    test("defaultMaxResponseTokens matches defaultOutputReserveTokens") {
-        try assertEqual(BodyLimits.defaultMaxResponseTokens, BodyLimits.defaultOutputReserveTokens)
+    test("defaultMaxResponseTokens is intentionally decoupled from defaultOutputReserveTokens") {
+        try assertTrue(BodyLimits.defaultMaxResponseTokens != BodyLimits.defaultOutputReserveTokens,
+                       "These constants serve different purposes (response cap vs trim reservation) and must not be coupled by definition")
     }
 
     test("constants are positive") {
