@@ -293,7 +293,7 @@ Keep `input_tokens + max_tokens` comfortably below 4096. The context trimmer dro
 
 ### CLI parity
 
-The CLI (`apfel "prompt"`) does **not** apply this default - it streams to stdout with no server in front of it, so a runaway response is visible in real time and you can `Ctrl-C`. Use `--max-tokens N` if you want a hard cap.
+The CLI (`apfel "prompt"`) applies the same 512-token default when `--max-tokens` is not set. This prevents context overflow in piped and scripted usage (`apfel "..." | jq`, cron jobs, CI pipelines) where a runaway response is not visible. Override with `--max-tokens N` or via the `APFEL_MAX_TOKENS` environment variable.
 
 ## Limitations
 

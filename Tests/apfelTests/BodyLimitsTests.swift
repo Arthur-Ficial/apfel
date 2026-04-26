@@ -27,4 +27,9 @@ func runBodyLimitsTests() {
         try assertTrue(BodyLimits.defaultOutputReserveTokens > 0)
         try assertTrue(BodyLimits.defaultMaxResponseTokens > 0)
     }
+
+    test("defaultMaxResponseTokens fits within 4096-token context window") {
+        try assertTrue(BodyLimits.defaultMaxResponseTokens <= 4096)
+        try assertTrue(BodyLimits.defaultMaxResponseTokens >= 128)
+    }
 }
