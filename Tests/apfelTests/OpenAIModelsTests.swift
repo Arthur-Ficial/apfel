@@ -337,6 +337,31 @@ func runChatRequestValidatorTests() {
             .invalidParameterValue("'x_context_max_turns' must be a positive integer, got 0")
         )
     }
+
+    test("x_permissive decodes true when present") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"x_permissive":true}"#
+        )
+        try assertEqual(request.x_permissive, true)
+        try assertNil(ChatRequestValidator.validate(request))
+    }
+
+    test("x_permissive decodes false when present") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"x_permissive":false}"#
+        )
+        try assertEqual(request.x_permissive, false)
+    }
+
+    test("x_permissive defaults to nil when omitted") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}]}"#
+        )
+        try assertNil(request.x_permissive)
+    }
 }
 
 private func unwrap<T>(_ value: T?, _ message: String) throws -> T {

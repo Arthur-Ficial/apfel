@@ -45,6 +45,8 @@ public struct ChatCompletionRequest: Decodable, Sendable, Equatable, Hashable {
     public let x_context_max_turns: Int?
     /// Requested token reserve for the model's output.
     public let x_context_output_reserve: Int?
+    /// Per-request opt-in for permissive guardrails on the server.
+    public let x_permissive: Bool?
 
     /// Creates a chat-completions request value.
     public init(
@@ -66,7 +68,8 @@ public struct ChatCompletionRequest: Decodable, Sendable, Equatable, Hashable {
         user: String? = nil,
         x_context_strategy: String? = nil,
         x_context_max_turns: Int? = nil,
-        x_context_output_reserve: Int? = nil
+        x_context_output_reserve: Int? = nil,
+        x_permissive: Bool? = nil
     ) {
         self.model = model
         self.messages = messages
@@ -87,6 +90,7 @@ public struct ChatCompletionRequest: Decodable, Sendable, Equatable, Hashable {
         self.x_context_strategy = x_context_strategy
         self.x_context_max_turns = x_context_max_turns
         self.x_context_output_reserve = x_context_output_reserve
+        self.x_permissive = x_permissive
     }
 }
 

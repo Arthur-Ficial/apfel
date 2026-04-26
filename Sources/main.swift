@@ -134,13 +134,13 @@ if !fileContents.isEmpty {
 let contextConfig = ContextConfig(
     strategy: parsed.contextStrategy ?? .newestFirst,
     maxTurns: parsed.contextMaxTurns,
-    outputReserve: parsed.contextOutputReserve ?? 512,
+    outputReserve: parsed.contextOutputReserve ?? BodyLimits.defaultOutputReserveTokens,
     permissive: parsed.permissive
 )
 
 let sessionOpts = SessionOptions(
     temperature: parsed.temperature,
-    maxTokens: parsed.maxTokens,
+    maxTokens: parsed.maxTokens ?? BodyLimits.defaultMaxResponseTokens,
     seed: parsed.seed,
     permissive: parsed.permissive,
     contextConfig: contextConfig,

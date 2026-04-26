@@ -68,10 +68,12 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
     events.append("decoded messages=\(chatRequest.messages.count) stream=\(isStreaming) model=\(chatRequest.model)")
 
     // Build context config from request extensions (optional, defaults to newest-first)
+    let permissive = chatRequest.x_permissive == true
     let contextConfig = ContextConfig(
         strategy: chatRequest.x_context_strategy.flatMap { ContextStrategy(rawValue: $0) } ?? .newestFirst,
         maxTurns: chatRequest.x_context_max_turns,
-        outputReserve: chatRequest.x_context_output_reserve ?? BodyLimits.defaultOutputReserveTokens
+        outputReserve: chatRequest.x_context_output_reserve ?? BodyLimits.defaultOutputReserveTokens,
+        permissive: permissive
     )
 
     // Build session options from request (retry config comes from server config)
@@ -79,7 +81,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
         temperature: chatRequest.temperature,
         maxTokens: chatRequest.max_tokens ?? BodyLimits.defaultMaxResponseTokens,
         seed: chatRequest.seed.map { UInt64($0) },
-        permissive: false,
+        permissive: permissive,
         contextConfig: contextConfig,
         retryEnabled: serverState.config.retryEnabled,
         retryCount: serverState.config.retryCount
