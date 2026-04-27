@@ -19,8 +19,14 @@ package struct ProcessPromptResult: Sendable {
     public let toolLog: [ToolLogEntry]
     public let finishReason: FinishReason
 
-    public init(content: String, toolLog: [ToolLogEntry], finishReason: FinishReason = .stop) {
+    public init(content: String, toolLog: [ToolLogEntry], finishReason: FinishReason) {
         self.content = content; self.toolLog = toolLog; self.finishReason = finishReason
+    }
+
+    /// Pre-1.3.3 initialiser preserved for source compatibility. Delegates to
+    /// the three-argument init with `finishReason: .stop`.
+    public init(content: String, toolLog: [ToolLogEntry]) {
+        self.init(content: content, toolLog: toolLog, finishReason: .stop)
     }
 }
 

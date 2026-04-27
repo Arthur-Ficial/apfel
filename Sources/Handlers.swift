@@ -373,17 +373,9 @@ private func nonStreamingResponse(
     }
 
     let completionTokens = await TokenCounter.shared.count(deliveredContent)
-    let finishReason: String
-    if outcome.finishReason == .length, toolCalls == nil {
-        // Output-side overflow during generation: surfaced by collectStream.
-        finishReason = FinishReason.length.openAIValue
-    } else {
-        finishReason = FinishReasonResolver.resolve(
-            hasToolCalls: toolCalls != nil,
-            completionTokens: completionTokens,
-            maxTokens: genOpts.maximumResponseTokens
-        ).openAIValue
-    }
+    // collectStream already resolved .stop vs .length (cap-hit and output-side
+    // overflow); only override here when tool calls are detected.
+    let finishReason = (toolCalls != nil ? FinishReason.toolCalls : outcome.finishReason).openAIValue
 
     let payload = ChatCompletionResponse(
         id: id,

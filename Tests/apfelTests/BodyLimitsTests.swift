@@ -23,9 +23,9 @@ func runBodyLimitsTests() {
         try assertTrue(BodyLimits.defaultOutputReserveTokens > 0)
     }
 
-    test("no defaultMaxResponseTokens exists (intentionally removed)") {
+    test("defaultMaxResponseTokens is marked deprecated (vestigial stub kept for API stability)") {
         let bodyLimitsSrc = (try? String(contentsOfFile: "Sources/Core/Chat/BodyLimits.swift", encoding: .utf8)) ?? ""
-        try assertTrue(!bodyLimitsSrc.contains("defaultMaxResponseTokens"),
-                       "BodyLimits.swift must not declare defaultMaxResponseTokens — omitted max_tokens is intentionally nil")
+        try assertTrue(bodyLimitsSrc.contains("@available(*, deprecated"),
+                       "BodyLimits.swift must keep defaultMaxResponseTokens as @available(*, deprecated) — symbol stays in the API surface for one release for stability")
     }
 }

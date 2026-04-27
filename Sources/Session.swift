@@ -411,13 +411,15 @@ private func appendExecutedToolResults(
 /// Stream a response, optionally printing deltas to stdout.
 /// FoundationModels returns cumulative snapshots; we compute deltas by tracking prev length.
 ///
-/// Output-side context overflow (the model running into the 4096-token ceiling
-/// after producing some content) is handled gracefully: the partial content is
-/// returned with `finishReason: .length` instead of throwing. Prompt-side
-/// overflow (no content produced before the throw) still throws.
+/// Resolves `finishReason` two ways:
+///   - Natural stream completion: `.length` if `completionTokens >= maxTokens`,
+///     else `.stop`. Tool-call detection happens at higher layers.
+///   - Output-side context overflow (model ran into the 4096-token ceiling
+///     after producing content): graceful `.length`. Prompt-side overflow
+///     (no content produced before the throw) still throws.
 ///
-/// - Returns: A `StreamOutcome` carrying the accumulated content and a finish
-///   reason of `.stop` (natural EOS) or `.length` (output-side overflow).
+/// - Returns: A `StreamOutcome` carrying the accumulated content and the
+///   resolved finish reason.
 func collectStream(
     _ session: LanguageModelSession,
     prompt: String,
@@ -439,7 +441,13 @@ func collectStream(
             }
             prev = content
         }
-        return StreamOutcome(content: prev, finishReason: .stop)
+        let completionTokens = await TokenCounter.shared.count(prev)
+        let reason = FinishReasonResolver.resolve(
+            hasToolCalls: false,
+            completionTokens: completionTokens,
+            maxTokens: options.maximumResponseTokens
+        )
+        return StreamOutcome(content: prev, finishReason: reason)
     } catch {
         let classified = ApfelError.classify(error)
         switch StreamErrorResolver.resolve(prev: prev, error: classified) {
