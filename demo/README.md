@@ -172,3 +172,57 @@ Then invoke them as `apfel-cmd "find large files"`, `apfel-port 3000`, etc.
 - The symlinks point at your current clone. If you move or delete the `apfel/` directory, the symlinks break - re-run the loop from the new location.
 - Make sure `$HOME/.local/bin` is on your `$PATH` (`echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc`).
 - To remove later: `for d in cmd explain gitsum mac-narrator naming oneliner port wtd; do rm -f "$HOME/.local/bin/apfel-$d"; done`
+
+⸻
+
+## 🧠 Experimental: Semantic CLI Layer (Optional)
+
+In addition to the existing demo scripts, this repo can be extended with an **alternative semantic, intent-aware layer** that bridges natural language and deterministic commands.
+
+> Note: This is an **optional alternative approach** that complements the existing demo scripts. It does not replace the current demos—both approaches can coexist.
+
+Rather than being limited to either approach, this layer allows both to work together:
+
+> Natural language → semantic understanding → canonical command (`apfel-*`)
+
+### What this enables
+
+- Intent-aware suggestions while typing (`apfel expla` → `apfel-explain ...`)
+- Learning from usage (frequency + recency + similarity)
+- Consistent execution (all suggestions resolve to `apfel-*` commands)
+- Local-only operation (no external API calls required)
+
+### Example
+
+```bash
+apfel explain tcp handshake
+# suggests → apfel-explain tcp handshake
+```
+
+### Status
+
+This is an experimental extension built on top of the demo scripts.
+
+It is not part of core `apfel` yet, but can be layered on via a small install script that adds:
+
+- local embeddings
+- intent routing
+- adaptive suggestions
+
+It is intended as an additive layer, not a replacement for the existing demo workflow.
+
+### How to try it
+
+See `demo/semantic-cli/` for installation and setup (located alongside the demo scripts).
+
+### Why this matters
+
+This turns the demos from standalone scripts into a:
+
+> self-learning command interface
+
+Where:
+- language is used for discovery
+- commands are used for execution
+
+⸻
