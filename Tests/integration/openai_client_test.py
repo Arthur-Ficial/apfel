@@ -425,6 +425,98 @@ def test_cors_preflight():
     assert resp.status_code == 204
 
 
+# MARK: - Default max_tokens behaviour
+#
+# Regression guards for the root-cause fix: omitting max_tokens used to
+# generate until the 4096-token context window overflowed and returned a
+# stream error. After the fix, omitted max_tokens uses the remaining window
+# and any overflow surfaces cleanly as finish_reason: "length".
+
+def test_omitted_max_tokens_non_streaming_returns_200():
+    """A request without max_tokens must return HTTP 200 with usable content
+    and a valid finish_reason ("stop" or "length"), never a 400/500.
+    Drop-in OpenAI semantics: omitted = use remaining window."""
+    resp = httpx.post(
+        f"{BASE_URL}/chat/completions",
+        json={
+            "model": MODEL,
+            "messages": [{"role": "user", "content": "Reply with just the word OK."}],
+        },
+        timeout=120,
+    )
+    assert resp.status_code == 200, f"omitted max_tokens must not error: {resp.text}"
+    body = resp.json()
+    choice = body["choices"][0]
+    assert choice["finish_reason"] in {"stop", "length"}, (
+        f"finish_reason must be stop or length, got {choice['finish_reason']!r}"
+    )
+    content = choice["message"].get("content")
+    assert isinstance(content, str) and content, (
+        f"content must be non-empty for a successful completion, got {content!r}"
+    )
+
+
+def test_omitted_max_tokens_streaming_completes_with_done():
+    """Streaming with omitted max_tokens must end with [DONE] and a valid
+    finish_reason on the final chunk -- never with a `stream error: ...`
+    line in the body."""
+    chunks = []
+    saw_done = False
+    saw_stream_error = False
+    with httpx.stream(
+        "POST",
+        f"{BASE_URL}/chat/completions",
+        json={
+            "model": MODEL,
+            "messages": [{"role": "user", "content": "Reply with just the word OK."}],
+            "stream": True,
+        },
+        timeout=120,
+    ) as resp:
+        assert resp.status_code == 200
+        for line in resp.iter_lines():
+            if not line.startswith("data: "):
+                continue
+            data = line[6:].strip()
+            if data == "[DONE]":
+                saw_done = True
+                break
+            payload = json.loads(data)
+            if "error" in payload:
+                saw_stream_error = True
+            chunks.append(payload)
+
+    assert saw_done, "streaming response must end with [DONE]"
+    assert not saw_stream_error, "streaming response must not embed an error payload"
+    finish_reasons = [
+        c["choices"][0].get("finish_reason")
+        for c in chunks
+        if c.get("choices") and c["choices"][0].get("finish_reason")
+    ]
+    assert finish_reasons, "no terminal chunk with finish_reason emitted"
+    assert finish_reasons[-1] in {"stop", "length"}, (
+        f"final finish_reason must be stop or length, got {finish_reasons[-1]!r}"
+    )
+
+
+def test_omitted_max_tokens_does_not_reference_a_default_constant():
+    """Source-level lock: neither main.swift nor Handlers.swift may apply
+    a `?? BodyLimits.defaultMaxResponseTokens` fallback. The dynamic
+    "use the remaining window" behaviour is built on the absence of any
+    such constant."""
+    import os
+    repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    for path in ("Sources/main.swift", "Sources/Handlers.swift"):
+        with open(os.path.join(repo_root, path)) as f:
+            src = f.read()
+        assert "?? BodyLimits.defaultMaxResponseTokens" not in src, (
+            f"{path} must not apply a default constant to max_tokens"
+        )
+        assert "defaultMaxResponseTokens" not in src, (
+            f"{path} must not reference the removed defaultMaxResponseTokens constant"
+        )
+
+
 # MARK: - Health
 
 def test_health_endpoint():

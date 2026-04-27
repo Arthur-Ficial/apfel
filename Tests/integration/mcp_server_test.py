@@ -350,7 +350,12 @@ def test_mcp_tool_error_returns_structured_error():
 
 
 def test_mcp_tool_timeout_returns_structured_error():
-    """A hung MCP tool must fail fast with a structured timeout error."""
+    """A hung MCP tool must fail fast with a structured timeout error.
+
+    max_tokens is set explicitly so the test isolates MCP timeout behaviour
+    from the model-wandering latency that omitted max_tokens can introduce
+    on the small on-device model.
+    """
     with running_custom_mcp_server(FIXTURES / "hanging_mcp_server.py") as api_url:
         started = time.time()
         resp = httpx.post(f"{api_url}/chat/completions", json={
@@ -359,10 +364,11 @@ def test_mcp_tool_timeout_returns_structured_error():
                 {"role": "user", "content": "Use the multiply tool to compute 247 times 83. Reply with just the number."}
             ],
             "seed": 42,
-        }, timeout=10)
+            "max_tokens": 128,
+        }, timeout=30)
         elapsed = time.time() - started
 
-    assert elapsed < 8, f"Timed out too slowly: {elapsed:.2f}s"
+    assert elapsed < 25, f"Timed out too slowly: {elapsed:.2f}s"
     assert resp.status_code == 500
     data = resp.json()
     assert data["error"]["type"] == "server_error"

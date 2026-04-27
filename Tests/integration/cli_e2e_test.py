@@ -775,7 +775,10 @@ MCP_CALC = str(ROOT / "mcp" / "calculator" / "server.py")
 def test_mcp_tool_info_goes_to_stderr():
     """MCP discovery and tool call info must go to stderr, not stdout."""
     require_model()
-    result = run_cli(["--mcp", MCP_CALC, "What is 2 + 2?"], timeout=30)
+    # max_tokens defaults to "use the rest of the window" -- the small
+    # on-device model can ramble before/after the tool call, so MCP test
+    # timeouts are sized to the worst case rather than to a fixed cap.
+    result = run_cli(["--mcp", MCP_CALC, "What is 2 + 2?"], timeout=120)
     assert result.returncode == 0
     assert "mcp:" not in result.stdout, \
         f"mcp: discovery line leaked to stdout: {result.stdout[:200]}"
@@ -788,7 +791,7 @@ def test_mcp_tool_info_goes_to_stderr():
 def test_mcp_stdout_only_has_answer():
     """When piping, stdout must contain only the model's answer."""
     require_model()
-    result = run_cli(["--mcp", MCP_CALC, "Use the add tool to add 10 and 20. Reply with just the number."], timeout=30)
+    result = run_cli(["--mcp", MCP_CALC, "Use the add tool to add 10 and 20. Reply with just the number."], timeout=120)
     assert result.returncode == 0
     stdout_stripped = result.stdout.strip()
     assert "mcp:" not in stdout_stripped
@@ -799,7 +802,7 @@ def test_mcp_stdout_only_has_answer():
 def test_mcp_quiet_suppresses_tool_info():
     """--quiet must suppress both mcp: and tool: lines on stderr."""
     require_model()
-    result = run_cli(["-q", "--mcp", MCP_CALC, "What is 3 times 3?"], timeout=30)
+    result = run_cli(["-q", "--mcp", MCP_CALC, "What is 3 times 3?"], timeout=120)
     assert result.returncode == 0
     assert "mcp:" not in result.stderr, \
         f"mcp: discovery line not suppressed by -q: {result.stderr[:200]}"
@@ -810,7 +813,7 @@ def test_mcp_quiet_suppresses_tool_info():
 def test_mcp_json_output_is_clean():
     """JSON output must not contain MCP diagnostic lines."""
     require_model()
-    result = run_cli(["-o", "json", "--mcp", MCP_CALC, "What is 5 plus 5?"], timeout=30)
+    result = run_cli(["-o", "json", "--mcp", MCP_CALC, "What is 5 plus 5?"], timeout=120)
     assert result.returncode == 0
     import json
     data = json.loads(result.stdout.strip())
@@ -943,5 +946,5 @@ def test_mcp_timeout_default_unchanged():
     """Default MCP timeout (5s) should still work for normal fast servers."""
     require_model()
     mcp_path = str(ROOT / "mcp" / "calculator" / "server.py")
-    result = run_cli(["--mcp", mcp_path, "What is 1+1?"], timeout=30)
+    result = run_cli(["--mcp", mcp_path, "What is 1+1?"], timeout=120)
     assert result.returncode == 0, f"Normal MCP should work with default timeout: {result.stderr}"

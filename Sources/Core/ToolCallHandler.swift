@@ -17,9 +17,10 @@ public struct ToolDef: Sendable {
 package struct ProcessPromptResult: Sendable {
     public let content: String
     public let toolLog: [ToolLogEntry]
+    public let finishReason: FinishReason
 
-    public init(content: String, toolLog: [ToolLogEntry]) {
-        self.content = content; self.toolLog = toolLog
+    public init(content: String, toolLog: [ToolLogEntry], finishReason: FinishReason = .stop) {
+        self.content = content; self.toolLog = toolLog; self.finishReason = finishReason
     }
 }
 

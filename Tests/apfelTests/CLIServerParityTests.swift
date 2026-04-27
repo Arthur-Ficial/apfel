@@ -13,14 +13,25 @@ func runCLIServerParityTests() {
     let handlersSrc = (try? String(contentsOfFile: "Sources/Handlers.swift", encoding: .utf8)) ?? ""
     let serverSrc = (try? String(contentsOfFile: "Sources/Server.swift", encoding: .utf8)) ?? ""
 
-    test("max_tokens fallback: CLI references the SSOT constant") {
-        try assertTrue(mainSrc.contains("?? BodyLimits.defaultMaxResponseTokens"),
-                       "Sources/main.swift must apply BodyLimits.defaultMaxResponseTokens as the fallback (parity with server)")
+    test("max_tokens: CLI passes the value through unchanged (nil = use remaining window)") {
+        try assertTrue(mainSrc.contains("maxTokens: parsed.maxTokens,"),
+                       "Sources/main.swift must pass parsed.maxTokens through verbatim — no `?? <constant>` fallback")
+        try assertTrue(!mainSrc.contains("?? BodyLimits.defaultMaxResponseTokens"),
+                       "Sources/main.swift must NOT apply a fallback constant to max_tokens")
     }
 
-    test("max_tokens fallback: server references the SSOT constant") {
-        try assertTrue(handlersSrc.contains("?? BodyLimits.defaultMaxResponseTokens"),
-                       "Sources/Handlers.swift must apply BodyLimits.defaultMaxResponseTokens as the fallback (parity with CLI)")
+    test("max_tokens: server passes the value through unchanged (nil = use remaining window)") {
+        try assertTrue(handlersSrc.contains("maxTokens: chatRequest.max_tokens,"),
+                       "Sources/Handlers.swift must pass chatRequest.max_tokens through verbatim — no `?? <constant>` fallback")
+        try assertTrue(!handlersSrc.contains("?? BodyLimits.defaultMaxResponseTokens"),
+                       "Sources/Handlers.swift must NOT apply a fallback constant to max_tokens")
+    }
+
+    test("max_tokens: SSOT — neither surface references defaultMaxResponseTokens (regression guard)") {
+        try assertTrue(!mainSrc.contains("defaultMaxResponseTokens"),
+                       "Sources/main.swift must not reference the removed defaultMaxResponseTokens constant")
+        try assertTrue(!handlersSrc.contains("defaultMaxResponseTokens"),
+                       "Sources/Handlers.swift must not reference the removed defaultMaxResponseTokens constant")
     }
 
     test("permissive: ServerConfig declares the field") {

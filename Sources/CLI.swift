@@ -69,6 +69,10 @@ func singlePrompt(_ prompt: String, systemPrompt: String?, stream: Bool, options
             metadata: .init(onDevice: true, version: version))
         print(jsonString(obj), terminator: "")
     }
+
+    if result.finishReason == .length {
+        printStderr("\(styled("apfel:", .yellow)) response truncated at the context window (finish_reason=length). Pass --max-tokens to control the cap explicitly.")
+    }
 }
 
 // MARK: - Interactive Chat

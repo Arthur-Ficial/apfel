@@ -295,6 +295,20 @@ func runApfelCorePublicAPIUsageTests() {
         try assertEqual(r, .stop)
     }
 
+    // MARK: - StreamOutcome / StreamErrorResolver
+
+    test("StreamOutcome and StreamErrorResolver public surface compiles") {
+        let outcome = StreamOutcome(content: "hi", finishReason: .stop)
+        let _: String        = outcome.content
+        let _: FinishReason  = outcome.finishReason
+        let _ = requireSendable(outcome)
+
+        let truncated = StreamErrorResolver.resolve(prev: "x", error: .contextOverflow)
+        if case .truncated(let s) = truncated { let _: String = s }
+        let fatal = StreamErrorResolver.resolve(prev: "", error: .contextOverflow)
+        if case .fatal(let e) = fatal { let _: ApfelError = e }
+    }
+
     // MARK: - ToolResolution / ResolvedTools
 
     test("ToolResolution.resolve and ResolvedTools public surface compile") {

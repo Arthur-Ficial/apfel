@@ -77,7 +77,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
     // Build session options from request (retry config comes from server config)
     let sessionOpts = SessionOptions(
         temperature: chatRequest.temperature,
-        maxTokens: chatRequest.max_tokens ?? BodyLimits.defaultMaxResponseTokens,
+        maxTokens: chatRequest.max_tokens,
         seed: chatRequest.seed.map { UInt64($0) },
         permissive: serverState.config.permissive,
         contextConfig: contextConfig,
@@ -329,11 +329,12 @@ private func nonStreamingResponse(
     events: [String]
 ) async throws -> (response: Response, trace: ChatRequestTrace) {
     let nsRetryMax = serverState.config.retryEnabled ? serverState.config.retryCount : 0
-    let rawContent: String
+    let outcome: StreamOutcome
     do {
-        rawContent = try await withRetry(maxRetries: nsRetryMax) {
-            let result = try await session.respond(to: prompt, options: genOpts)
-            return result.content
+        // Route non-streaming through collectStream so output-side context
+        // overflow surfaces as a graceful length-finish on this path too.
+        outcome = try await withRetry(maxRetries: nsRetryMax) {
+            try await collectStream(session, prompt: prompt, printDelta: false, options: genOpts)
         }
     } catch {
         let classified = ApfelError.classify(error)
@@ -355,6 +356,7 @@ private func nonStreamingResponse(
             event: "model error: \(classified.cliLabel)"
         )
     }
+    let rawContent = outcome.content
 
     // Detect tool calls in response
     let toolCalls = ToolCallHandler.detectToolCall(in: rawContent)
@@ -371,11 +373,17 @@ private func nonStreamingResponse(
     }
 
     let completionTokens = await TokenCounter.shared.count(deliveredContent)
-    let finishReason = FinishReasonResolver.resolve(
-        hasToolCalls: toolCalls != nil,
-        completionTokens: completionTokens,
-        maxTokens: genOpts.maximumResponseTokens
-    ).openAIValue
+    let finishReason: String
+    if outcome.finishReason == .length, toolCalls == nil {
+        // Output-side overflow during generation: surfaced by collectStream.
+        finishReason = FinishReason.length.openAIValue
+    } else {
+        finishReason = FinishReasonResolver.resolve(
+            hasToolCalls: toolCalls != nil,
+            completionTokens: completionTokens,
+            maxTokens: genOpts.maximumResponseTokens
+        ).openAIValue
+    }
 
     let payload = ChatCompletionResponse(
         id: id,
@@ -536,7 +544,38 @@ private func streamingResponse(
                 await eventBox.append("stream cancelled by client")
             } catch {
                 let classified = ApfelError.classify(error)
-                if case .refusal(let explanation) = classified {
+                // Output-side context overflow with content already streamed is
+                // a graceful length-finish, not an error. See StreamErrorResolver.
+                if case .truncated(let truncatedContent) = StreamErrorResolver.resolve(prev: prev, error: classified) {
+                    completionTokens = await TokenCounter.shared.count(truncatedContent)
+                    let lengthChunk = ChatCompletionChunk(
+                        id: id, object: "chat.completion.chunk", created: created, model: modelName,
+                        choices: [.init(
+                            index: 0,
+                            delta: .init(role: nil, content: nil, tool_calls: nil),
+                            finish_reason: FinishReason.length.openAIValue,
+                            logprobs: nil
+                        )],
+                        usage: nil
+                    )
+                    let lengthLine = sseDataLine(lengthChunk)
+                    responseLines?.append(lengthLine.trimmingCharacters(in: .whitespacesAndNewlines))
+                    continuation.yield(ByteBuffer(string: lengthLine))
+
+                    if includeUsage {
+                        let usageChunk = sseUsageChunk(
+                            id: id, created: created,
+                            promptTokens: promptTokens, completionTokens: completionTokens
+                        )
+                        let usageLine = sseDataLine(usageChunk)
+                        responseLines?.append(usageLine.trimmingCharacters(in: .whitespacesAndNewlines))
+                        continuation.yield(ByteBuffer(string: usageLine))
+                    }
+
+                    continuation.yield(ByteBuffer(string: sseDone))
+                    responseLines?.append("data: [DONE]")
+                    await eventBox.append("stream truncated by context, finish_reason=length total_chars=\(truncatedContent.count)")
+                } else if case .refusal(let explanation) = classified {
                     // OpenAI wire format: stream a refusal delta, then a final
                     // chunk with finish_reason=content_filter, then [DONE].
                     let refusalLine = sseDataLine(sseRefusalChunk(id: id, created: created, refusal: explanation))

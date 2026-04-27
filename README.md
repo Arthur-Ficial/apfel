@@ -233,7 +233,7 @@ alias apfel=apfel-run                 # optional, every apfel flag still works
 | `GET /v1/logs`, `/v1/logs/stats` | Debug only | Requires `--debug` |
 | Tool calling | Supported | Native `ToolDefinition` + JSON detection. See [docs/tool-calling-guide.md](docs/tool-calling-guide.md) |
 | `response_format: json_object` | Supported | System-prompt injection; markdown fences stripped from output |
-| `temperature`, `max_tokens`, `seed` | Supported | Mapped to `GenerationOptions`. **`max_tokens` defaults to 1024 when omitted** (CLI + server share the constant) - see [Default response cap](#default-response-cap-max_tokens) |
+| `temperature`, `max_tokens`, `seed` | Supported | Mapped to `GenerationOptions`. Omitting `max_tokens` uses the remaining context window (drop-in OpenAI semantics) - see [Default response cap](#default-response-cap-max_tokens) |
 | `stream: true` | Supported | SSE; final usage chunk only when `stream_options: {"include_usage": true}` (per OpenAI spec) |
 | `finish_reason` | Supported | `stop`, `tool_calls`, `length` |
 | Context strategies | Supported | `x_context_strategy`, `x_context_max_turns`, `x_context_output_reserve` extension fields |
@@ -248,35 +248,24 @@ Full API spec: [openai/openai-openapi](https://github.com/openai/openai-openapi)
 
 ## Default response cap (`max_tokens`)
 
-When `max_tokens` is not specified, **both the CLI and the OpenAI-compatible server** apply a default cap of **1024 tokens**. Same value, single source of truth ([`BodyLimits.defaultMaxResponseTokens`](https://github.com/Arthur-Ficial/apfel/blob/main/Sources/Core/Chat/BodyLimits.swift)). Best practice: **always set `max_tokens` explicitly** to a value that matches your use case.
+When `max_tokens` is omitted, **CLI and OpenAI-compatible server behave identically**: the value flows through as `nil` and the model uses whatever room is left in the 4096-token context window. This is drop-in OpenAI semantics - no arbitrary fallback constant.
 
-### Why a default exists
-
-The on-device model has a **4096-token context window** that holds input *and* output combined. With no cap, generation runs until that window overflows, which produces an unrecoverable `[context overflow]` error after ~50 seconds of wasted generation - the client gets nothing usable. 1024 tokens covers typical structured JSON, short-to-medium chat replies, and most single-pass code blocks, while leaving 3072 tokens of the window for input.
-
-### When the cap is hit
-
-The response sets `finish_reason: "length"` (per the OpenAI spec) so the client can detect a truncated reply. If 1024 tokens is too short, raise it explicitly with `max_tokens` (or `--max-tokens` on the CLI) - up to whatever leaves room for your input inside the 4096-token window.
+The on-device model has a **4096-token context window** that holds input *and* output combined. If generation runs into the ceiling, the response ends cleanly with `finish_reason: "length"` and the partial content is returned (server: HTTP 200; CLI: exit 0 with a stderr warning). Pass `max_tokens` explicitly when you want a tighter latency budget or a known cap for your client.
 
 ### Examples
 
-Without `max_tokens` (default 1024 applied, fast and bounded):
-
 ```bash
+# Omitted: uses remaining window, finish_reason: "stop" or "length"
 curl -sS http://localhost:11434/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model":"apple-foundationmodel",
        "messages":[{"role":"user","content":"Reply SKIP, MOVE, or RENAME."}]}'
-# ~1s, returns a short reply, finish_reason: "stop" or "length"
-```
 
-With explicit `max_tokens` (recommended - sized to your need):
-
-```bash
+# Explicit cap (recommended for tight latency budgets)
 curl -sS http://localhost:11434/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{"model":"apple-foundationmodel","max_tokens":1024,
-       "messages":[{"role":"user","content":"Summarise this paragraph: ..."}]}'
+  -d '{"model":"apple-foundationmodel","max_tokens":128,
+       "messages":[{"role":"user","content":"Summarise: ..."}]}'
 ```
 
 ### Picking a value
@@ -287,16 +276,16 @@ curl -sS http://localhost:11434/v1/chat/completions \
 | One-line instruction                   | 64 - 128      |
 | Short paragraph                        | 256 - 512     |
 | Long paragraph / structured JSON       | 1024 - 2048   |
-| As long as the context window allows   | 4096 minus your input token count |
+| As long as the context window allows   | omit it       |
 
-Keep `input_tokens + max_tokens` comfortably below 4096. The context trimmer drops oldest history first to fit the input, but if the requested `max_tokens` leaves no room for any output, generation overflows and the request fails with `[context overflow]`. The validator only rejects non-positive values (`max_tokens <= 0`), so sizing is your responsibility.
+Keep `input_tokens + max_tokens` comfortably below 4096. If the prompt itself exceeds the window, generation cannot start and the request fails with `[context overflow]` (HTTP 400 / CLI exit 4). The validator rejects non-positive values (`max_tokens <= 0`).
 
 ### CLI parity
 
-The CLI applies the **same 1024-token default** as the server. The two surfaces read from the same `BodyLimits.defaultMaxResponseTokens` constant - they cannot drift. Override with `--max-tokens N` or `APFEL_MAX_TOKENS=N`.
+CLI and server share one rule: omitted = use remaining window. No constant to drift. Override with `--max-tokens N` or `APFEL_MAX_TOKENS=N`.
 
 ```bash
-apfel "Reply SKIP."                    # default cap (1024) applies
+apfel "Reply SKIP."                    # uses remaining window
 apfel --max-tokens 64 "Reply SKIP."    # explicit cap
 APFEL_MAX_TOKENS=2048 apfel "..."      # via env var
 ```

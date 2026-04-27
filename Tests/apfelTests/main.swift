@@ -91,6 +91,7 @@ suite("CLIErrorsTests") { runCLIErrorsTests() }
 suite("CLIValidateTests") { runCLIValidateTests() }
 suite("SchemaParserTests") { runSchemaParserTests() }
 suite("FinishReasonResolverTests") { runFinishReasonResolverTests() }
+suite("StreamErrorResolverTests") { runStreamErrorResolverTests() }
 suite("ToolResolutionTests") { runToolResolutionTests() }
 suite("BodyLimitsTests") { runBodyLimitsTests() }
 suite("CLIServerParityTests") { runCLIServerParityTests() }
