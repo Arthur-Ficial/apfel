@@ -66,6 +66,8 @@ jobs:
         if: env.skip == '0'
         working-directory: nixpkgs
         run: |
+          git config user.name "Arthur Ficial"
+          git config user.email "arti.ficial@fullstackoptimization.com"
           git remote add upstream https://github.com/NixOS/nixpkgs.git
           git fetch --depth=1 upstream master
           git fetch --depth=1 origin master
