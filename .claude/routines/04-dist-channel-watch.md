@@ -82,7 +82,13 @@ brew bump-formula-pr apfel \
 
 (SHA256 from the release asset: `<computed-sha256>`)
 
-**nixpkgs:** `r-ryantm` picks up new versions weekly via the package's `passthru.updateScript`. If it has not fired and we are >7 days behind, anyone with a nixpkgs checkout can manually open a bump PR (see [docs/nixpkgs.md](../../docs/nixpkgs.md) - "Manual self-bump"). We do not maintain our own release-triggered workflow.
+**nixpkgs:** `make release` opens a `NixOS/nixpkgs` PR automatically as its final step (`scripts/publish-nixpkgs-bump.sh`). If the channel is lagging anyway, the local bump didn't fire (release cut on a machine without `gh` logged in, or it failed silently). Re-run on demand:
+
+\```bash
+./scripts/publish-nixpkgs-bump.sh --version <canonical>
+\```
+
+`r-ryantm` is the safety net (~weekly) if you don't.
 
 ## What I did NOT do
 
@@ -111,7 +117,7 @@ Cheers, Arthur
 ### Hard limits - repeat
 
 - Never run `brew bump-formula-pr`, never push to `Arthur-Ficial/homebrew-tap`.
-- Never run a manual nixpkgs bump from the routine - only point Franz at [docs/nixpkgs.md](../../docs/nixpkgs.md) "Manual self-bump" if a bump is genuinely needed.
+- Never run a manual nixpkgs bump from the routine - point Franz at `scripts/publish-nixpkgs-bump.sh --version <canonical>` (which he runs locally), with the manual self-bump in [docs/nixpkgs.md](../../docs/nixpkgs.md) as recovery.
 - Never create PRs against homebrew-core or nixpkgs from this routine.
 - Never edit the formula or package.nix.
 - Never close any issue.
