@@ -266,4 +266,48 @@ func runMCPClientTests() {
         try assertTrue(instructions.contains("add"), "combined prompt must contain first tool")
         try assertTrue(instructions.contains("multiply"), "combined prompt must contain second tool")
     }
+
+    // MARK: - Chat mode text-only tool instructions (#144)
+    // Native toolDefinitions can cause the framework to intercept tool calls,
+    // preventing text-based detection. Chat mode must use text-only instructions.
+
+    test("Chat text-only instructions include all schemas even when native conversion would succeed") {
+        // Reproduces the #144 scenario: tools that convert to native format just fine
+        // must STILL have their schemas available as text, because chat mode cannot
+        // rely on native toolDefinitions (the framework may intercept instead of
+        // producing text output that detectToolCall can parse).
+        let toolsJSON = """
+        {"jsonrpc":"2.0","id":2,"result":{"tools":[
+            {"name":"read","description":"Read a file","inputSchema":{"type":"object","properties":{"file":{"type":"string","description":"File path"}}}},
+            {"name":"edit","description":"Edit a file","inputSchema":{"type":"object","properties":{"file":{"type":"string"},"content":{"type":"string"}}}}
+        ]}}
+        """
+        let tools = try MCPProtocol.parseToolsListResponse(toolsJSON)
+        try assertEqual(tools.count, 2)
+
+        // Build text-only instructions (ALL tools as text, no native defs)
+        let allToolDefs = tools.map { ToolDef(name: $0.function.name, description: $0.function.description, parametersJSON: $0.function.parameters?.value) }
+        let fallbackPrompt = ToolCallHandler.buildFallbackPrompt(tools: allToolDefs)
+        let formatInstructions = ToolCallHandler.buildOutputFormatInstructions(toolNames: tools.map { $0.function.name })
+
+        // ALL tool schemas must be in the text
+        try assertTrue(fallbackPrompt.contains("read"), "text must contain 'read' tool schema")
+        try assertTrue(fallbackPrompt.contains("edit"), "text must contain 'edit' tool schema")
+        try assertTrue(fallbackPrompt.contains("file"), "text must contain parameter names")
+        try assertTrue(formatInstructions.contains("read"), "format must list 'read'")
+        try assertTrue(formatInstructions.contains("edit"), "format must list 'edit'")
+        try assertTrue(formatInstructions.contains("tool_calls"), "format must contain call format")
+    }
+
+    test("Tool call detection works on object-argument format from #144 report") {
+        // The #144 reporter showed the model producing arguments as a JSON object
+        // (not an escaped string). Detection must handle both forms.
+        let modelOutput = #"{"tool_calls": [{"id": "call_001", "type": "function", "function": {"name": "read", "arguments": {"file": "CLAUDE.md"}}}]}"#
+        let calls = ToolCallHandler.detectToolCall(in: modelOutput)
+        try assertNotNil(calls, "tool calls must be detected with object arguments")
+        try assertEqual(calls!.count, 1)
+        try assertEqual(calls!.first?.name, "read")
+        try assertEqual(calls!.first?.id, "call_001")
+        try assertTrue(calls!.first!.argumentsString.contains("CLAUDE.md"), "arguments must contain the file path")
+    }
 }

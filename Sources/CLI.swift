@@ -94,23 +94,23 @@ func chat(systemPrompt: String?, options: SessionOptions = .defaults, mcpManager
     let model = makeModel(permissive: options.permissive)
     var session: LanguageModelSession
     if hasMCPTools {
-        // Build session directly with tool definitions in Instructions.
-        // Can't use ContextManager.makeSession() here because it requires a user message,
-        // and chat has no user message at init time (user hasn't typed anything yet).
-        let converted = await SchemaConverter.convert(tools: mcpTools)
+        // Build session with ALL tool schemas as text instructions and NO native
+        // toolDefinitions. Native defs cause the FoundationModels framework to
+        // intercept tool calls instead of surfacing them as text in the stream.
+        // apfel uses out-of-band text detection (ToolCallHandler.detectToolCall),
+        // so native interception breaks tool execution in chat mode (#144).
         var instrParts: [String] = []
         if let sys = systemPrompt { instrParts.append(sys) }
         let toolNames = mcpTools.map { $0.function.name }
         instrParts.append(ToolCallHandler.buildOutputFormatInstructions(toolNames: toolNames))
         instrParts.append("IMPORTANT: You may ONLY call the functions listed above (\(toolNames.joined(separator: ", "))). Do NOT invent function names. If the user's request cannot be handled by these specific functions, respond with plain text.")
-        if !converted.fallback.isEmpty {
-            instrParts.append(ToolCallHandler.buildFallbackPrompt(tools: converted.fallback))
-        }
+        let allToolDefs = mcpTools.map { ToolDef(name: $0.function.name, description: $0.function.description, parametersJSON: $0.function.parameters?.value) }
+        instrParts.append(ToolCallHandler.buildFallbackPrompt(tools: allToolDefs))
         let instrText = instrParts.joined(separator: "\n\n")
         let segments: [Transcript.Segment] = [.text(Transcript.TextSegment(content: instrText))]
-        let instr = Transcript.Instructions(segments: segments, toolDefinitions: converted.native)
+        let instr = Transcript.Instructions(segments: segments, toolDefinitions: [])
         session = makeTranscriptSession(model: model, entries: [.instructions(instr)])
-        debugLog("chat", "session created with \(converted.native.count) native + \(converted.fallback.count) fallback tools")
+        debugLog("chat", "session created with \(mcpTools.count) text-injected tools")
     } else {
         session = makeSession(systemPrompt: systemPrompt, options: options)
     }
@@ -185,29 +185,10 @@ func chat(systemPrompt: String?, options: SessionOptions = .defaults, mcpManager
             if tokenCount > budget {
                 do {
                     let truncated = try await truncateTranscript(transcript, budget: budget, config: options.contextConfig)
-                    if hasMCPTools {
-                        // Re-inject MCP tool definitions into the truncated transcript.
-                        // Without this, tools silently stop working after context rotation.
-                        let truncEntries = transcriptEntries(truncated)
-                        var rebuilt: [Transcript.Entry] = []
-                        let converted = await SchemaConverter.convert(tools: mcpTools)
-                        if let first = truncEntries.first, case .instructions(let instr) = first {
-                            let updated = Transcript.Instructions(
-                                segments: instr.segments, toolDefinitions: converted.native)
-                            rebuilt.append(.instructions(updated))
-                            rebuilt.append(contentsOf: truncEntries.dropFirst())
-                        } else {
-                            let toolInstr = Transcript.Instructions(
-                                segments: [], toolDefinitions: converted.native)
-                            rebuilt.append(.instructions(toolInstr))
-                            rebuilt.append(contentsOf: truncEntries)
-                        }
-                        session = makeTranscriptSession(model: model, entries: rebuilt)
-                        debugLog("context", "rotated with MCP tools re-injected (\(converted.native.count) native)")
-                    } else {
-                        session = LanguageModelSession(model: model, transcript: truncated)
-                        debugLog("context", "rotated (no MCP tools)")
-                    }
+                    // Tool schemas live in the Instructions text segments (not native
+                    // toolDefinitions), so they survive truncation without re-injection.
+                    session = LanguageModelSession(model: model, transcript: truncated)
+                    debugLog("context", "rotated\(hasMCPTools ? " (tool text preserved)" : "")")
                     if !quietMode && outputFormat == .plain {
                         print(styled("  [context rotated — \(options.contextConfig.strategy.rawValue)]", .dim))
                     }

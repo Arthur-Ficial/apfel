@@ -342,7 +342,7 @@ def test_chat_mcp_shows_tool_list_on_startup():
 
 
 def test_chat_mcp_can_execute_tool():
-    """Chat+MCP must attempt a tool call (model may generate tool_calls JSON)."""
+    """Chat+MCP must execute tool calls, not leak raw JSON (#144)."""
     require_model()
     returncode, output = run_chat_tty(
         ["--chat", "--mcp", str(MCP_SERVER)],
@@ -356,10 +356,13 @@ def test_chat_mcp_can_execute_tool():
     )
     clean = strip_ansi(output)
     assert "Last message has no text content" not in clean, "Chat+MCP crashed"
-    # Model should either execute the tool (showing "4" or "tool:") or at least
-    # attempt a tool call (showing "tool_calls" JSON)
-    assert "4" in clean or "tool_calls" in clean or "tool:" in clean.lower(), \
-        f"No tool activity in response: {clean[:500]}"
+    # Tool must be executed (tool: log) or model answers correctly
+    assert "4" in clean or "tool:" in clean.lower(), \
+        f"Tool not executed or answer not found: {clean[:500]}"
+    # Raw tool_calls JSON in the AI response is the #144 bug
+    ai_lines = [l for l in clean.split('\n') if 'ai' in l.lower() and '"tool_calls"' in l]
+    assert not ai_lines, \
+        f"Raw tool_calls JSON leaked to chat output (#144): {ai_lines[0][:300] if ai_lines else ''}"
 
 
 def test_chat_mcp_tool_log_on_stderr():
@@ -376,9 +379,13 @@ def test_chat_mcp_tool_log_on_stderr():
     )
     clean = strip_ansi(output)
     assert "Last message has no text content" not in clean, "Chat+MCP crashed"
-    # Model should attempt tool use or answer - any sign of MCP activity
-    assert "tool:" in clean.lower() or "8" in clean or "eight" in clean.lower() or "tool_calls" in clean, \
-        f"No tool activity or answer visible: {clean[:500]}"
+    # Tool must be executed or model answers correctly
+    assert "tool:" in clean.lower() or "8" in clean or "eight" in clean.lower(), \
+        f"No tool execution or answer visible: {clean[:500]}"
+    # Raw tool_calls JSON leak is the #144 bug
+    ai_lines = [l for l in clean.split('\n') if 'ai' in l.lower() and '"tool_calls"' in l]
+    assert not ai_lines, \
+        f"Raw tool_calls JSON leaked to chat output (#144): {ai_lines[0][:300] if ai_lines else ''}"
 
 
 def test_chat_mcp_with_system_prompt():
