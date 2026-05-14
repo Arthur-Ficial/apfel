@@ -395,7 +395,7 @@ Built something on top of apfel? Open an issue and it can be added here.
 | **fruit-chat** by [@bhaskarvilles](https://github.com/bhaskarvilles) | Browser-based chat UI that talks to `apfel --serve` over the OpenAI-compatible API | [github](https://github.com/bhaskarvilles/fruit-chat) |
 | **local-claude** by [@lucaspwo](https://github.com/lucaspwo) | Claude Code wrapper that swaps in apfel as a local backend via a small Anthropic-OpenAI proxy | [github](https://github.com/lucaspwo/local-claude) |
 | **apfeller** by [@hasit](https://github.com/hasit) | App manager for local shell apps built around apfel | [github](https://github.com/hasit/apfeller) - [site](https://hasit.github.io/apfeller/) - [catalog](https://hasit.github.io/apfeller/catalog/) |
-| **apfel-for-raycast** by [@eggsydev](https://github.com/eggsydev) | Raycast command bar extension: ask, translate, explain files and directories, conversation history, custom system prompts. On-device via apfel CLI. | [store](https://www.raycast.com/eggsy/apfel) - [github](https://github.com/raycast/extensions/tree/main/extensions/apfel) |
+| **apfel-for-raycast** by [@eggsy](https://github.com/eggsy) | Raycast command bar extension: ask, translate, explain files and directories, conversation history, custom system prompts. On-device via apfel CLI. | [store](https://www.raycast.com/eggsy/apfel) - [github](https://github.com/raycast/extensions/tree/main/extensions/apfel) |
 
 ## Contributing
 
