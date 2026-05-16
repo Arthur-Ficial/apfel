@@ -136,6 +136,45 @@ bash scripts/generate-examples.sh          # ~2 minutes, overwrites docs/EXAMPLE
 | Docs | `docs/` (brew-install, EXAMPLES, release, tool-calling-guide) |
 | Scripts | `scripts/generate-examples.sh`, `scripts/write-homebrew-formula.sh`, `scripts/release-preflight.sh`, `scripts/post-release-verify.sh` |
 
+## MVPClaw Daily Triage Gate (hard)
+
+When this CLAUDE.md is read by a Claude Code instance spawned by MVPClaw's daily morning routine (the `apfel-daily-vet` task firing at 08:00 Europe/Vienna), you operate under a hard contract.
+
+**You MAY autonomously, without asking:**
+- Read issues, vet against the 5-step process documented below.
+- Write code + tests, run `make install` and the full test suite locally.
+- Open DRAFT pull requests with passing tests.
+- Comment on issues with verdicts, ask the author for missing repro info, apply labels.
+- Close issues that fail the golden-goal-alignment check, with a polite explanatory comment.
+
+**You MAY NOT, under any circumstance, without an explicit `release: approved <version>` reply from Franz on Telegram:**
+- Run `make release`, `make publish`, `scripts/release-preflight.sh`, `scripts/post-release-verify.sh`.
+- Run `gh release create`, `git tag v*`, `git push --tags`.
+- Merge any pull request into `main`.
+- Push to `main` directly (`git push origin main`).
+- Run `brew bump-formula-pr` or any other homebrew formula update.
+- Modify `Sources/BuildInfo.swift` version strings or any release-manifest file.
+
+**Release handshake protocol:**
+
+When you believe a release is warranted, do NOT cut it. Instead, emit a `RELEASE PROPOSAL` block as the last section of your output:
+
+```
+RELEASE PROPOSAL
+version: vX.Y.Z
+changelog:
+- <one line per merged or releasable change>
+rationale: <one or two sentences on why now>
+```
+
+MVPClaw posts this verbatim to Franz's Telegram. Franz replies with one of:
+- `release: approved vX.Y.Z` — the NEXT firing of `apfel-daily-vet` reads this reply, then proceeds with the release commands.
+- `release: rejected` — the proposal is dropped; no further action.
+
+You never act on a `RELEASE PROPOSAL` you wrote yourself — only on a Franz-confirmed approval visible in the chat history. **Self-approval is not approval.**
+
+This contract overrides any earlier "Franz merges, Franz releases" wording elsewhere in this file when conflict exists. The forbidden-command list above is the source of truth.
+
 ## Handling GitHub Issues
 
 When a new issue comes in, follow this process:
@@ -161,7 +200,7 @@ When a new issue comes in, follow this process:
 
 When a PR is opened, follow this process. Scale the rigor to the PR type - docs-only PRs skip the security audit and test coverage steps, code PRs get the full treatment.
 
-**Automated first-responder:** `Arthur-Ficial/apfel` has a Claude Code routine (`.claude/routines/02-pr-auto-review.md`) that runs this entire process on `pull_request.opened` / `pull_request.synchronize` and posts a `COMMENTED` review. The routine cannot `--approve`, cannot merge, cannot run `make test` (no Apple Intelligence on cloud runners), and cannot cut releases. It is a first-pass safety net, not a replacement for human judgement. Franz still merges, Franz still releases - always. See [docs/routines.md](docs/routines.md) and [.claude/routines/README.md](.claude/routines/README.md).
+**Automated first-responder:** `Arthur-Ficial/apfel` has a Claude Code routine (`.claude/routines/02-pr-auto-review.md`) that runs this entire process on `pull_request.opened` / `pull_request.synchronize` and posts a `COMMENTED` review. The routine cannot `--approve`, cannot merge, cannot run `make test` (no Apple Intelligence on cloud runners), and cannot cut releases. It is a first-pass safety net, not a replacement for human judgement. Franz still merges, Franz still releases - always. (See "MVPClaw Daily Triage Gate" above for the hard-gated forbidden-command list.) See [docs/routines.md](docs/routines.md) and [.claude/routines/README.md](.claude/routines/README.md).
 
 ### 1. Fetch everything
 
