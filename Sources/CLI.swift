@@ -317,9 +317,23 @@ func performUpdate() {
     if isBrew {
         print("\(appName) v\(current) (installed via Homebrew)")
     } else {
-        print("\(appName) v\(current) (installed from source)")
-        print("To update: git pull && make install")
-        print("Or visit: https://github.com/Arthur-Ficial/apfel/releases")
+        // Detect MacPorts by walking up from the binary to ${prefix}/var/macports.
+        // Default prefix is /opt/local; this works for custom prefixes too.
+        let macportsURL = URL(fileURLWithPath: resolved)
+            .deletingLastPathComponent()  // ${prefix}/bin
+            .deletingLastPathComponent()  // ${prefix}
+            .appendingPathComponent("var/macports")
+        var isDir: ObjCBool = false
+        let isMacPorts = FileManager.default.fileExists(atPath: macportsURL.path, isDirectory: &isDir)
+            && isDir.boolValue
+        if isMacPorts {
+            print("\(appName) v\(current) (installed via MacPorts)")
+            print("To update: sudo port sync && sudo port update apfel")
+        } else {
+            print("\(appName) v\(current) (installed from source)")
+            print("To update: git pull && make install")
+            print("Or visit: https://github.com/Arthur-Ficial/apfel/releases")
+        }
         return
     }
 
