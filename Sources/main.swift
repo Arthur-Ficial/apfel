@@ -64,6 +64,7 @@ if rawArgs.isEmpty {
                 exit(exitCode(for: classified))
             }
         }
+        printStderr("\(styled("apfel:", .yellow)) piped input was empty - if the command prints to stderr, try: command 2>&1 | apfel")
     }
     printUsage()
     exit(exitUsageError)
@@ -116,6 +117,8 @@ if parsed.mode.acceptsStdinInput && isatty(STDIN_FILENO) == 0 {
         } else {
             fileContents.append(stdinContent)
         }
+    } else if !prompt.isEmpty && !quietMode {
+        printStderr("\(styled("apfel:", .yellow)) piped input was empty - if the command prints to stderr, try: command 2>&1 | apfel")
     }
 }
 

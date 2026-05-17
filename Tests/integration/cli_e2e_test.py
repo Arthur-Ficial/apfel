@@ -698,6 +698,31 @@ def test_update_non_interactive():
     assert result.returncode == 0
 
 
+# --- Empty-pipe stderr hint tests (GH-152) ---
+
+
+def test_empty_pipe_no_args_shows_stderr_hint():
+    """When stdin is a pipe but empty and no args given, hint about stderr redirection (#152)."""
+    result = run_cli([], input_text="", timeout=10)
+    assert result.returncode == 2
+    assert "piped input was empty" in result.stderr
+    assert "2>&1" in result.stderr
+
+
+def test_empty_pipe_with_prompt_shows_stderr_hint():
+    """When stdin is a pipe but empty with a prompt, hint about stderr redirection (#152)."""
+    result = run_cli(["What went wrong?"], input_text="", timeout=30)
+    # Hint appears regardless of whether model is available.
+    assert "piped input was empty" in result.stderr
+    assert "2>&1" in result.stderr
+
+
+def test_empty_pipe_quiet_suppresses_hint():
+    """--quiet should suppress the empty-pipe hint (#152)."""
+    result = run_cli(["-q", "What went wrong?"], input_text="", timeout=30)
+    assert "piped input was empty" not in result.stderr
+
+
 # --- Release info tests ---
 
 
