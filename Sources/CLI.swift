@@ -78,7 +78,7 @@ func singlePrompt(_ prompt: String, systemPrompt: String?, stream: Bool, options
 // MARK: - Interactive Chat
 
 /// Run an interactive multi-turn chat session with context window protection.
-func chat(systemPrompt: String?, options: SessionOptions = .defaults, mcpManager: MCPManager? = nil) async throws {
+func chat(systemPrompt: String?, options: SessionOptions = .defaults, mcpManager: MCPManager? = nil, contextStatus: Bool = false) async throws {
     guard isatty(STDIN_FILENO) != 0 else {
         printError("--chat requires an interactive terminal (stdin must be a TTY)")
         exit(exitUsageError)
@@ -182,6 +182,9 @@ func chat(systemPrompt: String?, options: SessionOptions = .defaults, mcpManager
             let transcript = session.transcript
             let tokenCount = await TokenCounter.shared.count(entries: transcriptEntries(transcript))
             let budget = await TokenCounter.shared.inputBudget(reservedForOutput: options.contextConfig.outputReserve)
+            if contextStatus && !quietMode {
+                printContextStatus(tokenCount: tokenCount, budget: budget)
+            }
             if tokenCount > budget {
                 do {
                     let truncated = try await truncateTranscript(transcript, budget: budget, config: options.contextConfig)
@@ -211,6 +214,17 @@ func chat(systemPrompt: String?, options: SessionOptions = .defaults, mcpManager
         } else {
             print(bye)
         }
+    }
+}
+
+func printContextStatus(tokenCount: Int, budget: Int) {
+    let percent = budget > 0 ? min(999, (tokenCount * 100) / budget) : 0
+    let remaining = max(0, budget - tokenCount)
+    let line = styled("  [context \(tokenCount)/\(budget) tokens, \(percent)%, \(remaining) remaining]", .dim)
+    if outputFormat == .json {
+        printStderr(line)
+    } else {
+        print(line)
     }
 }
 
@@ -444,6 +458,7 @@ func printUsage() {
           --context-max-turns <n> Max history turns (sliding-window only)
           --context-output-reserve <n>
                                   Tokens reserved for output [default: 512]
+          --context-status     Print chat context fill after each turn
 
     \(styled("SERVER OPTIONS:", .yellow, .bold))
           --serve                Start OpenAI-compatible HTTP server

@@ -87,6 +87,7 @@ public struct CLIArguments: Sendable, Equatable {
     public var contextStrategy: ContextStrategy? = nil
     public var contextMaxTurns: Int? = nil
     public var contextOutputReserve: Int? = nil
+    public var contextStatus: Bool = false
 
     public init() {}
 }
@@ -416,6 +417,9 @@ extension CLIArguments {
                     throw CLIErrors.requires("--context-output-reserve", "a positive number")
                 }
                 result.contextOutputReserve = n
+
+            case "--context-status":
+                result.contextStatus = true
 
             // -- File attachment --
 

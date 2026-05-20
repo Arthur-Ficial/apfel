@@ -236,7 +236,7 @@ do {
         try await runBenchmarks()
 
     case .chat:
-        try await chat(systemPrompt: parsed.systemPrompt, options: sessionOpts, mcpManager: mcpManager)
+        try await chat(systemPrompt: parsed.systemPrompt, options: sessionOpts, mcpManager: mcpManager, contextStatus: parsed.contextStatus)
 
     case .stream:
         guard !prompt.isEmpty else {

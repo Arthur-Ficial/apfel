@@ -572,6 +572,11 @@ func runCLIArgumentsTests() {
         try assertEqual(args.contextOutputReserve, 256)
     }
 
+    test("--context-status enables chat context meter") {
+        let args = try CLIArguments.parse(["--context-status", "--chat"])
+        try assertTrue(args.contextStatus)
+    }
+
     // ========================================================================
     // MARK: - Unknown flags
     // ========================================================================

@@ -9,6 +9,7 @@ apfel --chat --context-strategy sliding-window --context-max-turns 6
 apfel --chat --context-strategy summarize        # compress old turns via on-device model
 apfel --chat --context-strategy strict           # error on overflow, no trimming
 apfel --chat --context-output-reserve 256        # custom output token reserve
+apfel --chat --context-status                    # print context fill after each turn
 ```
 
 ## Strategies
@@ -25,9 +26,13 @@ apfel --chat --context-output-reserve 256        # custom output token reserve
 
 `--context-output-reserve N` (default `512`) reserves `N` tokens of the window for the model's response. The remaining `4096 - N` tokens are available for input + history. Lower the reserve if your prompts are long and your answers are short, raise it if answers get cut off.
 
+## Context status
+
+`--context-status` prints the current chat context fill after each turn, for example `[context 2381/3584 tokens, 66%, 1203 remaining]`. It uses the same token count and input budget that apfel already checks before rotating context.
+
 ## Environment variables
 
-All four settings have env var equivalents:
+These settings have env var equivalents:
 
 - `APFEL_CONTEXT_STRATEGY` - one of `newest-first`, `oldest-first`, `sliding-window`, `summarize`, `strict`
 - `APFEL_CONTEXT_MAX_TURNS` - positive integer for sliding-window

@@ -37,6 +37,7 @@ CONTEXT (--chat)
   --context-strategy <s>                  newest-first, oldest-first, sliding-window, summarize, strict
   --context-max-turns <n>                 Max history turns (sliding-window only)
   --context-output-reserve <n>            Tokens reserved for output (default: 512)
+  --context-status                        Print chat context fill after each turn
 
 SERVER (--serve)
   --port <n>                              Server port (default: 11434)
@@ -121,6 +122,7 @@ apfel --chat --context-strategy newest-first
 apfel --chat --context-strategy sliding-window --context-max-turns 6
 apfel --chat --context-strategy summarize
 apfel --chat --context-output-reserve 256
+apfel --chat --context-status
 
 # --serve
 apfel --serve

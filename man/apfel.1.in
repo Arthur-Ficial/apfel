@@ -171,6 +171,9 @@ Maximum number of history turns to retain. Only meaningful with
 .BI \-\-context-output-reserve " n"
 Tokens reserved for the model's output. Default
 .BR 512 .
+.TP
+.B \-\-context-status
+Print the current chat context fill after each turn.
 .SH "SERVER OPTIONS"
 .TP
 .B \-\-serve
