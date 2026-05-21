@@ -104,6 +104,7 @@ suite("DebugFlagBaselineTests") { runDebugFlagBaselineTests() }
 suite("ApfelErrorMessageTests") { runApfelErrorMessageTests() }
 suite("OpenAIWireFormatTests") { runOpenAIWireFormatTests() }
 suite("ApfelCorePublicAPIUsageTests") { runApfelCorePublicAPIUsageTests() }
+suite("InstallMethodTests") { runInstallMethodTests() }
 
 // MARK: - Summary
 

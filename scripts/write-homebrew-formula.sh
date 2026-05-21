@@ -47,6 +47,19 @@ class Apfel < Formula
   def install
     bin.install "apfel"
     man1.install "apfel.1"
+
+    # Ship the demo/ pipe-friendly examples (cmd, explain, gitsum, mac-narrator,
+    # naming, oneliner, port, wtd) as apfel-<name> companion commands. The
+    # apfel- prefix avoids global PATH collisions ('port' would shadow MacPorts).
+    if File.directory?("demo")
+      pkgshare.install "demo"
+      %w[cmd explain gitsum mac-narrator naming oneliner port wtd].each do |d|
+        target = pkgshare/"demo/#{d}"
+        next unless target.exist?
+
+        bin.install_symlink target => "apfel-#{d}"
+      end
+    end
   end
 
   service do
@@ -68,6 +81,16 @@ class Apfel < Formula
 
       If the model is unavailable, enable Apple Intelligence:
         https://support.apple.com/en-us/121115
+
+      Companion demo commands (pipe-friendly bash scripts) installed:
+        apfel-cmd           natural language -> shell command
+        apfel-oneliner      complex awk/sed/find pipe chains
+        apfel-explain       explain a command, error, or code snippet
+        apfel-wtd           "what's this directory?" project orientation
+        apfel-naming        suggest names for functions/variables/classes
+        apfel-port          identify the process on a port
+        apfel-gitsum        plain-English summary of recent git activity
+        apfel-mac-narrator  dry-British-humor system narration
     EOS
     unless Hardware::CPU.arm?
       s += <<~EOS
@@ -83,7 +106,9 @@ class Apfel < Formula
 
   test do
     assert_match "apfel v#{version}", shell_output("#{bin}/apfel --version")
-    assert_predicate man1/"apfel.1", :exist?
+    assert_path_exists man1/"apfel.1"
+    assert_path_exists bin/"apfel-cmd"
+    assert_predicate bin/"apfel-cmd", :symlink?
   end
 end
 EOF

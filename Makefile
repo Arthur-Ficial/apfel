@@ -269,7 +269,13 @@ package-release-asset:
 		echo "error: missing .build/release/$(BINARY).1. Run make generate-man-page first."; \
 		exit 1; \
 	fi; \
-	tar -C .build/release -czf "$$asset" $(BINARY) $(BINARY).1; \
+	if [ ! -d "demo" ]; then \
+		echo "error: missing demo/ directory at repo root."; \
+		exit 1; \
+	fi; \
+	rm -rf .build/release/demo; \
+	cp -R demo .build/release/demo; \
+	tar -C .build/release -czf "$$asset" $(BINARY) $(BINARY).1 demo; \
 	echo "$$asset"
 
 print-release-asset:

@@ -326,11 +326,16 @@ func performUpdate() {
     let execPath = ProcessInfo.processInfo.arguments[0]
     let resolved = (execPath as NSString).resolvingSymlinksInPath
 
-    let isBrew = resolved.contains("/homebrew/Cellar/apfel/") || resolved.contains("/homebrew/opt/apfel/")
+    let installMethod = detectInstallMethod(binaryPath: resolved)
 
-    if isBrew {
+    switch installMethod {
+    case .homebrew:
         print("\(appName) v\(current) (installed via Homebrew)")
-    } else {
+    case .macports:
+        print("\(appName) v\(current) (installed via MacPorts)")
+        print("To update: sudo port sync && sudo port update apfel")
+        return
+    case .source:
         print("\(appName) v\(current) (installed from source)")
         print("To update: git pull && make install")
         print("Or visit: https://github.com/Arthur-Ficial/apfel/releases")

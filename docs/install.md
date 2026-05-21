@@ -14,11 +14,13 @@
 brew install apfel
 ```
 
-Same-day releases (homebrew-core autobump can lag up to ~24h):
+Same-day releases (homebrew-core autobump can lag up to ~24h), and bundles the demo scripts as `apfel-<name>` commands:
 
 ```bash
 brew install Arthur-Ficial/tap/apfel
 ```
+
+The tap installs eight companion commands alongside `apfel`: `apfel-cmd`, `apfel-explain`, `apfel-gitsum`, `apfel-mac-narrator`, `apfel-naming`, `apfel-oneliner`, `apfel-port`, `apfel-wtd`. Source in [`demo/`](../demo/README.md). The `apfel-` prefix avoids global PATH collisions (`port` would shadow MacPorts).
 
 No build tools needed. See [brew-install.md](brew-install.md) for troubleshooting.
 
