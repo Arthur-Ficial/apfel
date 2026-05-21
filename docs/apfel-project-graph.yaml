@@ -1,0 +1,231 @@
+title: apfel Project Graph
+
+theme: default
+legend: true
+
+node_types:
+  products:
+    fill: "#5f00c2"
+    text: "#FFFFFF"
+    label: "Product Surface"
+    goal: true
+  entrypoints:
+    fill: "#BD10E0"
+    text: "#FFFFFF"
+    label: "Entrypoint"
+  adapters:
+    fill: "#4A90D9"
+    text: "#FFFFFF"
+    label: "Adapter"
+  services:
+    fill: "#F5A623"
+    label: "Runtime Service"
+  core:
+    fill: "#4A4A4A"
+    text: "#FFFFFF"
+    label: "ApfelCore Policy"
+  model:
+    fill: "#7ED321"
+    label: "FoundationModels"
+  tooling:
+    fill: "#50E3C2"
+    label: "Tooling"
+  security:
+    fill: "#FF6B6B"
+    text: "#FFFFFF"
+    label: "Security"
+  quality:
+    fill: "#8B572A"
+    text: "#FFFFFF"
+    label: "Quality Gate"
+  distribution:
+    fill: "#2D7D46"
+    text: "#FFFFFF"
+    label: "Distribution"
+  outputs:
+    fill: "#2D7D46"
+    text: "#FFFFFF"
+    label: "Output"
+    goal: true
+
+entrypoints:
+  - package_swift: Package.swift SwiftPM targets
+  - main_swift: Sources/main.swift dispatch
+    from:
+      - package_swift
+  - cli_parser: ApfelCLI argument parsing
+    from:
+      - main_swift
+      - apfel_core
+
+products:
+  - unix_tool: UNIX tool apfel prompt, pipes, stream, JSON
+    from:
+      - cli_parser
+      - prompt_pipeline
+      - cli_output
+  - openai_server_product: OpenAI-compatible local HTTP server
+    from:
+      - cli_parser
+      - hummingbird_server
+      - server_output
+  - chat_repl: Interactive apfel --chat REPL
+    from:
+      - cli_parser
+      - prompt_pipeline
+      - context_manager
+  - swift_library: ApfelCore Swift library
+    from:
+      - apfel_core
+
+adapters:
+  - cli_modes: CLI single, stream, chat, model-info, benchmark
+    from:
+      - cli_parser
+  - hummingbird_server: Hummingbird routes and middleware
+    from:
+      - main_swift
+      - security_middleware
+  - openai_handlers: /v1/chat/completions, /v1/models, /health, 501 stubs
+    from:
+      - hummingbird_server
+      - openai_models
+      - request_validator
+  - context_manager: OpenAI messages to Transcript sessions
+    from:
+      - openai_handlers
+      - cli_modes
+      - context_strategy
+      - schema_converter
+
+services:
+  - prompt_pipeline: Shared prompt execution, streaming, retry, tool loop
+    from:
+      - cli_modes
+      - openai_handlers
+      - language_sessions
+      - retry_policy
+  - language_sessions: LanguageModelSession and GenerationOptions factory
+    from:
+      - context_manager
+      - token_counter
+  - token_counter: Real token counts, context size, model availability
+    from:
+      - main_swift
+      - language_sessions
+  - server_logs: Debug request log store and stats
+    from:
+      - hummingbird_server
+
+core:
+  - apfel_core: Pure FoundationModels-free library boundary
+    from:
+      - package_swift
+  - openai_models: OpenAI request, response, tool, error wire types
+    from:
+      - apfel_core
+  - request_validator: Chat request validation and supported parameter policy
+    from:
+      - apfel_core
+      - openai_models
+  - context_strategy: Five context trimming strategies
+    from:
+      - apfel_core
+  - schema_parser: JSON Schema IR parser
+    from:
+      - apfel_core
+  - retry_policy: Retry classification and concurrency helpers
+    from:
+      - apfel_core
+  - error_policy: ApfelError classification to CLI exits and HTTP errors
+    from:
+      - apfel_core
+
+model:
+  - schema_converter: OpenAI schema to DynamicGenerationSchema
+    from:
+      - schema_parser
+      - context_manager
+  - foundation_models_runtime: Apple on-device FoundationModels runtime
+    from:
+      - language_sessions
+      - schema_converter
+      - token_counter
+  - on_device_inference: 100 percent local inference, no API keys or cloud
+    from:
+      - foundation_models_runtime
+
+security:
+  - origin_validator: Allowed-origin policy
+    from:
+      - apfel_core
+  - security_middleware: CORS, origin checks, bearer token checks
+    from:
+      - origin_validator
+      - hummingbird_server
+  - remote_mcp_safety: Ephemeral URLSession, response caps, token-over-HTTPS policy
+    from:
+      - mcp_manager
+
+tooling:
+  - mcp_protocol: Pure MCP JSON-RPC protocol types
+    from:
+      - apfel_core
+  - mcp_manager: Local subprocess and remote HTTP MCP clients
+    from:
+      - main_swift
+      - mcp_protocol
+  - tool_call_handler: Tool-call prompt format, detection, argument cleanup
+    from:
+      - apfel_core
+      - context_manager
+  - mcp_execution: MCP tool discovery, invocation, auto-execute responses
+    from:
+      - mcp_manager
+      - tool_call_handler
+      - prompt_pipeline
+
+quality:
+  - unit_tests: swift run apfel-tests pure Swift runner
+    from:
+      - apfel_core
+      - cli_parser
+      - request_validator
+      - context_strategy
+  - integration_tests: Python integration suites against CLI and server
+    from:
+      - unix_tool
+      - openai_server_product
+      - mcp_execution
+  - preflight: make preflight release qualification
+    from:
+      - unit_tests
+      - integration_tests
+
+outputs:
+  - cli_output: Plain text, streamed text, JSON, correct exit codes
+    from:
+      - prompt_pipeline
+      - error_policy
+      - mcp_execution
+      - on_device_inference
+  - server_output: OpenAI-compatible JSON and SSE responses
+    from:
+      - openai_handlers
+      - prompt_pipeline
+      - mcp_execution
+      - on_device_inference
+
+distribution:
+  - docs_examples: README, docs, generated examples, DocC
+    from:
+      - unix_tool
+      - openai_server_product
+      - swift_library
+  - release_scripts: make release and post-release verification
+    from:
+      - preflight
+      - docs_examples
+  - package_channels: homebrew-core, Arthur-Ficial tap, nixpkgs
+    from:
+      - release_scripts

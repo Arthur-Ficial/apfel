@@ -1,0 +1,188 @@
+title: apfel CLI and OpenAI-Compatible Server Architecture
+
+theme: default
+legend: true
+
+node_types:
+  entrypoints:
+    fill: "#BD10E0"
+    label: "Entry Point"
+  interfaces:
+    fill: "#4A90D9"
+    label: "Interface"
+  services:
+    fill: "#50E3C2"
+    label: "Service"
+  core:
+    fill: "#4A4A4A"
+    text: "#FFFFFF"
+    label: "Core Policy"
+  model_integration:
+    fill: "#7ED321"
+    label: "Model Integration"
+  tools:
+    fill: "#F5A623"
+    label: "Tooling"
+  security:
+    fill: "#FF6B6B"
+    label: "Security Boundary"
+  validation:
+    fill: "#8B572A"
+    text: "#FFFFFF"
+    label: "Validation"
+  outputs:
+    fill: "#2D7D46"
+    text: "#FFFFFF"
+    label: "Output"
+    goal: true
+
+entrypoints:
+  - package_manifest: Package.swift targets and dependencies
+  - main_entry: Sources/main.swift process entrypoint
+    from:
+      - package_manifest
+
+interfaces:
+  - cli_arguments: ApfelCLI argument and env parsing
+    from:
+      - main_entry
+      - context_strategy
+  - unix_cli: UNIX prompt, pipe, stream, and chat modes
+    from:
+      - main_entry
+      - cli_arguments
+  - openai_server: Hummingbird OpenAI-compatible HTTP server
+    from:
+      - main_entry
+      - cli_arguments
+  - apfelcore_library: Pure ApfelCore Swift library product
+    from:
+      - package_manifest
+
+security:
+  - origin_validator: OriginValidator and bearer-token checks
+    from:
+      - apfelcore_library
+  - security_middleware: Server origin, token, and CORS middleware
+    from:
+      - openai_server
+      - origin_validator
+
+validation:
+  - chat_request_validator: Chat-completions request validation
+    from:
+      - apfelcore_library
+  - openai_wire_types: OpenAI request, response, tool, and error types
+    from:
+      - apfelcore_library
+  - cli_validation: CLI mode, flag, file, and env validation
+    from:
+      - cli_arguments
+      - context_strategy
+
+services:
+  - server_routes: /health, /v1/models, /v1/chat/completions, logs, 501 stubs
+    from:
+      - openai_server
+      - security_middleware
+  - chat_handler: Chat-completions handler and response builder
+    from:
+      - server_routes
+      - chat_request_validator
+      - openai_wire_types
+  - context_manager: OpenAI messages to FoundationModels Transcript sessions
+    from:
+      - chat_handler
+      - unix_cli
+      - context_strategy
+  - prompt_pipeline: Shared prompt execution, retry, streaming, and tool loop
+    from:
+      - unix_cli
+      - chat_handler
+      - context_manager
+  - log_store: Debug request logs and server stats
+    from:
+      - server_routes
+
+core:
+  - context_strategy: Context trimming strategy and configuration
+    from:
+      - apfelcore_library
+  - retry_policy: Retry classification and AsyncSemaphore concurrency guard
+    from:
+      - apfelcore_library
+  - error_policy: ApfelError classification to CLI exit codes and HTTP errors
+    from:
+      - apfelcore_library
+  - schema_parser: Pure JSON Schema IR parser
+    from:
+      - apfelcore_library
+  - json_utilities: JSON encoding, fence stripping, body limits, stream outcomes
+    from:
+      - apfelcore_library
+
+model_integration:
+  - token_counter: FoundationModels token counts, context size, availability
+    from:
+      - main_entry
+      - openai_server
+  - session_factory: LanguageModelSession and GenerationOptions construction
+    from:
+      - context_manager
+      - token_counter
+      - retry_policy
+  - schema_converter: OpenAI tool schema to DynamicGenerationSchema adapter
+    from:
+      - context_manager
+      - schema_parser
+  - foundation_model: Apple on-device FoundationModels runtime
+    from:
+      - session_factory
+      - schema_converter
+      - token_counter
+
+tools:
+  - mcp_manager: Local subprocess and remote HTTP MCP connections
+    from:
+      - main_entry
+      - openai_wire_types
+  - mcp_protocol: Pure MCP JSON-RPC formatting and parsing
+    from:
+      - apfelcore_library
+  - tool_call_handler: Tool-call prompt format, detection, and argument cleanup
+    from:
+      - apfelcore_library
+      - context_manager
+  - mcp_tool_execution: MCP tool discovery, invocation, and auto-execute responses
+    from:
+      - mcp_manager
+      - mcp_protocol
+      - tool_call_handler
+      - prompt_pipeline
+
+outputs:
+  - cli_output: Plain or JSON CLI responses with correct exit codes
+    from:
+      - prompt_pipeline
+      - error_policy
+      - foundation_model
+      - mcp_tool_execution
+  - server_output: OpenAI-compatible JSON and SSE responses
+    from:
+      - chat_handler
+      - prompt_pipeline
+      - foundation_model
+      - mcp_tool_execution
+      - json_utilities
+  - test_gate: Unit and integration test suites
+    from:
+      - cli_validation
+      - chat_request_validator
+      - context_strategy
+      - mcp_protocol
+      - server_output
+      - cli_output
+  - docs_release: README, docs, examples, release, Homebrew, and nixpkgs scripts
+    from:
+      - test_gate
+      - package_manifest
