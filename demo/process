@@ -1,0 +1,98 @@
+#!/bin/bash
+# process — what's this process about?, powered by Apple Intelligence
+# Install globally as `apfel-process`: see demo/README.md "Install demos globally (optional)"
+#
+# Usage:  process <PID>
+#         process 1234 -c    # copy explanation to clipboard
+#
+# Requires: apfel installed (https://github.com/Arthur-Ficial/apfel)
+
+COPY=false
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -c|--copy) COPY=true; shift ;;
+        -h|--help)
+            echo "process — what's this process about?"
+            echo ""
+            echo "Usage: process [OPTIONS] <PID>"
+            echo ""
+            echo "  -c, --copy  Copy explanation to clipboard"
+            echo "  -h, --help  Show this help"
+            echo ""
+            echo "Examples:"
+            echo "  process 648"
+            echo "  process 1234 -c"
+            echo ""
+            echo "Requires: apfel (Apple Intelligence CLI)"
+            exit 0
+            ;;
+        -*) echo "Unknown option: $1. Use --help."; exit 1 ;;
+        *)  PID="$1"; shift ;;
+    esac
+done
+
+if [[ -z "$PID" ]]; then
+    echo "Usage: process <PID>"
+    echo "       process --help for more options"
+    exit 1
+fi
+
+if ! [[ "$PID" =~ ^[0-9]+$ ]]; then
+    echo "Error: '$PID' is not a valid Process ID (PID)" >&2
+    exit 1
+fi
+
+# Check apfel is installed
+if ! command -v apfel &>/dev/null; then
+    echo "Error: apfel not found. Install from https://github.com/Arthur-Ficial/apfel"
+    exit 1
+fi
+
+# Gather process info from ps
+ps_info=$(ps -p "$PID" -o pid,ppid,user,%cpu,%mem,command 2>/dev/null)
+
+if [[ -z "$ps_info" ]]; then
+    echo "Process $PID is not running."
+    exit 0
+fi
+
+# Gather open files and network descriptors (kept concise)
+open_files=$(lsof -p "$PID" -P -n 2>/dev/null | head -15)
+network_info=$(lsof -a -p "$PID" -i -P -n 2>/dev/null)
+
+snapshot="PID Info:
+$ps_info"
+
+if [[ -n "$network_info" ]]; then
+    snapshot+="
+
+Network Connections:
+$network_info"
+fi
+
+if [[ -n "$open_files" ]]; then
+    snapshot+="
+
+Open Files Snippet:
+$open_files"
+fi
+
+SYSTEM="Explain in 1-2 sentences what this running process is. Mention the process name, PID, user, and what the process likely does. If it's a daemon, web server, development command, or browser worker, say so specifically. Keep it concise."
+
+result=$(echo "$snapshot" | apfel -q -s "$SYSTEM")
+status=$?
+
+if [[ $status -ne 0 ]]; then
+    echo "Error: apfel failed (exit $status)" >&2
+    # Fallback
+    echo "$ps_info"
+    exit $status
+fi
+
+if $COPY; then
+    echo "$result" | pbcopy
+    echo -e "\033[90m(copied to clipboard)\033[0m"
+fi
+
+echo "$result"

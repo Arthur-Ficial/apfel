@@ -118,6 +118,12 @@ func chat(systemPrompt: String?, options: SessionOptions = .defaults, mcpManager
     let lineEditor = ChatLineEditor(outputFormat: outputFormat)
     var turn = 0
 
+    func printCurrentContextStatus() async {
+        let tokenCount = await TokenCounter.shared.count(entries: transcriptEntries(session.transcript))
+        let budget = await TokenCounter.shared.inputBudget(reservedForOutput: options.contextConfig.outputReserve)
+        printContextStatus(tokenCount: tokenCount, budget: budget)
+    }
+
     printHeader()
     if !quietMode {
         if let sys = systemPrompt {
@@ -128,12 +134,15 @@ func chat(systemPrompt: String?, options: SessionOptions = .defaults, mcpManager
                 print(sysLine)
             }
         }
-        let hint = styled("Type 'quit' to exit.\n", .dim)
+        let hint = styled("Type 'quit' to exit  ·  /clear  /new  /cmd  /explain  /port  /wtd  and more\n", .dim)
         if outputFormat == .json {
             printStderr(hint)
         } else {
             print(hint)
         }
+    }
+    if contextStatus && !quietMode {
+        await printCurrentContextStatus()
     }
 
     while true {
@@ -142,6 +151,101 @@ func chat(systemPrompt: String?, options: SessionOptions = .defaults, mcpManager
         let trimmed = input.trimmingCharacters(in: .whitespaces)
         if trimmed.isEmpty { continue }
         if trimmed.lowercased() == "quit" || trimmed.lowercased() == "exit" { break }
+
+        // Slash commands: session controls and local developer tools.
+        if let slashCmd = ChatCommand.parse(trimmed) {
+            switch slashCmd {
+            case .clear:
+                // Erase screen and move cursor to top — context is untouched
+                print("\u{1B}[2J\u{1B}[H", terminator: "")
+                fflush(stdout)
+                printHeader()
+                if !quietMode, let sys = systemPrompt {
+                    let sysLine = styled("system: ", .magenta, .bold) + styled(sys, .dim)
+                    if outputFormat == .json { printStderr(sysLine) } else { print(sysLine) }
+                }
+
+            case .new:
+                // Erase screen, then rebuild session from scratch
+                print("\u{1B}[2J\u{1B}[H", terminator: "")
+                fflush(stdout)
+                if hasMCPTools {
+                    var instrParts: [String] = []
+                    if let sys = systemPrompt { instrParts.append(sys) }
+                    let toolNames = mcpTools.map { $0.function.name }
+                    instrParts.append(ToolCallHandler.buildOutputFormatInstructions(toolNames: toolNames))
+                    instrParts.append("IMPORTANT: You may ONLY call the functions listed above (\(toolNames.joined(separator: ", "))). Do NOT invent function names. If the user's request cannot be handled by these specific functions, respond with plain text.")
+                    let allToolDefs = mcpTools.map { ToolDef(name: $0.function.name, description: $0.function.description, parametersJSON: $0.function.parameters?.value) }
+                    instrParts.append(ToolCallHandler.buildFallbackPrompt(tools: allToolDefs))
+                    let instrText = instrParts.joined(separator: "\n\n")
+                    let segments: [Transcript.Segment] = [.text(Transcript.TextSegment(content: instrText))]
+                    let instr = Transcript.Instructions(segments: segments, toolDefinitions: [])
+                    session = makeTranscriptSession(model: model, entries: [.instructions(instr)])
+                } else {
+                    session = makeSession(systemPrompt: systemPrompt, options: options)
+                }
+                turn = 0
+                printHeader()
+                if !quietMode {
+                    if let sys = systemPrompt {
+                        let sysLine = styled("system: ", .magenta, .bold) + styled(sys, .dim)
+                        if outputFormat == .json { printStderr(sysLine) } else { print(sysLine) }
+                    }
+                    let newHint = styled("Context cleared. Fresh session started.\n", .dim)
+                    if outputFormat == .json { printStderr(newHint) } else { print(newHint) }
+                    if contextStatus { await printCurrentContextStatus() }
+                }
+            case .context:
+                await printCurrentContextStatus()
+            case .tool(let toolName, let toolArgs):
+                // Premium developer tool invoked via slash command (e.g. /port 3000)
+                //
+                // Interactive flags (-x/--execute, -c/--copy) require PTY-level job
+                // control to work correctly: the subprocess needs to own the terminal
+                // for prompts and side-effects, but readline also owns it for the chat
+                // loop. After the subprocess exits, readline's cursor state is undefined
+                // and the session appears stuck.  Block them here and direct the user
+                // to run directly from the shell where job control is available.
+                let interactiveFlags: Set<String> = ["-x", "--execute", "-c", "--copy"]
+                let usedInteractive = toolArgs.filter { interactiveFlags.contains($0) }
+                if !usedInteractive.isEmpty {
+                    let flagList = usedInteractive.joined(separator: ", ")
+                    let directCmd = "apfel \(toolName) " + toolArgs.joined(separator: " ")
+                    let msg = styled("apfel:", .yellow) + " '\(flagList)' requires direct terminal control "
+                        + "and cannot run inside --chat mode.\n"
+                        + styled("       Run it directly instead:", .dim) + "  \(directCmd)"
+                    if outputFormat == .json { printStderr(msg) } else { print(msg) }
+                } else {
+                    if !quietMode && outputFormat == .plain {
+                        print(styled(" ai› ", .cyan, .bold) + styled("[Executing local developer tool '\(toolName)'...]\n", .dim))
+                        fflush(stdout)
+                    }
+
+                    let (output, _) = runDeveloperTool(tool: toolName, arguments: toolArgs, captureOutput: true)
+
+                    if outputFormat == .plain {
+                        print(output + "\n")
+                    } else if outputFormat == .json {
+                        print(jsonString(
+                            ChatMessage(role: "assistant", content: output, model: modelName),
+                            pretty: false
+                        ))
+                        fflush(stdout)
+                    }
+
+                    // Re-inject the slash command and tool output into the transcript so
+                    // the model can reference the result in follow-up questions.
+                    var entries = transcriptEntries(session.transcript)
+                    entries.append(makePromptEntry(trimmed, options: options))
+                    entries.append(.response(Transcript.Response(assetIDs: [], segments: [.text(Transcript.TextSegment(content: output))])))
+                    session = makeTranscriptSession(model: model, entries: entries)
+                    if contextStatus && !quietMode {
+                        await printCurrentContextStatus()
+                    }
+                }
+            }
+            continue
+        }
 
         turn += 1
 
@@ -218,9 +322,7 @@ func chat(systemPrompt: String?, options: SessionOptions = .defaults, mcpManager
 }
 
 func printContextStatus(tokenCount: Int, budget: Int) {
-    let percent = budget > 0 ? min(999, (tokenCount * 100) / budget) : 0
-    let remaining = max(0, budget - tokenCount)
-    let line = styled("  [context \(tokenCount)/\(budget) tokens, \(percent)%, \(remaining) remaining]", .dim)
+    let line = "\(tokenCount) / \(budget) tokens context window"
     if outputFormat == .json {
         printStderr(line)
     } else {
@@ -517,4 +619,129 @@ func printUsage() {
       APFEL_SYSTEM_PROMPT="Be brief" \(appName) "Explain TCP"
       \(appName) --serve --port 3000 --host 0.0.0.0 --cors
     """)
+}
+
+/// Run one of the 9 premium developer tools directly by launching its subprocess.
+/// Maps names, separates options/flags, and forwards the arguments.
+/// If `captureOutput` is true, returns the output string instead of piping stdout/stderr.
+@discardableResult
+func runDeveloperTool(tool: String, arguments: [String], captureOutput: Bool = false) -> (output: String, status: Int32) {
+    let devTools = ["cmd", "oneliner", "naming", "explain", "wtd", "port", "process", "daemon", "docs-apple", "docs_apple", "mdn"]
+    guard devTools.contains(tool) else { return ("", 1) }
+
+    let scriptName: String
+    if tool == "docs_apple" {
+        scriptName = "docs-apple"
+    } else {
+        scriptName = tool
+    }
+
+    // Try to extract and resolve script dynamically for self-contained execution
+    let homeDir = FileManager.default.homeDirectoryForCurrentUser
+    let cacheDir = homeDir.appendingPathComponent(".apfel/bin", isDirectory: true)
+    let scriptPath = cacheDir.appendingPathComponent("apfel-\(scriptName)")
+    
+    // Auto-create bin directory if missing
+    do {
+        try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true, attributes: nil)
+    } catch {
+        print("Warning: Could not create cache directory at \(cacheDir.path): \(error)")
+    }
+    
+    // Dynamic script self-extraction
+    if let scriptContent = EmbeddedScripts.scripts[scriptName] {
+        do {
+            try scriptContent.write(to: scriptPath, atomically: true, encoding: .utf8)
+            let attrs = [FileAttributeKey.posixPermissions: 0o755]
+            try FileManager.default.setAttributes(attrs, ofItemAtPath: scriptPath.path)
+        } catch {
+            print("Warning: Failed to extract and write script '\(scriptName)' to cache: \(error)")
+        }
+    }
+    
+    // For docs-apple, also extract its dependent python helpers
+    if scriptName == "docs-apple" {
+        let helpersDir = cacheDir.appendingPathComponent("helpers", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: helpersDir, withIntermediateDirectories: true, attributes: nil)
+            for helperName in ["docs_apple_parser", "trim_context"] {
+                if let helperContent = EmbeddedScripts.scripts[helperName] {
+                    let helperPath = helpersDir.appendingPathComponent("\(helperName).py")
+                    try helperContent.write(to: helperPath, atomically: true, encoding: .utf8)
+                    let attrs = [FileAttributeKey.posixPermissions: 0o755]
+                    try FileManager.default.setAttributes(attrs, ofItemAtPath: helperPath.path)
+                }
+            }
+        } catch {
+            print("Warning: Failed to extract docs-apple helper: \(error)")
+        }
+    }
+
+    // For mdn, also extract its dependent python helpers
+    if scriptName == "mdn" {
+        let helpersDir = cacheDir.appendingPathComponent("helpers", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: helpersDir, withIntermediateDirectories: true, attributes: nil)
+            for helperName in ["mdn_doc_parser", "trim_mdn"] {
+                if let helperContent = EmbeddedScripts.scripts[helperName] {
+                    let helperPath = helpersDir.appendingPathComponent("\(helperName).py")
+                    try helperContent.write(to: helperPath, atomically: true, encoding: .utf8)
+                    let attrs = [FileAttributeKey.posixPermissions: 0o755]
+                    try FileManager.default.setAttributes(attrs, ofItemAtPath: helperPath.path)
+                }
+            }
+        } catch {
+            print("Warning: Failed to extract mdn helper: \(error)")
+        }
+    }
+
+    guard FileManager.default.isExecutableFile(atPath: scriptPath.path) else {
+        let msg = "Error: Could not extract developer tool '\(scriptName)' — embedded script is missing or could not be written to \(scriptPath.path)."
+        if captureOutput { return (msg, 1) }
+        print(msg)
+        return ("", 1)
+    }
+    let executablePath = scriptPath.path
+
+    // Parse flags and query
+    var procArgs: [String] = []
+    var queryParts: [String] = []
+    for arg in arguments {
+        if arg.hasPrefix("-") {
+            procArgs.append(arg)
+        } else {
+            queryParts.append(arg)
+        }
+    }
+    if !queryParts.isEmpty {
+        procArgs.append(queryParts.joined(separator: " "))
+    }
+
+    let proc = Process()
+    proc.executableURL = URL(fileURLWithPath: executablePath)
+    proc.arguments = procArgs
+
+    if captureOutput {
+        let pipe = Pipe()
+        proc.standardOutput = pipe
+        proc.standardError = pipe
+        do {
+            try proc.run()
+            proc.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8) ?? ""
+            return (output.trimmingCharacters(in: .whitespacesAndNewlines), proc.terminationStatus)
+        } catch {
+            return ("Error running \(scriptName): \(error)", 1)
+        }
+    } else {
+        do {
+            try proc.run()
+            proc.waitUntilExit()
+            return ("", proc.terminationStatus)
+        } catch {
+            print("Error executing developer tool script \(scriptName): \(error)")
+            return ("", 1)
+        }
+    }
 }

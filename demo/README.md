@@ -110,7 +110,96 @@ Process 1234, named node, is listening on port 3000 - this is likely
 a Node.js development server (Express, Next.js, or similar).
 ```
 
+## process
+
+What's this process about? Identifies the process by PID, checks open files and network descriptors, and explains what it is.
+
+```bash
+./process 648
+./process 1234 -c    # copy to clipboard
+```
+
+**Example output:**
+```
+Process 648, named rapportd, is running under user bogdan. It is a native macOS daemon responsible for device-to-device communication such as AirDrop, Handoff, and Apple Watch unlocking.
+```
+
+## daemon
+
+What's this macOS daemon, system service, or command about? Explains what it does and how it internally works.
+
+```bash
+./daemon mDNSResponder
+./daemon configd -c    # copy to clipboard
+```
+
+**Example output:**
+```
+mDNSResponder is a macOS daemon that is responsible for responding to Domain Name System (DNS) queries from other devices on the same network. It is a critical component of macOS's networking infrastructure, enabling features such as AirDrop, iCloud, and Apple TV Remote Control. It manages interactions with DNS resolvers and handles multicast DNS queries using a combination of UDP and TCP protocols.
+```
+
+## docs-apple
+
+Smart developer documentation, code helper, and conversational assistant.
+
+Queries are classified to build the best Apple docs search query: framework names are detected anywhere in the input, common symbols are extracted as search hints, and intent words (explain, what, how) are filtered out. Apple docs search always runs first; direct framework/symbol fetches are fallback heuristics. Fetched documentation is pruned structurally before it enters the prompt. Model-only answering is the final fallback.
+
+Explicit `@keyword` control bypasses all auto-detection and uses the tagged words directly as the Apple docs search query.
+
+```bash
+./docs-apple SwiftUI Button                   # Framework + symbol
+./docs-apple Task                              # Symbol lookup across frameworks
+./docs-apple i want to build a View with italic text  # Keyword extraction from natural language
+./docs-apple --3000 SwiftData                  # Allow ~3000 doc-context tokens
+./docs-apple --1000 explain "SwiftData"        # Intent query + quoted framework
+./docs-apple --no-sosumi SwiftUI Button        # Force native curl/parser path
+./docs-apple Combine Publisher -c             # Copy output to clipboard
+```
+
+**Example output:**
+```
+Extracted keyword 'view'. Grounding query with Apple docs...
+### Overview
+The View protocol defines a type that represents part of the user interface of a SwiftUI application...
+
+### Code Snippet
+[Beautiful, grounded, offline-generated Swift / SwiftUI code snippet]
+```
+
+**How arguments are classified:**
+
+Framework names are detected **anywhere** in the query (not just the first word). Quotes and punctuation are stripped before detection, so `"SwiftData"` becomes `swiftdata`. Multi-word spelling is compacted too: `Swift Data` → `swiftdata`, `Foundation Models` → `foundationmodels`, `Core Data` → `coredata`.
+
+Intent words (`explain`, `what`, `how`, `why`, `show`, `tell`, `overview`, `summarize`, `summary`, `describe`) do not bypass Apple docs. They are filtered out of the probable docs query so apfel searches for the API/framework, not the prose instruction.
+
+**Explicit `@keyword` control:** prefix any word with `@` to force it as the exact Apple docs search term. Bypasses all auto-detection and stop-word filtering. Works unquoted in both terminal and chat mode (`@` has no special shell meaning).
+
+```bash
+./docs-apple @CoreData
+./docs-apple @SwiftUI @NavigationSplitView
+./docs-apple explain @NetworkExtension in a few sentences
+./docs-apple @WidgetKit how to build a widget
+```
+
+| Input | Framework | Position | Remaining | Mode |
+|-------|-----------|----------|-----------|------|
+| `SwiftUI Button` | swiftui | start | 1 | Search Apple docs for `swiftui button`, then fetch best result |
+| `SwiftUI "Button"` | swiftui | start | 1 | Quotes stripped → search `swiftui button` |
+| `Combine Publisher` | combine | start | 1 | Search Apple docs for `combine publisher` |
+| `Combine framework explain in few sentences` | combine | start | 5 (≥ 3) | Search Apple docs for `combine` |
+| `explain in few sentences Combine framework` | combine | mid-query (pos 4) | — | Search Apple docs for `combine` |
+| `explain "SwiftData"` | swiftdata | mid-query | — | Search Apple docs for `swiftdata` |
+| `explain Combine Publisher` | combine | mid-query (pos 1) | — | Search Apple docs for `combine publisher` |
+| `Button SwiftUI` | swiftui | mid-query (pos 1) | — | Search Apple docs for `swiftui button` |
+| `Task` | — | — | 1 | Search Apple docs for `task` |
+
+Framework and symbol detection build the most probable Apple docs query. Apple docs search runs first; direct `framework/symbol` or framework-root fetches are fallback heuristics if search fails. Model-only answering is the final fallback, not the normal natural-language path.
+The common-symbol list is broad: SwiftUI, Swift concurrency, Foundation, SwiftData/Core Data, Combine, UIKit/AppKit, graphics/media/location/security/networking, StoreKit, WidgetKit, Vision, WebKit, XCTest, and logging symbols. The framework/symbol lists are hints, not a requirement for docs search.
+Fetched documentation is pruned before it enters the prompt. Default budget is about 2,000 tokens; use `--1000`, `--3000`, etc. to tune it per query.
+The `-c` (copy to clipboard) flag works from the terminal but is blocked inside `--chat` mode — run `apfel docs-apple -c` directly.
+
 ## gitsum
+
 
 Summarize recent git activity in plain English.
 
@@ -152,23 +241,73 @@ soldiers on at 3.1%, dutifully rendering pixels that nobody is looking at.
 - Apple Intelligence enabled in System Settings
 - macOS 26+, Apple Silicon
 
-## Install demos globally (optional)
+## Running Demos Globally & Self-Contained Execution
 
-The demos are intentionally **not** installed by `brew install apfel` or `make install`. Names like `cmd`, `port`, `explain`, and `naming` are too generic for global `$PATH` - `port` would shadow MacPorts, `cmd` is a common variable name in many shell scripts.
+All premium developer utilities (`cmd`, `oneliner`, `naming`, `explain`, `wtd`, `port`, `process`, `daemon`, `docs-apple`, `mdn`) are now **fully built-in, first-class features of `apfel`**.
 
-If you want them available system-wide, symlink each one with an `apfel-` prefix:
-
+### 1. Direct Built-In Execution
+You can run any developer tool directly via the `apfel` binary:
 ```bash
-mkdir -p "$HOME/.local/bin"
-for d in cmd explain gitsum mac-narrator naming oneliner port wtd; do
-  ln -sf "$(pwd)/demo/$d" "$HOME/.local/bin/apfel-$d"
-done
+apfel port 3000
+apfel wtd ~/projects/my-app
+apfel docs-apple SwiftUI Button
+apfel mdn CSS flexbox
+```
+This executes **instantly** by taking a compiled-in fast path that completely bypasses loading time or model availability checks.
+
+### 2. Stateful Interactive Chat Mode
+These tools are fully integrated into `--chat` mode using **slash commands**. In your chat session, prefix the tool name with `/`:
+```
+you› /port 3000
+you› /explain awk -F: '{print $1}' /etc/passwd
+you› /docs-apple SwiftUI Button
+you› /mdn CSS flexbox
+you› /wtd ~/projects/my-app
+you› /cmd find large files
+```
+`apfel` intercepts the slash command, runs the built-in script instantly (no model startup), and **re-injects the tool output back into the stateful chat transcript** so you can ask follow-up questions!
+
+**Why the slash prefix?** Bare words without `/` always go to the LLM. This means you can freely ask the model:
+```
+you› explain how recursion works         ← goes to the LLM
+you› /explain how recursion works        ← runs the explain tool
+you› port is important in networking     ← goes to the LLM
+you› /port 3000                          ← runs the port tool
 ```
 
-Then invoke them as `apfel-cmd "find large files"`, `apfel-port 3000`, etc.
+**Session controls** also use slash syntax:
+```
+you› /clear    ← erase terminal screen (context kept)
+you› /new      ← erase screen + reset to a completely fresh session
+you› /context  ← print current context-window usage
+```
 
-**Caveats:**
+### 3. Dynamic Global Command Invocation
+Every tool script is compiled into the `apfel` binary. When you run any tool, the binary dynamically extracts the script to your home directory at `~/.apfel/bin/apfel-<name>` and makes it executable.
 
-- The symlinks point at your current clone. If you move or delete the `apfel/` directory, the symlinks break - re-run the loop from the new location.
-- Make sure `$HOME/.local/bin` is on your `$PATH` (`echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc`).
-- To remove later: `for d in cmd explain gitsum mac-narrator naming oneliner port wtd; do rm -f "$HOME/.local/bin/apfel-$d"; done`
+To use the `apfel-` prefix commands globally without keeping the clone directory on disk:
+1. Add the extracted directory to your `$PATH`:
+   ```bash
+   echo 'export PATH="$HOME/.apfel/bin:$PATH"' >> ~/.zshrc
+   source ~/.zshrc
+   ```
+2. Simply invoke them globally:
+   ```bash
+   apfel-port 3000
+   apfel-explain "error: url not found"
+   ```
+
+### 4. Direct Aliasing (Recommended)
+To run the short commands directly (e.g. `port 3000` or `wtd`) without typing `apfel-` or `apfel `, add these clean aliases to your `~/.zshrc`:
+```bash
+alias wtd="apfel wtd"
+alias port="apfel port"
+alias process="apfel process"
+alias daemon="apfel daemon"
+alias explain="apfel explain"
+alias cmd="apfel cmd"
+alias oneliner="apfel oneliner"
+alias naming="apfel naming"
+alias docs-apple="apfel docs-apple"
+alias mdn="apfel mdn"
+```

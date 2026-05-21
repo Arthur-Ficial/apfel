@@ -127,6 +127,26 @@ apfel --chat --debug                                # debug output to stderr
 
 Ctrl-C exits. Context is trimmed automatically ([docs/context-strategies.md](docs/context-strategies.md)).
 
+**Slash commands** (inside a session):
+
+| Command | Effect |
+|---------|--------|
+| `/clear` | Erase the terminal screen — context is kept |
+| `/new` | Erase screen + reset to a fresh session |
+| `/context` | Print current context-window usage |
+| `/cmd <query>` | Natural language → shell command (no LLM round-trip) |
+| `/explain <snippet>` | Explain a command, error, or code snippet |
+| `/port <n>` | What's using port N? |
+| `/wtd [dir]` | Summarise a directory |
+| `/docs-apple <query>` | Apple developer docs + Swift code snippet |
+| `/docs-apple` with `@keyword` | Force exact Apple docs search: `/docs-apple @CoreData` |
+| `/mdn <query>` | MDN Web Docs search (HTML, CSS, JavaScript, Web APIs) |
+| `/mdn` with `@keyword` | Force exact MDN search: `/mdn @flexbox` |
+| `/mdn` with `--2000` | Double the result budget: `/mdn --2000 Array.map` |
+| `/process /daemon /naming /oneliner` | See [demo/README.md](demo/README.md) |
+
+Bare words (no `/`) always go to the model. Slash prefix = instant built-in script, no model load. Double quotes group slash-command queries and are stripped before dispatch; single quotes are preserved for shell snippets.
+
 ## Demos
 
 Shell scripts in [`demo/`](./demo/):

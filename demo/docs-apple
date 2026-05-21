@@ -1,0 +1,542 @@
+#!/bin/bash
+# docs-apple — smart developer documentation & code helper, powered by Apple Intelligence
+# Install globally as `apfel-docs-apple`: see demo/README.md "Install demos globally (optional)"
+#
+# Usage:  docs-apple SwiftUI Button
+#         docs-apple Task
+#         docs-apple Combine Publisher -c    # copy to clipboard
+#
+# Requires: apfel installed (https://github.com/Arthur-Ficial/apfel)
+
+COPY=false
+NO_SOSUMI=false
+DOC_TOKEN_BUDGET=2000
+CANDIDATE_FRAMEWORKS=(
+    "accelerate" "accessibility" "accounts" "adservices" "appattest" "appclips" "appintents"
+    "appkit" "appstoreconnect" "appstoreserverapi" "arkit" "audiotoolbox" "audiounit"
+    "avfaudio" "avfoundation" "avkit" "backgroundassets" "backgroundtasks" "browserenginekit"
+    "callkit" "carplay" "classkit" "cloudkit" "cloudkitjs" "combine" "compression" "contacts"
+    "contactsui" "contacts" "coreaudiokit" "coreaudio" "corebluetooth" "coredata" "corefoundation"
+    "coregraphics" "corehaptics" "coreimage" "corelocation" "coremedia" "coremediaio"
+    "coremotion" "coreservices" "corespotlight" "coretelephony" "coretext" "coretransferable"
+    "corevideo" "cryptokit" "deviceactivity" "devicemanagement" "devicediscovery"
+    "eventkit" "eventkitui" "executionpolicy" "exposurenotification" "externalaccessory"
+    "familycontrols" "fileprovider" "financekit" "foundationmodels" "foundation" "gamecontroller"
+    "gamekit" "gameplaykit" "groupactivities" "healthkitui" "healthkit" "homekit" "hypervisor"
+    "identitylookup" "imagecapturecore" "imageio" "inputmethodkit" "iosurface" "javascriptcore"
+    "localauthentication" "managedsettings" "mapkit" "matter" "mediaplayer" "metalperformanceshaders"
+    "metalkit" "metal" "metrickit" "modelio" "multipeerconnectivity" "musickit"
+    "nearbyinteraction" "networkextension" "network" "notificationcenter" "oslog" "passkit"
+    "pencilkit" "phase" "photosui" "photos" "quicklookthumbnailing" "quicklook" "realitykit"
+    "replaykit" "roomplan" "safariservices" "scenekit" "screencapturekit" "screensaver"
+    "security" "sensorkit" "servicemanagement" "shazamkit" "social" "soundanalysis"
+    "speech" "spritekit" "storekit" "swiftcharts" "swiftdata" "swiftui" "swift" "symbolkit"
+    "systemconfiguration" "system" "tabulardata" "tipkit" "tvmlkit" "uikit" "usernotificationsui"
+    "usernotifications" "videosubscriberaccount" "visionkit" "vision" "watchconnectivity"
+    "watchkit" "webkit" "widgetkit" "xctest"
+)
+INTENT_WORDS=("explain" "what" "how" "why" "show" "tell" "overview" "summarize" "summary" "describe")
+DOC_QUERY_STOP_WORDS=(
+    "a" "an" "the" "in" "of" "for" "to" "me" "about" "few" "sentences" "sentence"
+    "no" "code" "samples" "sample" "please" "briefly" "short" "shortly" "with" "without"
+)
+
+# Common developer symbols to automatically detect and ground natural language queries with
+COMMON_SYMBOLS=(
+    "App" "Scene" "WindowGroup" "DocumentGroup" "Settings" "Commands" "View" "Text" "Label"
+    "Button" "Menu" "Picker" "Toggle" "Slider" "Stepper" "TextField" "SecureField" "TextEditor"
+    "Searchable" "Form" "List" "Table" "Grid" "LazyVGrid" "LazyHGrid" "Section" "Group" "DisclosureGroup"
+    "NavigationStack" "NavigationSplitView" "NavigationLink" "TabView" "ToolbarItem" "ToolbarItemGroup"
+    "ScrollView" "ScrollViewReader" "LazyVStack" "LazyHStack" "VStack" "HStack" "ZStack" "Spacer" "Divider"
+    "Image" "AsyncImage" "Color" "Gradient" "LinearGradient" "RadialGradient" "AngularGradient" "Shape"
+    "Circle" "Rectangle" "RoundedRectangle" "Capsule" "Path" "Font" "Animation" "Transition" "GeometryReader"
+    "ViewModifier" "Environment" "EnvironmentObject" "EnvironmentValues" "State" "StateObject" "Binding"
+    "Bindable" "ObservedObject" "Observable" "ObservableObject" "Published" "FocusState" "GestureState"
+    "Namespace" "PreferenceKey" "Layout" "SceneStorage" "AppStorage" "FetchRequest" "Query"
+
+    "Task" "TaskGroup" "ThrowingTaskGroup" "MainActor" "Actor" "Sendable" "AsyncSequence"
+    "AsyncStream" "AsyncThrowingStream" "Continuation" "TaskLocal" "Clock" "Duration" "Instant"
+
+    "String" "Substring" "Array" "Dictionary" "Set" "Optional" "Result" "Range" "ClosedRange"
+    "Sequence" "Collection" "RandomAccessCollection" "IteratorProtocol" "Codable" "Encodable" "Decodable"
+    "Identifiable" "Hashable" "Equatable" "Comparable" "Error" "LocalizedError" "Date" "Data" "URL"
+    "URLRequest" "URLComponents" "URLSession" "URLSessionConfiguration" "URLSessionTask" "URLSessionDataTask"
+    "URLSessionUploadTask" "URLSessionDownloadTask" "JSONDecoder" "JSONEncoder" "PropertyListDecoder"
+    "PropertyListEncoder" "FileManager" "Bundle" "ProcessInfo" "NotificationCenter" "Notification" "Timer"
+    "Calendar" "Locale" "TimeZone" "Measurement" "Formatter" "DateFormatter" "NumberFormatter" "UUID"
+    "IndexSet" "Operation" "OperationQueue" "UserDefaults" "NSError" "NSPredicate" "NSSortDescriptor"
+
+    "Model" "ModelContext" "ModelContainer" "ModelConfiguration" "Query" "FetchDescriptor" "SortDescriptor"
+    "Predicate" "Relationship" "Attribute" "Transient" "PersistentModel" "PersistentIdentifier"
+
+    "Publisher" "Subscriber" "Subscription" "Subject" "PassthroughSubject" "CurrentValueSubject" "AnyPublisher"
+    "AnyCancellable" "Cancellable" "Future" "Just" "Empty" "Fail" "Published" "ObservableObjectPublisher"
+
+    "UIApplication" "UIScene" "UIWindow" "UIView" "UIViewController" "UILabel" "UIButton" "UIImage"
+    "UIImageView" "UITableView" "UICollectionView" "UINavigationController" "UITabBarController"
+    "UIAlertController" "UIStackView" "UIColor" "UIFont" "UIScreen" "UIResponder" "UIControl" "UIAction"
+    "NSApplication" "NSWindow" "NSView" "NSViewController" "NSButton" "NSTextField" "NSTableView"
+    "NSCollectionView" "NSImage" "NSColor" "NSFont" "NSMenu" "NSMenuItem" "NSResponder"
+
+    "CGColor" "CGRect" "CGSize" "CGPoint" "CGPath" "CGImage" "CGContext" "CGAffineTransform"
+    "CIImage" "CIFilter" "CIContext" "CVPixelBuffer" "AVPlayer" "AVAsset" "AVAudioEngine" "AVAudioSession"
+    "AVCaptureSession" "AVCaptureDevice" "AVCapturePhotoOutput" "PHAsset" "PHPhotoLibrary"
+
+    "CLLocation" "CLLocationManager" "CLLocationCoordinate2D" "MKMapView" "MKMapItem" "MKCoordinateRegion"
+    "MKAnnotation" "MKPointAnnotation" "MKRoute" "HKHealthStore" "HKSample" "HKQuantity" "HKWorkout"
+    "INIntent" "AppIntent" "IntentResult" "EntityQuery" "AppEntity" "Transferable" "FileDocument"
+    "UNUserNotificationCenter" "UNNotificationRequest" "UNMutableNotificationContent" "Widget" "TimelineProvider"
+    "TimelineEntry" "WidgetConfiguration" "Tip" "StoreView" "ProductView" "SubscriptionStoreView" "Product"
+    "Transaction" "SKProduct" "SKPaymentQueue" "LAContext" "SecKey" "Keychain" "URLCredential"
+    "NWConnection" "NWListener" "NWEndpoint" "NEVPNManager" "CKContainer" "CKDatabase" "CKRecord"
+    "CKQuery" "CKShare" "CBPeripheral" "CBCentralManager" "ARSession" "ARView" "RealityView"
+    "Entity" "ModelEntity" "SCNScene" "SCNNode" "SKScene" "SKNode" "MTLDevice" "MTLCommandQueue"
+    "MLModel" "VNRequest" "VNImageRequestHandler" "VNRecognizeTextRequest" "WKWebView" "WKNavigation"
+    "XCTestCase" "XCTAssert" "Logger" "OSLog"
+)
+
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -c|--copy) COPY=true; shift ;;
+        --no-sosumi) NO_SOSUMI=true; shift ;;
+        --[0-9]*) DOC_TOKEN_BUDGET="${1#--}"; shift ;;
+        -h|--help)
+            echo "docs-apple — smart developer documentation & code helper"
+            echo ""
+            echo "Usage: docs-apple [OPTIONS] [Framework] <Symbol-or-Task>"
+            echo ""
+            echo "  -c, --copy  Copy explanation & code to clipboard"
+            echo "  --2000      Trim fetched docs to ~2000 tokens (default; use --3000, --1000, etc.)"
+            echo "  --no-sosumi Force native curl/parser path even if sosumi is installed"
+            echo "  -h, --help  Show this help"
+            echo ""
+            echo "Examples:"
+            echo "  docs-apple SwiftUI Button"
+            echo "  docs-apple Task"
+            echo "  docs-apple Combine Publisher -c"
+            echo ""
+            echo "Requires: apfel (Apple Intelligence CLI)"
+            exit 0
+            ;;
+        -*) echo "Unknown option: $1. Use --help."; exit 1 ;;
+        *)  ARGS+=("$1"); shift ;;
+    esac
+done
+
+# Split any ARGS elements that contain whitespace to support single-string query wrappers (e.g. from MCP or apfel router)
+SPLIT_ARGS=()
+for arg in "${ARGS[@]}"; do
+    read -r -a words <<< "$arg"
+    SPLIT_ARGS+=("${words[@]}")
+done
+ARGS=("${SPLIT_ARGS[@]}")
+
+if [[ ${#ARGS[@]} -eq 0 ]]; then
+    echo "Usage: docs-apple [Framework] <Symbol-or-Task>"
+    echo "       docs-apple --help for more options"
+    exit 1
+fi
+
+# Check apfel is installed
+if ! command -v apfel &>/dev/null; then
+    echo "Error: apfel not found. Install from https://github.com/Arthur-Ficial/apfel"
+    exit 1
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PARSER_PATH="$SCRIPT_DIR/helpers/docs_apple_parser.py"
+TRIM_CONTEXT_PATH="$SCRIPT_DIR/helpers/trim_context.py"
+
+# --- Documentation helpers ---
+
+has_sosumi() { [[ "$NO_SOSUMI" != "true" ]] && command -v sosumi &>/dev/null; }
+
+trim_context() {
+    if [[ -f "$TRIM_CONTEXT_PATH" ]]; then
+        python3 "$TRIM_CONTEXT_PATH" --max-tokens "$DOC_TOKEN_BUDGET"
+    else
+        head -c "$((DOC_TOKEN_BUDGET * 4))"
+    fi
+}
+
+# Fetch documentation for fw/symbol. Returns markdown on stdout, empty on failure.
+fetch_docs() {
+    local fw="$1" symbol="$2"
+    local raw=""
+    if has_sosumi; then
+        if [[ -n "$symbol" ]]; then
+            raw=$(sosumi fetch "${fw}/${symbol}" 2>/dev/null) || return 1
+        else
+            raw=$(sosumi fetch "$fw" 2>/dev/null) || return 1
+        fi
+    else
+        local url
+        if [[ -n "$symbol" ]]; then
+            url="https://developer.apple.com/tutorials/data/documentation/${fw}/${symbol}.json"
+        else
+            url="https://developer.apple.com/tutorials/data/documentation/${fw}.json"
+        fi
+        local response
+        response=$(curl -s -f --connect-timeout 10 --max-time 15 "$url" 2>/dev/null) || return 1
+        if [[ -n "$response" && -f "$PARSER_PATH" ]]; then
+            raw=$(echo "$response" | python3 "$PARSER_PATH" 2>/dev/null)
+        fi
+    fi
+    [[ -n "$raw" ]] && echo "$raw" | trim_context
+}
+
+# Search Apple docs. Returns "fw/symbol" path on stdout, empty on failure.
+search_docs() {
+    local query="$1"
+    if has_sosumi; then
+        local result
+        result=$(sosumi search "$query" --json 2>/dev/null) || return 1
+        echo "$result" | python3 -c "
+import sys, json
+try:
+    for r in json.load(sys.stdin).get('results',[]):
+        u = r.get('url','')
+        if '/documentation/' in u:
+            p = u.split('/documentation/')
+            if len(p) > 1: print(p[1]); break
+except: pass
+"
+    else
+        local ua="Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15"
+        local response
+        response=$(curl -s --connect-timeout 10 --max-time 15 \
+            -X POST "https://devintserv.msc.sbz.apple.com/api/v1/search" \
+            -H "Origin: https://developer.apple.com" \
+            -H "Referer: https://developer.apple.com/search/" \
+            -H "Content-Type: application/json" \
+            -H "User-Agent: $ua" \
+            -d "{\"text\":\"$query\",\"targetResultLocale\":\"en\"}" 2>/dev/null) || return 1
+        echo "$response" | python3 -c "
+import sys, json
+try:
+    for r in json.load(sys.stdin).get('results',[]):
+        u = r.get('url','')
+        if '/documentation/' in u:
+            p = u.split('/documentation/')
+            if len(p) > 1: print(p[1]); break
+except: pass
+"
+    fi
+}
+
+# Normalize inputs
+FRAMEWORK=""
+SYMBOL=""
+RAW_QUERY="${ARGS[*]}"
+IS_NATURAL_LANGUAGE=false
+HAS_QUERY_INTENT=false
+
+clean_token() {
+    echo "$1" | tr -d "\"'\`.,?!()[]{}:" | tr '[:upper:]' '[:lower:]'
+}
+
+build_symbol_path() {
+    local parts=()
+    for word in "$@"; do
+        token=$(clean_token "$word")
+        [[ -n "$token" ]] && parts+=("$token")
+    done
+    local joined="${parts[*]}"
+    echo "${joined// //\/}"
+}
+
+extract_explicit_tags() {
+    EXPLICIT_TAGS=()
+    for word in "${ARGS[@]}"; do
+        if [[ "$word" =~ ^@(.+) ]]; then
+            EXPLICIT_TAGS+=("${BASH_REMATCH[1]}")
+        fi
+    done
+    [[ ${#EXPLICIT_TAGS[@]} -gt 0 ]]
+}
+
+build_probable_doc_query() {
+    # Priority 1: explicit @keyword tags from the user.
+    if [[ ${#EXPLICIT_TAGS[@]} -gt 0 ]]; then
+        echo -e "\033[90mExplicit @keyword tags detected: ${EXPLICIT_TAGS[*]}\033[0m"
+        echo "${EXPLICIT_TAGS[*]}"
+        return
+    fi
+
+    local symbol_hint=""
+    if [[ -n "$EXTRACTED_SYMBOL" ]]; then
+        symbol_hint="$EXTRACTED_SYMBOL"
+    elif [[ -n "$SYMBOL" && "$SYMBOL" != "$FRAMEWORK" ]]; then
+        symbol_hint="$SYMBOL"
+    fi
+
+    if [[ -n "$FRAMEWORK" && -n "$symbol_hint" ]]; then
+        echo "$FRAMEWORK $symbol_hint"
+    elif [[ -n "$symbol_hint" ]]; then
+        echo "$symbol_hint"
+    elif [[ -n "$FRAMEWORK" ]]; then
+        echo "$FRAMEWORK"
+    else
+        local terms=()
+        for word in "${ARGS[@]}"; do
+            token=$(clean_token "$word")
+            [[ -z "$token" ]] && continue
+            skip=false
+            for intent in "${INTENT_WORDS[@]}"; do
+                if [[ "$token" == "$intent" ]]; then skip=true; break; fi
+            done
+            if ! $skip; then
+                for stop in "${DOC_QUERY_STOP_WORDS[@]}"; do
+                    if [[ "$token" == "$stop" ]]; then skip=true; break; fi
+                done
+            fi
+            ! $skip && terms+=("$word")
+        done
+        if [[ ${#terms[@]} -gt 0 ]]; then
+            echo "${terms[*]}"
+        else
+            echo "$RAW_QUERY"
+        fi
+    fi
+}
+
+search_and_fetch_docs() {
+    local query="$1"
+    [[ -z "$query" ]] && return 1
+
+    echo -e "\033[90mSearching Apple docs for '$query'...\033[0m"
+    local search_path
+    search_path=$(search_docs "$query")
+    [[ -z "$search_path" ]] && return 1
+
+    local fw sym
+    if [[ "$search_path" == */* ]]; then
+        fw="${search_path%%/*}"
+        sym="${search_path#*/}"
+    else
+        fw="$search_path"
+        sym=""
+    fi
+
+    [[ -z "$fw" ]] && return 1
+    doc_context=$(fetch_docs "$fw" "$sym")
+    if [[ -n "$doc_context" ]]; then
+        FRAMEWORK="$fw"
+        SYMBOL="$sym"
+        return 0
+    fi
+    return 1
+}
+
+for word in "${ARGS[@]}"; do
+    word_lower=$(clean_token "$word")
+    for intent in "${INTENT_WORDS[@]}"; do
+        if [[ "$word_lower" == "$intent" ]]; then
+            HAS_QUERY_INTENT=true
+            break 2
+        fi
+    done
+done
+
+# Scan ALL words for a framework name — not just the first word.
+# "explain in few sentences Combine framework" → finds Combine at position 4.
+FW_INDEX=-1
+for i in "${!ARGS[@]}"; do
+    word_lower=$(clean_token "${ARGS[$i]}")
+    for fw in "${CANDIDATE_FRAMEWORKS[@]}"; do
+        if [[ "$word_lower" == "$fw" ]]; then
+            FRAMEWORK="$word_lower"
+            FW_INDEX=$i
+            break 2
+        fi
+    done
+done
+
+# Also catch multi-word framework spelling: "Swift Data", "Core Data",
+# "Foundation Models", "Network Extension", etc.
+if [[ $FW_INDEX -lt 0 ]]; then
+    COMPACT_QUERY=""
+    for word in "${ARGS[@]}"; do
+        COMPACT_QUERY+="$(clean_token "$word")"
+    done
+    for fw in "${CANDIDATE_FRAMEWORKS[@]}"; do
+        if [[ "$COMPACT_QUERY" == *"$fw"* ]]; then
+            FRAMEWORK="$fw"
+            FW_INDEX=1
+            break
+        fi
+    done
+fi
+
+# Build the list of words excluding the framework word
+if [[ $FW_INDEX -ge 0 ]]; then
+    REMAINING=()
+    for i in "${!ARGS[@]}"; do
+        if [[ $i -ne $FW_INDEX ]]; then
+            REMAINING+=("${ARGS[$i]}")
+        fi
+    done
+
+    # Framework found mid-query (not at position 0) → natural language.
+    # Framework at start with 3+ remaining → natural language.
+    # Framework at start with 1–2 remaining → strict symbol lookup.
+    if $HAS_QUERY_INTENT; then
+        IS_NATURAL_LANGUAGE=true
+    elif [[ $FW_INDEX -gt 0 ]]; then
+        IS_NATURAL_LANGUAGE=true
+    elif [[ ${#REMAINING[@]} -ge 3 ]]; then
+        IS_NATURAL_LANGUAGE=true
+    elif [[ ${#REMAINING[@]} -ge 1 ]]; then
+        SYMBOL=$(build_symbol_path "${REMAINING[@]}")
+    fi
+else
+    # No framework found in the query.
+    if $HAS_QUERY_INTENT; then
+        IS_NATURAL_LANGUAGE=true
+    elif [[ ${#ARGS[@]} -ge 3 ]]; then
+        IS_NATURAL_LANGUAGE=true
+    else
+        # 1 or 2 arguments, could be a symbol like "Task" or "URLSessionConfiguration default"
+        SYMBOL=$(build_symbol_path "${ARGS[@]}")
+    fi
+fi
+
+doc_context=""
+EXTRACTED_SYMBOL=""
+
+if $IS_NATURAL_LANGUAGE; then
+    # Smart keyword extraction: scan RAW_QUERY for common symbols
+    for word in "${ARGS[@]}"; do
+        clean_lower=$(clean_token "$word")
+        if [[ -n "$FRAMEWORK" && "$clean_lower" == "$FRAMEWORK" ]]; then
+            continue
+        fi
+        for sym in "${COMMON_SYMBOLS[@]}"; do
+            sym_lower=$(echo "$sym" | tr '[:upper:]' '[:lower:]')
+            if [[ "$clean_lower" == "$sym_lower" ]]; then
+                EXTRACTED_SYMBOL="$clean_lower"
+                break 2
+            fi
+        done
+    done
+
+    if [[ -n "$EXTRACTED_SYMBOL" ]]; then
+        echo -e "\033[90mExtracted keyword '$EXTRACTED_SYMBOL'. Grounding query with Apple docs...\033[0m"
+    fi
+fi
+
+extract_explicit_tags
+
+DOC_QUERY=$(build_probable_doc_query)
+
+# Search Apple docs first using the most probable documentation query.
+search_and_fetch_docs "$DOC_QUERY" || true
+
+# Search failed — try direct fetch heuristics.
+if [[ -z "$doc_context" ]]; then
+    if $IS_NATURAL_LANGUAGE; then
+        if [[ -n "$EXTRACTED_SYMBOL" ]]; then
+            if [[ -n "$FRAMEWORK" ]]; then
+                echo -e "\033[90mFetching Apple docs for $FRAMEWORK/$EXTRACTED_SYMBOL...\033[0m"
+                doc_context=$(fetch_docs "$FRAMEWORK" "$EXTRACTED_SYMBOL")
+                [[ -n "$doc_context" ]] && SYMBOL="$EXTRACTED_SYMBOL"
+            fi
+            if [[ -z "$doc_context" ]]; then
+                for fw in "${CANDIDATE_FRAMEWORKS[@]}"; do
+                    [[ -n "$FRAMEWORK" && "$fw" == "$FRAMEWORK" ]] && continue
+                    echo -e "\033[90mChecking $fw/$EXTRACTED_SYMBOL...\033[0m"
+                    doc_context=$(fetch_docs "$fw" "$EXTRACTED_SYMBOL")
+                    if [[ -n "$doc_context" ]]; then
+                        FRAMEWORK="$fw"
+                        SYMBOL="$EXTRACTED_SYMBOL"
+                        break
+                    fi
+                done
+            fi
+        fi
+
+        if [[ -z "$doc_context" && -n "$FRAMEWORK" ]]; then
+            echo -e "\033[90mFetching Apple docs for $FRAMEWORK...\033[0m"
+            doc_context=$(fetch_docs "$FRAMEWORK" "")
+            if [[ -n "$doc_context" ]]; then
+                SYMBOL="$FRAMEWORK"
+            fi
+        fi
+    else
+        if [[ -n "$FRAMEWORK" ]]; then
+            echo -e "\033[90mFetching Apple docs for $FRAMEWORK/$SYMBOL...\033[0m"
+            doc_context=$(fetch_docs "$FRAMEWORK" "$SYMBOL")
+        elif [[ -n "$SYMBOL" ]]; then
+            for fw in "${CANDIDATE_FRAMEWORKS[@]}"; do
+                echo -e "\033[90mChecking $fw/$SYMBOL...\033[0m"
+                doc_context=$(fetch_docs "$fw" "$SYMBOL")
+                if [[ -n "$doc_context" ]]; then
+                    FRAMEWORK="$fw"
+                    break
+                fi
+            done
+        fi
+    fi
+fi
+
+if [[ -z "$doc_context" && "$DOC_QUERY" != "$RAW_QUERY" ]]; then
+    search_and_fetch_docs "$RAW_QUERY" || true
+fi
+
+SYSTEM="You are an expert iOS/macOS systems architect and lead Swift developer. 
+Based on the provided Apple Developer API documentation, explain the symbol and how it works.
+If no documentation context is supplied, use your general knowledge of Apple developer frameworks to answer the query (prefer SwiftUI and modern Swift concurrency by default unless UIKit/AppKit is explicitly requested).
+
+Provide:
+1. A concise, highly professional 2-3 sentence overview detailing what the component is, what it communicates with, and best practices.
+2. A beautiful, realistic, state-of-the-art Swift code snippet demonstrating a typical production usage pattern. Ensure strict modern concurrency conventions (e.g. @MainActor, async/await, Sendable) are respected where appropriate."
+
+prompt_payload=""
+if [[ -n "$doc_context" ]]; then
+    if $IS_NATURAL_LANGUAGE; then
+        prompt_payload="Documentation Context (for '$SYMBOL' in $FRAMEWORK):
+$doc_context
+
+User Query: $RAW_QUERY"
+    else
+        prompt_payload="Documentation Context:
+$doc_context
+
+User Query: Explain $SYMBOL inside $FRAMEWORK and show how to use it."
+    fi
+else
+    # Fallback to direct general query
+    if $IS_NATURAL_LANGUAGE; then
+        echo -e "\033[90mProcessing natural language query with local Apple Intelligence...\033[0m"
+        if [[ -n "$FRAMEWORK" ]]; then
+            prompt_payload="Framework Context: This query is about the $FRAMEWORK framework in Apple development.
+
+User Query: $RAW_QUERY"
+        else
+            prompt_payload="User Query: $RAW_QUERY"
+        fi
+    else
+        echo -e "\033[90mNo offline documentation found. Querying local Apple Intelligence directly...\033[0m"
+        prompt_payload="User Query: Explain the Apple developer component or symbol '$SYMBOL' and show how to use it in modern Swift/iOS/macOS development."
+    fi
+fi
+
+result=$(echo "$prompt_payload" | apfel -q -s "$SYSTEM")
+status=$?
+
+if [[ $status -ne 0 ]]; then
+    echo "Error: apfel failed (exit $status)" >&2
+    if [[ -n "$doc_context" ]]; then
+        echo -e "\n--- Local Doc Extraction Fallback ---\n"
+        echo "$doc_context"
+    fi
+    exit $status
+fi
+
+if $COPY; then
+    echo "$result" | pbcopy
+    echo -e "\033[90m(copied to clipboard)\033[0m"
+fi
+
+echo "$result"

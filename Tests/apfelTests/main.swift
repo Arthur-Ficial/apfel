@@ -86,6 +86,8 @@ suite("RetryTests") { runRetryTests() }
 suite("DebugLoggerTests") { runDebugLoggerTests() }
 suite("BufferedLineReaderTests") { runBufferedLineReaderTests() }
 suite("CLIArgumentsTests") { runCLIArgumentsTests() }
+suite("ChatCommandsTests") { runChatCommandsTests() }
+suite("DocsAppleScriptTests") { runDocsAppleScriptTests() }
 suite("ModelAvailabilityTests") { runModelAvailabilityTests() }
 suite("CLIErrorsTests") { runCLIErrorsTests() }
 suite("CLIValidateTests") { runCLIValidateTests() }

@@ -53,6 +53,21 @@ func stdinIsPipe() -> Bool {
 
 let rawArgs = Array(CommandLine.arguments.dropFirst())
 
+// Developer tools fast path: `apfel cmd ...`, `apfel "cmd show disk usage"`, `apfel docs-apple ...` etc.
+if let firstArg = rawArgs.first {
+    let parts = firstArg.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
+    if let firstWord = parts.first, ["cmd", "oneliner", "naming", "explain", "wtd", "port", "process", "daemon", "docs-apple", "docs_apple"].contains(firstWord) {
+        let toolArgs: [String]
+        if rawArgs.count == 1 {
+            toolArgs = Array(parts.dropFirst())
+        } else {
+            toolArgs = Array(rawArgs.dropFirst())
+        }
+        let (_, status) = runDeveloperTool(tool: firstWord, arguments: toolArgs, captureOutput: false)
+        exit(status)
+    }
+}
+
 // No-args + stdin-pipe fast path: `echo "prompt" | apfel` with no flags.
 // Must stay above the parse() call because it needs isatty + await singlePrompt
 // before any parsing happens.
