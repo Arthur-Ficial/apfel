@@ -216,6 +216,7 @@ Priority-rank findings:
 - Does it respect the non-negotiable principles (100% on-device, honest limits, clean code, Swift 6 strict concurrency, usable security)?
 - Does it introduce cross-target dependencies that violate the `ApfelCore` (pure) / `ApfelCLI` (CLI types) / `apfel` (FoundationModels + Hummingbird) layering?
 - Are the existing patterns followed (test harness, error types, context strategy, retry)?
+- **Tool-calling boundary (parked architectural ticket #119):** apfel's tool execution is out-of-band - the model emits a tool-call request in its output text, apfel parses it via `ToolCallHandler.detectToolCall`, runs the tool via `MCPClient`, and feeds the result back. FoundationModels' native `Tool` protocol and in-band invocation are not used, so `FoundationModels.LanguageModelSession.ToolCallError` is unreachable and `ApfelError.classify(_:)` deliberately has no branch for it (see `Sources/Core/ApfelError.swift:23`). If a PR adds `LanguageModelSession(..., tools: [SomeTool()])`, defines a type conforming to `FoundationModels.Tool` inside apfel, or otherwise registers a live tool implementation with the framework, it MUST also add the companion `ApfelError` classifier branch and an integration test that exercises the throw path end-to-end. Reopen #119 with the PR.
 
 ### 7. Test coverage check (code PRs)
 
