@@ -493,6 +493,7 @@ func printUsage() {
       APFEL_CONTEXT_MAX_TURNS   Max turns for sliding-window
       APFEL_CONTEXT_OUTPUT_RESERVE
                                 Tokens reserved for output
+      APFEL_DEBUG               Enable debug logging (same as --debug)
       NO_COLOR                  Disable colored output (https://no-color.org)
 
     \(styled("EXIT CODES:", .yellow, .bold))
