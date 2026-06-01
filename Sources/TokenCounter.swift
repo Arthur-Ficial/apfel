@@ -102,6 +102,11 @@ actor TokenCounter {
             switch entry {
             case .instructions(let i):
                 for seg in i.segments { if case .text(let t) = seg { total += max(1, t.content.count / 4) } }
+                for def in i.toolDefinitions {
+                    total += max(1, def.name.count / 4)
+                    total += max(1, def.description.count / 4)
+                    total += 20
+                }
             case .prompt(let p):
                 for seg in p.segments { if case .text(let t) = seg { total += max(1, t.content.count / 4) } }
             case .response(let r):
@@ -109,7 +114,11 @@ actor TokenCounter {
             case .toolOutput(let o):
                 for seg in o.segments { if case .text(let t) = seg { total += max(1, t.content.count / 4) } }
             case .toolCalls(let tc):
-                total += tc.count * 20
+                for call in tc {
+                    total += 5
+                    total += max(1, call.toolName.count / 4)
+                    total += max(1, call.arguments.json.count / 4)
+                }
             @unknown default:
                 break
             }
