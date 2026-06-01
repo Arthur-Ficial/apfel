@@ -209,6 +209,7 @@ func runApfelCorePublicAPIUsageTests() {
         let _: Bool?               = req.stream
         let _: StreamOptions?      = req.stream_options
         let _: Double?             = req.temperature
+        let _: Double?             = req.top_p
         let _: Int?                = req.max_tokens
         let _: Int?                = req.seed
         let _: [OpenAITool]?       = req.tools

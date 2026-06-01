@@ -107,6 +107,26 @@ func runOpenAIModelsTests() {
         try assertEqual(parsed?[1] as? String, "two")
         try assertEqual(parsed?[2] as? Bool, false)
     }
+
+    test("ChatCompletionRequest decodes top_p") {
+        let json = #"{"model":"apple-foundationmodel","messages":[{"role":"user","content":"hi"}],"top_p":0.9}"#
+        let req = try decode(ChatCompletionRequest.self, from: json)
+        try assertEqual(req.top_p, 0.9)
+    }
+
+    test("ChatCompletionRequest top_p is nil when absent") {
+        let json = #"{"model":"apple-foundationmodel","messages":[{"role":"user","content":"hi"}]}"#
+        let req = try decode(ChatCompletionRequest.self, from: json)
+        try assertNil(req.top_p)
+    }
+
+    test("ChatCompletionRequest decodes top_p with temperature and seed") {
+        let json = #"{"model":"apple-foundationmodel","messages":[{"role":"user","content":"hi"}],"temperature":0.7,"top_p":0.95,"seed":42}"#
+        let req = try decode(ChatCompletionRequest.self, from: json)
+        try assertEqual(req.top_p, 0.95)
+        try assertEqual(req.temperature, 0.7)
+        try assertEqual(req.seed, 42)
+    }
 }
 
 func runChatRequestValidatorTests() {
@@ -211,6 +231,74 @@ func runChatRequestValidatorTests() {
             from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"max_tokens":100,"temperature":0.7}"#
         )
         try assertNil(ChatRequestValidator.validate(request))
+    }
+
+    test("validator rejects top_p below 0") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"top_p":-0.1}"#
+        )
+        if case .invalidParameterValue(let msg) = ChatRequestValidator.validate(request) {
+            try assertTrue(msg.contains("top_p"), "error should mention top_p")
+        } else {
+            throw TestFailure("expected .invalidParameterValue for top_p=-0.1")
+        }
+    }
+
+    test("validator rejects top_p above 1") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"top_p":1.5}"#
+        )
+        if case .invalidParameterValue(let msg) = ChatRequestValidator.validate(request) {
+            try assertTrue(msg.contains("top_p"), "error should mention top_p")
+        } else {
+            throw TestFailure("expected .invalidParameterValue for top_p=1.5")
+        }
+    }
+
+    test("validator accepts valid top_p") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"top_p":0.9}"#
+        )
+        try assertNil(ChatRequestValidator.validate(request))
+    }
+
+    test("validator accepts top_p boundary values 0 and 1") {
+        let req0 = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"top_p":0}"#
+        )
+        try assertNil(ChatRequestValidator.validate(req0))
+        let req1 = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"top_p":1}"#
+        )
+        try assertNil(ChatRequestValidator.validate(req1))
+    }
+
+    test("validator reports temperature before top_p in validation order") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"temperature":-1,"top_p":5.0}"#
+        )
+        try assertEqual(
+            ChatRequestValidator.validate(request),
+            .invalidParameterValue("'temperature' must be non-negative, got -1.0")
+        )
+    }
+
+    test("validator reports top_p before x_context_max_turns in validation order") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"top_p":2.0,"x_context_max_turns":0}"#
+        )
+        if case .invalidParameterValue(let msg) = ChatRequestValidator.validate(request) {
+            try assertTrue(msg.contains("top_p"), "should report top_p before x_context_max_turns")
+        } else {
+            throw TestFailure("expected .invalidParameterValue for top_p=2.0")
+        }
     }
 
     test("validator rejects x_context_max_turns <= 0") {

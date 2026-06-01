@@ -13,6 +13,7 @@ import ApfelCore
 /// Options forwarded from CLI flags or OpenAI request parameters.
 struct SessionOptions: Sendable {
     let temperature: Double?
+    let topP: Double?
     let maxTokens: Int?
     let seed: UInt64?
     let permissive: Bool
@@ -20,17 +21,46 @@ struct SessionOptions: Sendable {
     let retryEnabled: Bool
     let retryCount: Int
 
-    static let defaults = SessionOptions(
-        temperature: nil, maxTokens: nil, seed: nil, permissive: false,
-        contextConfig: .defaults, retryEnabled: false, retryCount: 3
-    )
+    init(
+        temperature: Double? = nil,
+        topP: Double? = nil,
+        maxTokens: Int? = nil,
+        seed: UInt64? = nil,
+        permissive: Bool = false,
+        contextConfig: ContextConfig = .defaults,
+        retryEnabled: Bool = false,
+        retryCount: Int = 3
+    ) {
+        self.temperature = temperature
+        self.topP = topP
+        self.maxTokens = maxTokens
+        self.seed = seed
+        self.permissive = permissive
+        self.contextConfig = contextConfig
+        self.retryEnabled = retryEnabled
+        self.retryCount = retryCount
+    }
+
+    static let defaults = SessionOptions()
 }
 
 // MARK: - Generation Options
 
 func makeGenerationOptions(_ opts: SessionOptions) -> GenerationOptions {
-    let sampling: GenerationOptions.SamplingMode? = opts.seed.map {
-        .random(top: 50, seed: $0)
+    // Precedence: greedy > top_p (nucleus) > seeded top-k > framework default
+    let sampling: GenerationOptions.SamplingMode?
+    if opts.temperature == 0 {
+        sampling = .greedy
+    } else if let topP = opts.topP {
+        if let seed = opts.seed {
+            sampling = .random(probabilityThreshold: topP, seed: seed)
+        } else {
+            sampling = .random(probabilityThreshold: topP)
+        }
+    } else if let seed = opts.seed {
+        sampling = .random(top: 50, seed: seed)
+    } else {
+        sampling = nil
     }
     return GenerationOptions(
         sampling: sampling,

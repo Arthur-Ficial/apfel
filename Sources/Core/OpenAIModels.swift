@@ -17,6 +17,8 @@ public struct ChatCompletionRequest: Decodable, Sendable, Equatable, Hashable {
     public let stream_options: StreamOptions?
     /// Sampling temperature override.
     public let temperature: Double?
+    /// Nucleus sampling probability threshold (0.0 to 1.0).
+    public let top_p: Double?
     /// Maximum completion tokens requested by the client.
     public let max_tokens: Int?
     /// Optional deterministic seed request.
@@ -53,6 +55,7 @@ public struct ChatCompletionRequest: Decodable, Sendable, Equatable, Hashable {
         stream: Bool? = nil,
         stream_options: StreamOptions? = nil,
         temperature: Double? = nil,
+        top_p: Double? = nil,
         max_tokens: Int? = nil,
         seed: Int? = nil,
         tools: [OpenAITool]? = nil,
@@ -73,6 +76,7 @@ public struct ChatCompletionRequest: Decodable, Sendable, Equatable, Hashable {
         self.stream = stream
         self.stream_options = stream_options
         self.temperature = temperature
+        self.top_p = top_p
         self.max_tokens = max_tokens
         self.seed = seed
         self.tools = tools
