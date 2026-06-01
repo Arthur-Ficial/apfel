@@ -62,6 +62,7 @@ func startServer(config: ServerConfig, mcpManager: MCPManager? = nil) async thro
     let tc = TokenCounter.shared
     let cachedContextSize = await tc.contextSize
     let cachedLangs = await tc.supportedLanguages
+    await tc.prewarm()
 
     let router = Router()
 

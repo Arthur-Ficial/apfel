@@ -189,6 +189,14 @@ default:
     }
 }
 
+// Prewarm the model for inference modes to reduce first-response latency.
+switch parsed.mode {
+case .single, .stream, .chat, .benchmark:
+    await TokenCounter.shared.prewarm()
+default:
+    break
+}
+
 // Initialize MCP servers if any.
 var mcpManager: MCPManager?
 if !parsed.mcpServerPaths.isEmpty {

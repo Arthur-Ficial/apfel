@@ -42,6 +42,16 @@ actor TokenCounter {
         model.isAvailable
     }
 
+    /// Preload model weights so the first inference is fast. No-op when unavailable.
+    func prewarm() {
+        guard isAvailable else {
+            debugLog("prewarm", "skipped - model unavailable")
+            return
+        }
+        debugLog("prewarm", "preloading model weights")
+        LanguageModelSession.prewarm()
+    }
+
     /// Current availability as our pure ApfelCore enum. Adapts Apple's
     /// `SystemLanguageModel.Availability` into our `ModelAvailability`
     /// so the rest of apfel can reason about the specific unavailable
