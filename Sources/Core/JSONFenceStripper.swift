@@ -21,7 +21,7 @@ public enum JSONFenceStripper {
     public static func strip(_ content: String) -> String {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.hasPrefix("```"), trimmed.hasSuffix("```") else {
-            return content
+            return trimmed
         }
 
         // Find the end of the opening fence line.
