@@ -45,7 +45,10 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
         }
 
         guard let generationCase = FoundationModelsGenerationErrorCase.firstMatch(in: mirror) else {
-            return nil
+            // It IS a GenerationError, but the case name is one we don't recognise.
+            // Return .unknown directly rather than falling through to
+            // classifyLocalizedDescription's locale-fragile English keyword matching.
+            return .unknown(localizedDescription)
         }
 
         return generationCase.apfelError(localizedDescription: localizedDescription)
