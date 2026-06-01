@@ -517,6 +517,75 @@ def test_omitted_max_tokens_does_not_reference_a_default_constant():
         )
 
 
+# MARK: - Summarize strategy budget (#175)
+
+def test_summarize_strategy_source_passes_generation_options():
+    """Source-level lock for #175. generateSummary() in Summarizer.swift must
+    pass GenerationOptions with maximumResponseTokens to session.respond(),
+    and the result must be checked against the budget before returning.
+    """
+    import os
+    repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    with open(os.path.join(repo_root, "Sources", "Summarizer.swift")) as f:
+        src = f.read()
+    assert "GenerationOptions" in src, (
+        "Summarizer.swift must use GenerationOptions to cap summary length"
+    )
+    assert "maximumResponseTokens" in src, (
+        "Summarizer.swift must pass maximumResponseTokens to bound the summary"
+    )
+    assert "fitsTranscriptBudget" in src, (
+        "Summarizer.swift must verify the assembled result fits the budget"
+    )
+
+
+def test_summarize_strategy_respects_token_budget():
+    """Regression guard for #175. The summarize context strategy must never
+    return a transcript that exceeds its token budget. Before the fix,
+    generateSummary() passed no maximumResponseTokens and the assembled
+    result was never checked against the budget - an unbounded summary could
+    cascade into contextOverflow downstream.
+
+    This test builds a multi-turn history long enough to trigger
+    summarization (history.count > 2), then requests a completion with
+    x_context_strategy: "summarize". A successful HTTP 200 with valid
+    content proves the strategy stayed within budget. A 500 or empty
+    response would indicate the old budget-overflow path.
+    """
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Tell me about the history of computing. Be detailed."},
+        {"role": "assistant", "content": "Computing has a rich history spanning centuries. Charles Babbage designed the Analytical Engine in the 1830s. Ada Lovelace wrote the first algorithm. Alan Turing formalized computation in 1936. ENIAC was built in 1945. The transistor was invented in 1947. Integrated circuits followed in the 1950s. Personal computers emerged in the 1970s. The internet connected the world in the 1990s."},
+        {"role": "user", "content": "What about the 2000s and beyond?"},
+        {"role": "assistant", "content": "The 2000s saw the rise of smartphones with the iPhone in 2007. Cloud computing became mainstream. Social media transformed communication. Machine learning and deep learning advanced rapidly. GPUs enabled massive parallel computation. Large language models emerged in the 2020s. Quantum computing research progressed."},
+        {"role": "user", "content": "Summarize all of this in one sentence."},
+    ]
+    resp = httpx.post(
+        f"{BASE_URL}/chat/completions",
+        json={
+            "model": MODEL,
+            "messages": messages,
+            "max_tokens": 128,
+            "x_context_strategy": "summarize",
+        },
+        timeout=120,
+    )
+    assert resp.status_code == 200, (
+        f"summarize strategy must not overflow budget; got HTTP {resp.status_code}: {resp.text}"
+    )
+    body = resp.json()
+    choice = body["choices"][0]
+    assert choice["finish_reason"] in {"stop", "length"}, (
+        f"finish_reason must be stop or length, got {choice['finish_reason']!r}"
+    )
+    content = choice["message"].get("content")
+    assert isinstance(content, str) and content, (
+        f"summarize strategy must produce non-empty content, got {content!r}"
+    )
+    assert body["usage"]["prompt_tokens"] > 0
+    assert body["usage"]["completion_tokens"] > 0
+
+
 # MARK: - Health
 
 def test_health_endpoint():

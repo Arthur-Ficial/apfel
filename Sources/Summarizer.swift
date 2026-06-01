@@ -44,8 +44,13 @@ func trimWithSummary(
             base: base, history: history, final: final, budget: budget)
     }
 
+    // Compute token budget for the summary: total budget minus base, recent, and final
+    let recentAssembly = assembleTranscriptEntries(base: base, history: recentEntries, final: final)
+    let usedTokens = await TokenCounter.shared.count(entries: recentAssembly)
+    let summaryBudget = max(50, budget - usedTokens)
+
     // Summarize using the on-device model
-    let summaryText = await generateSummary(oldText, permissive: permissive)
+    let summaryText = await generateSummary(oldText, permissive: permissive, maxTokens: summaryBudget)
     guard let summaryText else {
         return await trimNewestFirst(
             base: base, history: history, final: final, budget: budget)
@@ -54,6 +59,12 @@ func trimWithSummary(
     let segment = Transcript.TextSegment(content: "[Summary of prior conversation]: \(summaryText)")
     let summaryEntry = Transcript.Entry.response(
         Transcript.Response(assetIDs: [], segments: [.text(segment)]))
+
+    let candidate = assembleTranscriptEntries(base: base, history: [summaryEntry] + recentEntries, final: final)
+    guard await fitsTranscriptBudget(candidate, budget: budget) else {
+        return await trimNewestFirst(
+            base: base, history: history, final: final, budget: budget)
+    }
 
     return assembleTranscriptEntries(base: base, history: [summaryEntry] + recentEntries)
 }
@@ -76,14 +87,15 @@ private func renderEntries(_ entries: [Transcript.Entry]) -> String {
     }.joined(separator: "\n")
 }
 
-private func generateSummary(_ text: String, permissive: Bool = false) async -> String? {
+private func generateSummary(_ text: String, permissive: Bool = false, maxTokens: Int = 200) async -> String? {
     let model = makeModel(permissive: permissive)
     let session = LanguageModelSession(
         model: model,
         instructions: "Summarize the following conversation in 2-3 sentences. Be concise."
     )
     do {
-        let response = try await session.respond(to: text)
+        let options = GenerationOptions(maximumResponseTokens: maxTokens)
+        let response = try await session.respond(to: text, options: options)
         let summary = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
         return summary.isEmpty ? nil : summary
     } catch {
