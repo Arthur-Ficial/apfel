@@ -183,12 +183,27 @@ func runApfelCorePublicAPIUsageTests() {
         // ResponseFormat
         let fmt = ResponseFormat(type: "text")
         let _: String = fmt.type
+        let _: JSONSchemaResponseParam? = fmt.json_schema
         let _ = requireSendable(fmt)
         let _: Set<ResponseFormat> = [fmt]
         try assertEqual(
             try JSONDecoder().decode(ResponseFormat.self, from: Data(#"{"type":"text"}"#.utf8)),
             fmt
         )
+
+        // JSONSchemaResponseParam
+        let schemaParam = JSONSchemaResponseParam(
+            name: "test",
+            strict: true,
+            schema: RawJSON(rawValue: #"{"type":"object"}"#)
+        )
+        let _: String = schemaParam.name
+        let _: Bool? = schemaParam.strict
+        let _: RawJSON = schemaParam.schema
+        let _ = requireSendable(schemaParam)
+        let _: Set<JSONSchemaResponseParam> = [schemaParam]
+        let fmtWithSchema = ResponseFormat(type: "json_schema", json_schema: schemaParam)
+        try assertEqual(fmtWithSchema.json_schema?.name, "test")
 
         // StreamOptions
         let opts = StreamOptions(include_usage: true)

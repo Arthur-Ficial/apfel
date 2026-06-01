@@ -52,6 +52,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
     let isStreaming = chatRequest.stream == true
     let includeUsage = chatRequest.stream_options?.include_usage == true
     let jsonMode = chatRequest.response_format?.type == "json_object"
+    let jsonSchemaSpec = chatRequest.response_format?.type == "json_schema" ? chatRequest.response_format?.json_schema : nil
 
     if let failure = ChatRequestValidator.validate(chatRequest) {
         return chatFailure(
@@ -134,6 +135,34 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
             id: requestId, created: created, genOpts: genOpts,
             promptTokens: promptTokens, streaming: isStreaming,
             includeUsage: includeUsage, jsonMode: jsonMode,
+            requestBody: requestBodyString, events: events
+        )
+        return (result.response, result.trace)
+    }
+
+    // Schema-constrained generation for response_format: { type: "json_schema" }
+    if let spec = jsonSchemaSpec {
+        let responseSchema: GenerationSchema
+        do {
+            responseSchema = try SchemaConverter.convertResponseSchema(json: spec.schema.value, name: spec.name)
+        } catch {
+            let msg = "Invalid response_format.json_schema.schema: \(error.localizedDescription)"
+            return chatFailure(
+                status: .badRequest,
+                message: msg,
+                type: "invalid_request_error",
+                stream: isStreaming,
+                requestBody: requestBodyString,
+                events: events,
+                event: "json_schema conversion failed: \(msg)"
+            )
+        }
+        events.append("json_schema: converted schema '\(spec.name)'")
+        let result = try await jsonSchemaResponse(
+            session: session, prompt: finalPrompt, schema: responseSchema,
+            id: requestId, created: created, genOpts: genOpts,
+            promptTokens: promptTokens, streaming: isStreaming,
+            includeUsage: includeUsage,
             requestBody: requestBodyString, events: events
         )
         return (result.response, result.trace)
@@ -310,6 +339,146 @@ private func mcpAutoExecuteResponse(
                 requestBody: requestBody,
                 responseBody: captureTruncatedLogBody(body, enabled: serverState.config.debug),
                 events: events + ["mcp non-stream finish_reason=\(finishReason)"]
+            )
+        )
+    }
+}
+
+// MARK: - JSON Schema Constrained Response
+
+/// Generate a response constrained by a caller-supplied JSON Schema.
+/// Uses FoundationModels' `respond(to:generating:)` with a `GenerationSchema`
+/// so the output is guaranteed to conform. For streaming requests, the
+/// constrained output is collected then delivered as an SSE burst.
+private func jsonSchemaResponse(
+    session: LanguageModelSession,
+    prompt: String,
+    schema: GenerationSchema,
+    id: String,
+    created: Int,
+    genOpts: GenerationOptions,
+    promptTokens: Int,
+    streaming: Bool,
+    includeUsage: Bool,
+    requestBody: String?,
+    events: [String]
+) async throws -> (response: Response, trace: ChatRequestTrace) {
+    var events = events
+
+    let srvRetryMax = serverState.config.retryEnabled ? serverState.config.retryCount : 0
+    let generatedContent: GeneratedContent
+    do {
+        generatedContent = try await withRetry(maxRetries: srvRetryMax) {
+            try await session.respond(to: prompt, generating: schema, includeSchemaInPrompt: true, options: genOpts)
+        }
+    } catch {
+        let classified = ApfelError.classify(error)
+        if case .refusal(let explanation) = classified {
+            if streaming {
+                return await refusalStreamingResponse(
+                    id: id, created: created, promptTokens: promptTokens,
+                    refusal: explanation, includeUsage: includeUsage,
+                    requestBody: requestBody,
+                    events: events + ["json_schema refusal: \(classified.cliLabel)"]
+                )
+            }
+            return await refusalNonStreamingResponse(
+                id: id, created: created, promptTokens: promptTokens,
+                refusal: explanation, requestBody: requestBody,
+                events: events + ["json_schema refusal: \(classified.cliLabel)"]
+            )
+        }
+        // decodingFailure from constrained generation is a 400 (bad schema / unsatisfiable)
+        let isDecodingFailure: Bool
+        if case .decodingFailure = classified { isDecodingFailure = true } else { isDecodingFailure = false }
+        let msg = classified.openAIMessage
+        return chatFailure(
+            status: .init(code: isDecodingFailure ? 400 : classified.httpStatusCode),
+            message: msg,
+            type: isDecodingFailure ? "invalid_request_error" : classified.openAIType,
+            stream: streaming,
+            requestBody: requestBody,
+            events: events,
+            event: "json_schema generation failed: \(classified.cliLabel)"
+        )
+    }
+
+    let deliveredContent: String
+    do {
+        let jsonData = try JSONEncoder().encode(generatedContent)
+        deliveredContent = String(data: jsonData, encoding: .utf8) ?? "{}"
+    } catch {
+        return chatFailure(
+            status: .internalServerError,
+            message: "Failed to serialize generated content: \(error.localizedDescription)",
+            type: "server_error",
+            stream: streaming,
+            requestBody: requestBody,
+            events: events,
+            event: "json_schema serialization failed: \(error)"
+        )
+    }
+    let completionTokens = await TokenCounter.shared.count(deliveredContent)
+    let finishReason = "stop"
+    events.append("json_schema: generated \(deliveredContent.count) chars")
+
+    if streaming {
+        var chunks: [String] = [
+            sseDataLine(sseRoleChunk(id: id, created: created)),
+            sseDataLine(sseContentChunk(id: id, created: created, content: deliveredContent)),
+            sseDataLine(ChatCompletionChunk(
+                id: id, object: "chat.completion.chunk", created: created, model: modelName,
+                choices: [.init(index: 0, delta: .init(role: nil, content: nil, tool_calls: nil), finish_reason: finishReason, logprobs: nil)],
+                usage: nil
+            )),
+        ]
+        if includeUsage {
+            chunks.append(sseDataLine(sseUsageChunk(id: id, created: created, promptTokens: promptTokens, completionTokens: completionTokens)))
+        }
+        chunks.append(sseDone)
+        let body = chunks.joined()
+        var headers = HTTPFields()
+        headers[.contentType] = "text/event-stream"
+        headers[.cacheControl] = "no-cache"
+        headers[.init("Connection")!] = "keep-alive"
+        let response = Response(status: .ok, headers: headers,
+                                 body: .init(byteBuffer: ByteBuffer(string: body)))
+        return (
+            response,
+            ChatRequestTrace(
+                stream: true,
+                estimatedTokens: promptTokens + completionTokens,
+                error: nil,
+                requestBody: requestBody,
+                responseBody: captureTruncatedLogBody(body, enabled: serverState.config.debug),
+                events: events + ["json_schema sse finish_reason=\(finishReason)"]
+            )
+        )
+    } else {
+        let responseMessage = OpenAIMessage(role: "assistant", content: .text(deliveredContent))
+        let payload = ChatCompletionResponse(
+            id: id,
+            object: "chat.completion",
+            created: created,
+            model: modelName,
+            choices: [.init(index: 0, message: responseMessage, finish_reason: finishReason, logprobs: nil)],
+            usage: .init(prompt_tokens: promptTokens, completion_tokens: completionTokens,
+                         total_tokens: promptTokens + completionTokens)
+        )
+        let body = jsonString(payload)
+        var headers = HTTPFields()
+        headers[.contentType] = "application/json"
+        let response = Response(status: .ok, headers: headers,
+                                 body: .init(byteBuffer: ByteBuffer(string: body)))
+        return (
+            response,
+            ChatRequestTrace(
+                stream: false,
+                estimatedTokens: promptTokens + completionTokens,
+                error: nil,
+                requestBody: requestBody,
+                responseBody: captureTruncatedLogBody(body, enabled: serverState.config.debug),
+                events: events + ["json_schema non-stream finish_reason=\(finishReason)"]
             )
         )
     }

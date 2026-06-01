@@ -284,11 +284,78 @@ func runOpenAIWireFormatTests() {
     test("ResponseFormat decodes type=json_object") {
         let fmt = try decode(ResponseFormat.self, from: #"{"type":"json_object"}"#)
         try assertEqual(fmt.type, "json_object")
+        try assertNil(fmt.json_schema)
     }
 
     test("ResponseFormat decodes type=text") {
         let fmt = try decode(ResponseFormat.self, from: #"{"type":"text"}"#)
         try assertEqual(fmt.type, "text")
+        try assertNil(fmt.json_schema)
+    }
+
+    test("ResponseFormat decodes type=json_schema with full spec") {
+        let json = #"""
+        {
+          "type": "json_schema",
+          "json_schema": {
+            "name": "math_response",
+            "strict": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "result": {"type": "number"},
+                "explanation": {"type": "string"}
+              },
+              "required": ["result", "explanation"],
+              "additionalProperties": false
+            }
+          }
+        }
+        """#
+        let fmt = try decode(ResponseFormat.self, from: json)
+        try assertEqual(fmt.type, "json_schema")
+        try assertNotNil(fmt.json_schema)
+        try assertEqual(fmt.json_schema?.name, "math_response")
+        try assertEqual(fmt.json_schema?.strict, true)
+        try assertNotNil(fmt.json_schema?.schema)
+        try assertTrue(fmt.json_schema!.schema.value.contains("result"))
+    }
+
+    test("ResponseFormat decodes json_schema without strict field") {
+        let json = #"""
+        {
+          "type": "json_schema",
+          "json_schema": {
+            "name": "simple",
+            "schema": {"type": "object", "properties": {}}
+          }
+        }
+        """#
+        let fmt = try decode(ResponseFormat.self, from: json)
+        try assertEqual(fmt.type, "json_schema")
+        try assertEqual(fmt.json_schema?.name, "simple")
+        try assertNil(fmt.json_schema?.strict)
+    }
+
+    test("ChatCompletionRequest decodes json_schema response_format") {
+        let json = #"""
+        {
+          "model": "apple-foundationmodel",
+          "messages": [{"role": "user", "content": "hi"}],
+          "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+              "name": "test_schema",
+              "strict": true,
+              "schema": {"type": "object", "properties": {"answer": {"type": "string"}}, "required": ["answer"]}
+            }
+          }
+        }
+        """#
+        let req = try decode(ChatCompletionRequest.self, from: json)
+        try assertEqual(req.response_format?.type, "json_schema")
+        try assertEqual(req.response_format?.json_schema?.name, "test_schema")
+        try assertEqual(req.response_format?.json_schema?.strict, true)
     }
 
     // MARK: - ContextStrategy raw values (wire contract for x_context_strategy)

@@ -104,6 +104,14 @@ enum SchemaConverter {
         return (native, fallback)
     }
 
+    /// Convert a caller-supplied JSON Schema into a GenerationSchema for
+    /// constrained generation via `response_format: { type: "json_schema" }`.
+    static func convertResponseSchema(json: String, name: String) throws -> GenerationSchema {
+        let ir = try SchemaParser.parse(json: json, name: name)
+        let dynSchema = try dynamicSchema(from: ir)
+        return try GenerationSchema(root: dynSchema, dependencies: [])
+    }
+
     /// Convert a tool call's arguments JSON string to GeneratedContent.
     /// Returns nil on failure instead of crashing the process.
     static func makeArguments(_ json: String) -> GeneratedContent? {

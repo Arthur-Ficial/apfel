@@ -363,12 +363,32 @@ public enum ToolChoice: Decodable, Sendable, Equatable, Hashable {
 
 /// OpenAI-compatible response-format request.
 public struct ResponseFormat: Decodable, Sendable, Equatable, Hashable {
-    /// The requested response format type, such as `text` or `json_object`.
+    /// The requested response format type: `text`, `json_object`, or `json_schema`.
     public let type: String
+    /// Schema specification, required when `type` is `json_schema`.
+    public let json_schema: JSONSchemaResponseParam?
 
     /// Creates a response-format request.
-    public init(type: String) {
+    public init(type: String, json_schema: JSONSchemaResponseParam? = nil) {
         self.type = type
+        self.json_schema = json_schema
+    }
+}
+
+/// The `json_schema` object within an OpenAI `response_format` request.
+public struct JSONSchemaResponseParam: Decodable, Sendable, Equatable, Hashable {
+    /// Caller-supplied name for the schema (used in logging/tracing).
+    public let name: String
+    /// Whether the model must strictly conform (OpenAI always treats this as true).
+    public let strict: Bool?
+    /// The JSON Schema the response must satisfy.
+    public let schema: RawJSON
+
+    /// Creates a JSON schema response parameter.
+    public init(name: String, strict: Bool? = nil, schema: RawJSON) {
+        self.name = name
+        self.strict = strict
+        self.schema = schema
     }
 }
 

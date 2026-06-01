@@ -337,6 +337,44 @@ func runChatRequestValidatorTests() {
             .invalidParameterValue("'x_context_max_turns' must be a positive integer, got 0")
         )
     }
+
+    // MARK: - json_schema response_format validation
+
+    test("validator rejects json_schema without json_schema field") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"response_format":{"type":"json_schema"}}"#
+        )
+        if case .invalidParameterValue(let msg) = ChatRequestValidator.validate(request) {
+            try assertTrue(msg.contains("json_schema"))
+        } else {
+            throw TestFailure("expected .invalidParameterValue for json_schema without spec")
+        }
+    }
+
+    test("validator rejects json_schema with empty name") {
+        let json = #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"response_format":{"type":"json_schema","json_schema":{"name":"","schema":{"type":"object"}}}}"#
+        let request = try decode(ChatCompletionRequest.self, from: json)
+        if case .invalidParameterValue(let msg) = ChatRequestValidator.validate(request) {
+            try assertTrue(msg.contains("name"))
+        } else {
+            throw TestFailure("expected .invalidParameterValue for empty json_schema name")
+        }
+    }
+
+    test("validator accepts valid json_schema response_format") {
+        let json = #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"response_format":{"type":"json_schema","json_schema":{"name":"test","schema":{"type":"object","properties":{"x":{"type":"string"}}}}}}"#
+        let request = try decode(ChatCompletionRequest.self, from: json)
+        try assertNil(ChatRequestValidator.validate(request))
+    }
+
+    test("validator still accepts json_object response_format") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"response_format":{"type":"json_object"}}"#
+        )
+        try assertNil(ChatRequestValidator.validate(request))
+    }
 }
 
 private func unwrap<T>(_ value: T?, _ message: String) throws -> T {

@@ -152,6 +152,15 @@ public enum ChatRequestValidator {
             return .imageContent
         }
 
+        if let rf = request.response_format, rf.type == "json_schema" {
+            guard let spec = rf.json_schema else {
+                return .invalidParameterValue("'response_format.json_schema' is required when type is 'json_schema'")
+            }
+            if spec.name.isEmpty {
+                return .invalidParameterValue("'response_format.json_schema.name' must not be empty")
+            }
+        }
+
         if let maxTokens = request.max_tokens, maxTokens <= 0 {
             return .invalidParameterValue("'max_tokens' must be a positive integer, got \(maxTokens)")
         }
