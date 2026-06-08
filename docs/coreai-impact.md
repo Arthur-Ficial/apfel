@@ -92,44 +92,71 @@ intact.
 These are the things that actually matter for apfel from the WWDC 2026 / OS 27 cycle. None are
 Core AI per se, but they ship in the same window and Core AI is the headline that surfaced them.
 
-1. **FoundationModels context window.** apfel's docs and behavior are built around a hard
-   **4096-token** context (input + output combined). The figure appears across `README.md`,
-   `docs/context-strategies.md`, `docs/integrations.md`, `docs/openai-api-compatibility.md`,
-   `docs/mcp-calculator.md` and is the basis for the whole context-strategy subsystem. If the OS 27
-   FoundationModels model ships a larger window, that is a **high-impact** change: it would update an
-   "honest limitation" claim, the `/health` report, default reserves, and several docs. Must be
-   verified on real OS 27 hardware, not from news reporting.
+> **Update 2026-06-09: these are now confirmed by Apple's official
+> [Foundation Models updates](https://developer.apple.com/documentation/updates/foundationmodels)
+> page (June 2026 / OS 27 entries), not just press reporting.** Details folded into the items below.
 
-2. **FoundationModels base model change.** Press reporting around WWDC 2026 suggests a new base
-   model for the on-device system model. If true, apfel inherits any change in tool-call formatting,
-   refusal behavior, tokenization, or token-count APIs. These are exactly the surfaces apfel's
-   recent bug fixes (#176-#183) hardened, so re-qualification matters. **Unverified - treat as a
-   watch item until confirmed on device.**
+1. **FoundationModels context window - on-device window appears UNCHANGED at 4096.** apfel's docs and
+   behavior are built around a hard **4096-token** context (input + output combined). The figure
+   appears across `README.md`, `docs/context-strategies.md`, `docs/integrations.md`,
+   `docs/openai-api-compatibility.md`, `docs/mcp-calculator.md` and is the basis for the whole
+   context-strategy subsystem. The OS 27 updates page still references **4,096 tokens** for the
+   on-device model; the "larger context size" Apple advertises is via the new
+   `PrivateCloudComputeLanguageModel` (a **cloud** path apfel deliberately does not use). So apfel's
+   on-device 4096 assumption most likely **holds** on OS 27. Still confirm the real number on OS 27
+   hardware via `SystemLanguageModel.contextSize` (the API added in 26.4 that removes the hardcode).
 
-3. **macOS 27 build + runtime compatibility.** apfel pins `platforms: [.macOS(.v26)]`. We need to
+2. **FoundationModels base model change - CONFIRMED.** Apple's updates page states verbatim: *"the
+   model changes when a person updates to iOS 27, iPadOS 27, macOS 27, and visionOS 27, test your
+   prompts with the new model to verify your app's behavior."* (The new on-device model is reported to
+   be distilled from Google Gemini under a multi-year Apple/Google deal.) apfel inherits any change in
+   tool-call formatting, refusal behavior, tokenization, or token counts. These are exactly the
+   surfaces apfel's recent bug fixes (#176-#183, #187) hardened, so re-qualification on OS 27 hardware
+   is required, not optional.
+
+3. **New FoundationModels APIs in OS 27 that touch apfel.** The June 2026 updates also add:
+   `GenerationOptions.ToolCallingMode` (control how the model interacts with tools - relevant to
+   apfel's out-of-band tool layer); improved error types `LanguageModelError`,
+   `SystemLanguageModel.Error`, `LanguageModelSession.Error` (relevant to `ApfelError.classify` and
+   parked ticket #119); a `DynamicProfile` agentic API; and image analysis (`OCRTool`,
+   `BarcodeReaderTool`). apfel should evaluate whether to adopt `ToolCallingMode` and the new error
+   types; the rest (image, agentic, cloud) are out of scope for apfel's golden goal.
+
+4. **macOS 27 build + runtime compatibility.** apfel pins `platforms: [.macOS(.v26)]`. We need to
    confirm: apfel builds against the OS 27 SDK, FoundationModels availability gates still hold,
    `SystemLanguageModel.tokenCount` and `GenerationOptions` are unchanged, and the test suite is
    green on an OS 27 machine. The "macOS 26 Tahoe required" gotcha messaging may need a note.
 
-4. **User confusion ("why doesn't apfel use Core AI?").** Once Core AI is in the press, expect
+5. **User confusion ("why doesn't apfel use Core AI?").** Once Core AI is in the press, expect
    issues asking why apfel is not "on Core AI", or requests to run third-party models. We should
    have a one-paragraph canned answer (this page) so triage is fast and consistent.
 
 ## Opportunity: bring-your-own-model (future, likely a sister tool)
 
+> **Update 2026-06-09: there is now an official Core AI <-> FoundationModels bridge.** The June 2026
+> FoundationModels updates add a `LanguageModel` protocol - *"Adopt the LanguageModel protocol to use
+> any large language model - server or on-device"* - plus open-source `CoreAILanguageModel` and
+> `MLXLanguageModel` backends. That means a Core AI `.aimodel` (or an MLX model) can be driven through
+> the **existing** FoundationModels session API (prompts, tool calling, structured generation) instead
+> of reimplementing that stack from scratch. This is materially easier than my first read below, and
+> it changes the spike from "build an LLM server on raw tensors" to "wire a `CoreAILanguageModel` into
+> a `LanguageModel`-backed session and serve it." Still a separate project, but a much shorter one.
+
 Core AI's genuinely new capability is running **non-Apple model weights** on Apple silicon from an
-`.aimodel` file, with explicit compute-unit and caching control. That is interesting, but it is a
-large, different project from apfel:
+`.aimodel` file, with explicit compute-unit and caching control. With the new bridge it is more
+tractable, but it is still a different project from apfel core:
 
 - It would mean shipping/loading model weights (apfel today downloads nothing - "no downloads" is a
   selling point).
-- It would mean building an LLM serving stack on top of raw tensor inference (tokenizer, sampling,
-  KV cache, chat templating) - i.e. reimplementing what FoundationModels gives apfel for free.
+- The hard parts (tokenizer, sampling, KV cache, chat templating) are largely handled if you go
+  through `LanguageModel` + `CoreAILanguageModel`, rather than calling `InferenceFunction.run` on raw
+  `NDArray`s yourself. The spike should confirm exactly how much the bridge gives you for free.
 - It fits the apfel-family pattern (apfel-tag, apfel-spot, apfel-mcp, apfel-server-kit) far better
   than apfel core. If pursued, it should be a **separate repo** (working name e.g. `apfel-coreai` or
   `aimodel-serve`), evaluated with a research spike first.
 
-Recommendation: **do not** put Core AI into apfel core. Track it, write a spike, decide later.
+Recommendation: **do not** put Core AI into apfel core. Track it, write a spike against the
+`LanguageModel`/`CoreAILanguageModel` bridge, decide later.
 
 ## Decision / recommendation
 
@@ -151,6 +178,18 @@ Primary (live beta JSON docs, fetched 2026-06-09):
   `coreai/aimodelcache` - symbol references
 - `coreai/managing-model-specialization-and-caching`, `coreai/compiling-core-ai-models-ahead-of-time` - articles
 
-Context / reporting: WWDC 2026 keynote coverage (2026-06-08) on the Core ML to Core AI rename and the
-FoundationModels coexistence story. **FoundationModels-specific WWDC 2026 claims (context window, base
-model) are reported but unverified here and are tracked as explicit verification tasks in the epic.**
+FoundationModels OS 27 updates (official, fetched 2026-06-09):
+
+- [developer.apple.com/documentation/updates/foundationmodels](https://developer.apple.com/documentation/updates/foundationmodels) -
+  June 2026 entries: updated on-device `SystemLanguageModel` ("the model changes when a person updates
+  to ... 27"), `LanguageModel` protocol, open-source `CoreAILanguageModel` / `MLXLanguageModel`,
+  `GenerationOptions.ToolCallingMode`, improved error types, `DynamicProfile`, image analysis,
+  `PrivateCloudComputeLanguageModel` (cloud, larger context).
+- The on-device context window still reads **4,096 tokens** on this page; the larger context is the
+  cloud `PrivateCloudComputeLanguageModel`, which apfel does not use.
+
+Context / reporting: WWDC 2026 keynote coverage (2026-06-08) on the Core ML to Core AI rename, the
+FoundationModels coexistence story, and the Apple/Google Gemini base-model collaboration. The
+on-device base-model change and the new APIs above are confirmed by Apple's updates page; the exact
+on-device context window should still be read at runtime via `SystemLanguageModel.contextSize` on OS 27
+hardware rather than hardcoded.
