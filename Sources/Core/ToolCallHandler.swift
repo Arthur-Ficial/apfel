@@ -81,6 +81,10 @@ public enum ToolCallHandler {
             if let calls = parseToolCallJSON(candidate), !calls.isEmpty {
                 return calls
             }
+            if let repaired = repairUnclosedBrackets(candidate),
+               let calls = parseToolCallJSON(repaired), !calls.isEmpty {
+                return calls
+            }
         }
         return nil
     }
@@ -184,6 +188,39 @@ public enum ToolCallHandler {
         if trimmed.hasPrefix("{") || trimmed.hasPrefix("[") { return s }
         // Plain string — wrap as {"value": "..."} using the JSON encoder for escaping.
         return jsonObjectString(["value": trimmed]) ?? "{}"
+    }
+
+    /// The model sometimes omits the closing `]` for the tool_calls array,
+    /// producing invalid JSON. This repair inserts missing brackets (string-aware)
+    /// before the outermost closing `}` so the candidate can be re-parsed.
+    private static func repairUnclosedBrackets(_ json: String) -> String? {
+        let trimmed = json.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("{"), trimmed.hasSuffix("}") else { return nil }
+
+        var bracketDepth = 0
+        var inString = false
+        var escaped = false
+
+        for ch in trimmed {
+            if inString {
+                if escaped { escaped = false }
+                else if ch == "\\" { escaped = true }
+                else if ch == "\"" { inString = false }
+            } else if ch == "\"" {
+                inString = true
+            } else if ch == "[" {
+                bracketDepth += 1
+            } else if ch == "]" {
+                bracketDepth -= 1
+            }
+        }
+
+        guard bracketDepth > 0 else { return nil }
+
+        let insertPos = trimmed.index(before: trimmed.endIndex)
+        var repaired = trimmed
+        repaired.insert(contentsOf: String(repeating: "]", count: bracketDepth), at: insertPos)
+        return repaired
     }
 
     private static func parseToolCallJSON(_ json: String) -> [ParsedToolCall]? {

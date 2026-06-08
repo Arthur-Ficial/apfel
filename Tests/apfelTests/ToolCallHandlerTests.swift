@@ -77,6 +77,46 @@ func runToolCallHandlerTests() {
 
     // MARK: - Edge cases (bug fixes)
 
+    test("detects tool call with missing closing bracket (#187)") {
+        let response = #"{"tool_calls": [{"id": "call_123", "type": "function", "function": {"name": "HassTurnOff", "arguments": {"entity_id": "office_light"}}}}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "HassTurnOff")
+        try assertEqual(result!.first?.id, "call_123")
+        try assertTrue(result!.first!.argumentsString.contains("office_light"))
+    }
+
+    test("detects tool call with missing bracket and string arguments (#187)") {
+        let response = #"{"tool_calls": [{"id": "c1", "type": "function", "function": {"name": "get_weather", "arguments": "{\"city\":\"Vienna\"}"}}}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "get_weather")
+        try assertEqual(result!.first?.argumentsString, #"{"city":"Vienna"}"#)
+    }
+
+    test("detects tool call with missing bracket after preamble (#187)") {
+        let response = "Sure, I'll turn that off.\n" + #"{"tool_calls": [{"id": "c1", "type": "function", "function": {"name": "toggle", "arguments": "{}"}}}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "toggle")
+    }
+
+    test("detects multiple tool calls with missing bracket (#187)") {
+        let response = #"{"tool_calls": [{"id": "c1", "type": "function", "function": {"name": "fn1", "arguments": "{}"}}, {"id": "c2", "type": "function", "function": {"name": "fn2", "arguments": "{}"}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.count, 2)
+    }
+
+    test("repairs missing bracket with multiple tool calls (#187)") {
+        let response = #"{"tool_calls": [{"id": "c1", "type": "function", "function": {"name": "fn1", "arguments": "{}"}}, {"id": "c2", "type": "function", "function": {"name": "fn2", "arguments": "{}"}}}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.count, 2)
+        try assertEqual(result!.first?.name, "fn1")
+        try assertEqual(result!.last?.name, "fn2")
+    }
+
     test("handles trailing backticks without crash") {
         try assertNil(ToolCallHandler.detectToolCall(in: "```"))
     }
