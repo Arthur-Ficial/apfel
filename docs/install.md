@@ -3,7 +3,7 @@
 ## Requirements
 
 | Requirement | Details |
-|-------------|---------|
+|-------------|----------|
 | **Mac** | Apple Silicon |
 | **macOS** | **macOS 26.4** or later |
 | **Apple Intelligence** | Must be [enabled in System Settings](https://support.apple.com/en-us/121115) |
@@ -24,15 +24,7 @@ The tap installs eight companion commands alongside `apfel`: `apfel-cmd`, `apfel
 
 No build tools needed. See [brew-install.md](brew-install.md) for troubleshooting.
 
-## Option 2: Nix (nixpkgs)
-
-```bash
-nix profile install nixpkgs#apfel-llm
-```
-
-Attribute name is `apfel-llm` because nixpkgs already has an unrelated `apfel` package (a particle-physics PDF library); the binary on `$PATH` is still `apfel`. The package landed via [NixOS/nixpkgs#508084](https://github.com/NixOS/nixpkgs/pull/508084). See [docs/nixpkgs.md](nixpkgs.md) for automation details.
-
-## Option 3: Build from source
+## Option 2: Build from source
 
 Requires Swift 6.3+ with developer tools that include the **macOS 26.4 SDK**. Xcode is **not** required - Command Line Tools are enough.
 

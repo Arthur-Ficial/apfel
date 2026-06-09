@@ -151,25 +151,11 @@ fi
 cd -
 rm -rf "$TAP_DIR"
 
-# --- Bump nixpkgs (non-fatal) ---
-# Runs locally so we can use the active gh CLI session for cross-org PR creation.
-# A failure here does NOT fail the release - the GitHub Release + tap are already done.
-step "Bump nixpkgs (non-fatal)"
-set +e
-./scripts/publish-nixpkgs-bump.sh --version "$version"
-bump_rc=$?
-set -e
-if [ "$bump_rc" -ne 0 ]; then
-    echo "WARN: nixpkgs bump failed (rc=$bump_rc). Release is still good."
-    echo "      Run manually: ./scripts/publish-nixpkgs-bump.sh --version $version"
-fi
-
 # --- Done ---
 step "Release v$version complete"
 echo ""
 echo "  GitHub Release: https://github.com/Arthur-Ficial/apfel/releases/tag/v$version"
 echo "  Homebrew tap:   updated"
 echo "  homebrew-core:  autobump will pick this up within ~24h"
-echo "  nixpkgs:        PR opened (or warning above)"
 echo ""
 echo "  Verify: ./scripts/post-release-verify.sh $version"

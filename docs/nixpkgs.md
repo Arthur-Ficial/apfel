@@ -1,6 +1,14 @@
-# nixpkgs distribution
+# nixpkgs distribution (discontinued)
 
-apfel ships on [nixpkgs](https://github.com/NixOS/nixpkgs) under the attribute `apfel-llm`. This page covers the install, the name choice, and how new versions land upstream.
+> **The nixpkgs distribution channel was cancelled on 2026-06-09** per the deadline in [Arthur-Ficial/apfel#161](https://github.com/Arthur-Ficial/apfel/issues/161). The bootstrap conditions (maintainer PR merged, `@NixOS/nixpkgs-maintainers` membership, self-merge proven) were not met in time. Supported channels are **Homebrew core** (`brew install apfel`) and the **Arthur-Ficial tap** (`brew install Arthur-Ficial/tap/apfel`). The `nixpkgs#apfel-llm` package remains in nixpkgs as community-maintained; apfel no longer opens bump PRs or actively tracks it.
+
+---
+
+The historical documentation below is preserved for reference. It describes the setup as it existed before cancellation.
+
+# nixpkgs distribution (historical)
+
+apfel shipped on [nixpkgs](https://github.com/NixOS/nixpkgs) under the attribute `apfel-llm`. This page covers the install, the name choice, and how new versions landed upstream.
 
 ## Install (end users)
 

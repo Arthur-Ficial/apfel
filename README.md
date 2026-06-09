@@ -14,7 +14,7 @@
 Apple Silicon Macs ship a built-in LLM via [Apple FoundationModels](https://developer.apple.com/documentation/foundationmodels). `apfel` exposes it as a UNIX tool and a local OpenAI-compatible server. 100% on-device. No API keys, no cloud.
 
 | Mode | Command | What you get |
-|------|---------|--------------|
+|------|---------|---------------|
 | UNIX tool | `apfel "prompt"` / `echo "text" \| apfel` | Pipe-friendly answers, file attachments, JSON output, exit codes |
 | OpenAI-compatible server | `apfel --serve` | Drop-in local `http://localhost:11434/v1` backend for OpenAI SDKs |
 
@@ -44,7 +44,7 @@ Build from source (Command Line Tools with macOS 26.4 SDK / Swift 6.3, no Xcode)
 git clone https://github.com/Arthur-Ficial/apfel.git && cd apfel && make install
 ```
 
-Nix, same-day tap, Mint, mise, troubleshooting: [docs/install.md](docs/install.md).
+Same-day tap, Mint, mise, troubleshooting: [docs/install.md](docs/install.md).
 
 ## Quick Start
 
@@ -392,7 +392,7 @@ apfel --benchmark -o json                # performance report
 Projects built on apfel. Each ships as its own repo + Homebrew formula.
 
 | Project | What it does | Install |
-|---------|--------------|---------|
+|---------|--------------|----------|
 | [**apfel**](https://apfel.franzai.com) | The root. On-device FoundationModels CLI + OpenAI-compatible server. | `brew install apfel` |
 | [**apfel-chat**](https://apfel-chat.franzai.com) | macOS chat client: streaming markdown, speech I/O, Apple Vision image analysis. | `brew install Arthur-Ficial/tap/apfel-chat` |
 | [**apfel-clip**](https://apfel-clip.franzai.com) | Menu-bar AI actions on the clipboard: summarize, translate, rewrite. | `brew install Arthur-Ficial/tap/apfel-clip` |

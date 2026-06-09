@@ -110,15 +110,14 @@ GitHub CI **cannot** run the full integration suite because GitHub-hosted `macos
 
 ## Distribution channels
 
-Each release is published through three channels. All three pull the same signed tarball from the GitHub Release; nothing is rebuilt per-channel.
+Each release is published through two channels. Both pull the same signed tarball from the GitHub Release; nothing is rebuilt per-channel.
 
 | Channel | How fresh | Mechanism |
-|---------|-----------|-----------|
+|---------|-----------|----------|
 | [homebrew-core](https://github.com/Homebrew/homebrew-core/blob/master/Formula/a/apfel.rb) (`brew install apfel`) | Up to ~24h after release | Homebrew `autobump-PR` bot detects new GitHub Releases and opens a formula-bump PR. |
 | [Arthur-Ficial/homebrew-tap](https://github.com/Arthur-Ficial/homebrew-tap) (`brew install Arthur-Ficial/tap/apfel`) | Synchronous with release | `scripts/publish-release.sh` pushes the new formula directly as part of `make release`. |
-| [nixpkgs](https://github.com/NixOS/nixpkgs/tree/master/pkgs/by-name/ap/apfel-llm) (`nix profile install nixpkgs#apfel-llm`) | Within ~7 days | Community [`r-ryantm`](https://github.com/ryantm/nixpkgs-update) bot picks up the new version via the package's `passthru.updateScript`. No release-side action from us. See [nixpkgs.md](nixpkgs.md). |
 
-All three channels are "owned" in the sense that we file PRs against them and respond to reviewer feedback - but merges into homebrew-core and nixpkgs are gated by their respective maintainer communities. The tap is the only channel where we merge directly.
+Both channels are fully controlled: the tap is pushed directly by `make release`, and homebrew-core autobumps via the GitHub Release asset.
 
 ## Versioning rules
 
