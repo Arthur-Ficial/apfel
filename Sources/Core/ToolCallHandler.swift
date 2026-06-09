@@ -231,13 +231,25 @@ public enum ToolCallHandler {
 
         var result: [ParsedToolCall] = []
         for call in rawCalls {
-            guard let id = call["id"] as? String,
-                  let fn = call["function"] as? [String: Any],
-                  let name = fn["name"] as? String else { continue }
+            guard let id = call["id"] as? String else { continue }
+
+            let name: String
+            let rawArguments: Any?
+            if let fn = call["function"] as? [String: Any],
+               let fnName = fn["name"] as? String {
+                name = fnName
+                rawArguments = fn["arguments"]
+            } else if let fnName = call["function"] as? String {
+                name = fnName
+                rawArguments = call["arguments"]
+            } else {
+                continue
+            }
+
             let args: String
-            if let s = fn["arguments"] as? String {
+            if let s = rawArguments as? String {
                 args = ensureJSONArguments(s)
-            } else if let obj = fn["arguments"],
+            } else if let obj = rawArguments,
                       let data = try? JSONSerialization.data(withJSONObject: obj),
                       let s = String(data: data, encoding: .utf8) {
                 args = s

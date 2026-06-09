@@ -48,6 +48,13 @@ func runToolCallHandlerTests() {
         try assertNotNil(result)
         try assertEqual(result!.first?.argumentsString, "{\"key\":\"val\"}")
     }
+    test("parses function name string shape with sibling arguments") {
+        let response = #"{"tool_calls": [{"id": "call_unique1", "type": "function", "function": "get_current_conditions", "arguments": "{\"latitude\": 37.7749, \"longitude\": -122.4194}"}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "get_current_conditions")
+        try assertEqual(result!.first?.argumentsString, "{\"latitude\": 37.7749, \"longitude\": -122.4194}")
+    }
     test("detects multiple tool calls") {
         let response = #"{"tool_calls": [{"id": "c1", "type": "function", "function": {"name": "fn1", "arguments": "{}"}}, {"id": "c2", "type": "function", "function": {"name": "fn2", "arguments": "{}"}}]}"#
         let result = ToolCallHandler.detectToolCall(in: response)
