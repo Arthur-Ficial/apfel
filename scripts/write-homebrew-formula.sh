@@ -41,7 +41,6 @@ class Apfel < Formula
   license "MIT"
 
   depends_on arch: :arm64
-  depends_on :macos
   depends_on macos: :tahoe
 
   def install
