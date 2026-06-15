@@ -6,6 +6,26 @@
 
 `apfel` speaks the [Anthropic Messages API](https://docs.anthropic.com/en/api/messages) for Apple's on-device model, so the [anthropics/ClaudeForFoundationModels](https://github.com/anthropics/ClaudeForFoundationModels) Swift library can target on-device FoundationModels through apfel. Point the library at apfel in `.proxied` mode and answers come from Apple Intelligence locally - no cloud, no API key, no network.
 
+## Verification status (read this first)
+
+Verified on the current dev machine (macOS 26.x): apfel's `/v1/messages` against the **wire contract** the library emits, reverse-engineered from the library's real source. Unit + integration tests cover request parsing, the non-streaming response, the full streaming event sequence, tools, structured output, no-auth, model echo, and the error envelope - all green under `make test`.
+
+**NOT verifiable here:** the real `ClaudeForFoundationModels` library round-tripping through apfel. Its `Package.swift` requires **macOS/iOS/visionOS/watchOS 27.0**, because the `ClaudeForFoundationModels` target conforms Claude to the `LanguageModelSession` / `LanguageModelExecutor` protocol introduced in **OS 27** - types that do not exist on macOS 26. The library will not build or run on this machine, so the full library -> apfel loop is **blocked on macOS 27**.
+
+To run the real end-to-end test on a macOS 27 host: start `apfel --serve`, then point the library at it with no credential -
+
+```swift
+let model = ClaudeLanguageModel(
+  name: .sonnet4_6,
+  auth: .proxied(headers: [:]),                       // no API key
+  baseURL: URL(string: "http://localhost:11434")!     // apfel
+)
+let session = LanguageModelSession(model: model)
+let reply = try await session.respond(to: "Say hi")   // answer comes from on-device FoundationModels via apfel
+```
+
+The stock `Examples/ClaudeExample` uses `.apiKey` auth against the default base URL, so it needs exactly the two-line change above (`auth:` and `baseURL:`) to target apfel.
+
 ## Endpoint
 
 | Endpoint | Status | Notes |
