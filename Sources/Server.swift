@@ -168,6 +168,60 @@ func startServer(config: ServerConfig, mcpManager: MCPManager? = nil) async thro
         return result.response
     }
 
+    // Anthropic Messages API (experimental, additive — same server, always on).
+    // Mirrors /v1/chat/completions: semaphore, logging, stream-aware cleanup.
+    router.post("/v1/messages") { request, context -> Response in
+        let start = Date()
+        let requestId = "msg-\(UUID().uuidString.prefix(12).lowercased())"
+
+        do {
+            try await serverState.semaphore.wait(timeout: .seconds(30))
+        } catch {
+            let log = RequestLog(
+                id: requestId, timestamp: ISO8601DateFormatter().string(from: Date()),
+                method: "POST", path: "/v1/messages", status: 429,
+                duration_ms: Int(Date().timeIntervalSince(start) * 1000),
+                stream: false, estimated_tokens: nil,
+                error: "Too many concurrent requests", request_body: nil, response_body: nil, events: ["semaphore timeout"]
+            )
+            await serverState.logStore.append(log)
+            return anthropicError(status: .tooManyRequests, errorType: "rate_limit_error", message: "Server at max concurrent capacity (\(config.maxConcurrent)). Try again later or increase with --max-concurrent.")
+        }
+
+        await serverState.logStore.requestStarted()
+
+        let result: (response: Response, trace: ChatRequestTrace)
+        do {
+            result = try await handleMessages(request, context: context)
+        } catch {
+            await serverState.semaphore.signal()
+            await serverState.logStore.requestFinished()
+            throw error
+        }
+        if !result.trace.stream {
+            await serverState.semaphore.signal()
+            await serverState.logStore.requestFinished()
+        }
+
+        let durationMs = Int(Date().timeIntervalSince(start) * 1000)
+        let log = RequestLog(
+            id: requestId,
+            timestamp: ISO8601DateFormatter().string(from: start),
+            method: "POST", path: "/v1/messages",
+            status: result.response.status == .ok ? 200 : result.response.status.code,
+            duration_ms: durationMs,
+            stream: result.trace.stream,
+            estimated_tokens: result.trace.estimatedTokens,
+            error: result.trace.error,
+            request_body: result.trace.requestBody,
+            response_body: result.trace.responseBody,
+            events: result.trace.events
+        )
+        await serverState.logStore.append(log)
+
+        return result.response
+    }
+
     // Logs query
     router.get("/v1/logs") { request, _ -> Response in
         guard serverState.config.debug else {

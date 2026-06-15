@@ -158,6 +158,57 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
         }
     }
 
+    /// The Anthropic Messages API `error.type` for this error.
+    ///
+    /// Mapping (see the `/v1/messages` wire contract):
+    ///   contextOverflow             -> invalid_request_error (message keeps "context")
+    ///   rateLimited/concurrent      -> rate_limit_error
+    ///   guardrail/unsupportedLang   -> invalid_request_error
+    ///   refusal                     -> handled as 200 + stop_reason:"refusal", not an error
+    ///   decoding/tool/unknown/other -> api_error
+    public var anthropicErrorType: String {
+        switch self {
+        case .guardrailViolation:  return "invalid_request_error"
+        case .refusal:             return "invalid_request_error"
+        case .contextOverflow:     return "invalid_request_error"
+        case .rateLimited:         return "rate_limit_error"
+        case .concurrentRequest:   return "rate_limit_error"
+        case .assetsUnavailable:   return "overloaded_error"
+        case .unsupportedGuide:    return "invalid_request_error"
+        case .decodingFailure:     return "api_error"
+        case .unsupportedLanguage: return "invalid_request_error"
+        case .toolExecution:       return "api_error"
+        case .unknown:             return "api_error"
+        }
+    }
+
+    /// The HTTP status code for this error on the Anthropic `/v1/messages` path.
+    ///
+    /// Differs from `httpStatusCode` only where the Anthropic contract is more
+    /// specific: assets-unavailable maps to 503 overloaded, decoding/tool/unknown
+    /// to 500 api_error. `.refusal` is delivered as a 200 response with
+    /// `stop_reason:"refusal"`, never as an error envelope.
+    public var anthropicStatusCode: Int {
+        switch self {
+        case .guardrailViolation:  return 400
+        case .refusal:             return 200
+        case .contextOverflow:     return 400
+        case .rateLimited:         return 429
+        case .concurrentRequest:   return 429
+        case .assetsUnavailable:   return 503
+        case .unsupportedGuide:    return 400
+        case .decodingFailure:     return 500
+        case .unsupportedLanguage: return 400
+        case .toolExecution:       return 500
+        case .unknown:             return 500
+        }
+    }
+
+    /// The Anthropic-facing error message. Reuses `openAIMessage`, which keeps
+    /// the word "context" in the overflow message so the client maps it to
+    /// `LanguageModelError.contextSizeExceeded`.
+    public var anthropicMessage: String { openAIMessage }
+
     /// Whether this error type is transient and should be retried.
     /// Uses typed matching (locale-independent) — safe on any macOS language.
     public var isRetryable: Bool {

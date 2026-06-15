@@ -109,6 +109,11 @@ suite("InstallMethodTests") { runInstallMethodTests() }
 suite("SamplingDecisionTests") { runSamplingDecisionTests() }
 suite("DemoInstallerTests") { runDemoInstallerTests() }
 suite("RedTDDTests") { runRedTDDTests() }
+suite("AnthropicModelsTests") { runAnthropicModelsTests() }
+suite("AnthropicConverterTests") { runAnthropicConverterTests() }
+suite("AnthropicValidatorTests") { runAnthropicValidatorTests() }
+suite("AnthropicSSETests") { runAnthropicSSETests() }
+suite("AnthropicErrorTests") { runAnthropicErrorTests() }
 
 // MARK: - Summary
 
