@@ -43,13 +43,18 @@ class Apfel < Formula
   depends_on arch: :arm64
   # macOS-only hard block. Unlike homebrew-core's formula (which builds from
   # source and has \`depends_on xcode: [..., :build]\`, naturally excluding Linux),
-  # this tap installs a prebuilt macOS binary with no xcode build-dep. With only
-  # \`depends_on macos: :tahoe\`, brew reports "macOS >= 26 (or Linux)" and an
-  # arm64 Linux host would install a non-functional macOS binary. The bare
-  # :macos is the only thing that hard-blocks Linux here, so the OSDependsOn
-  # "redundant" cop is a false positive for this binary-install formula.
-  depends_on :macos # rubocop:disable Homebrew/OSDependsOn
-  depends_on macos: :tahoe
+  # this tap installs a prebuilt macOS binary with no xcode build-dep. A bare
+  # top-level \`depends_on :macos\` is the only thing that hard-blocks Linux: a
+  # versioned \`depends_on macos: :tahoe\` is auto-satisfied on Linux (brew shows
+  # "macOS >= 26 (or Linux)"), so an arm64 Linux host would otherwise install a
+  # non-functional macOS binary. The macOS version floor still has to be enforced,
+  # so it lives inside \`on_macos\`: combining a top-level bare \`depends_on :macos\`
+  # with a top-level \`depends_on macos:\` is deprecated and prints a runtime
+  # warning on every brew operation that loads the formula.
+  depends_on :macos
+  on_macos do
+    depends_on macos: :tahoe
+  end
 
   def install
     bin.install "apfel"
