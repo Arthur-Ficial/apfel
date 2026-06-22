@@ -1,6 +1,6 @@
 # Design: `apfel --count-tokens`
 
-**Status:** Draft — pending maintainer review via GitHub issue  
+**Status:** Implemented — shipped in `feat/count-tokens` (PR #207)  
 **Author:** Contributor design session (super-brainstorm)  
 **Date:** 2026-06-21
 

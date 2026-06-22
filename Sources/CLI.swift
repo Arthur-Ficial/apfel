@@ -90,7 +90,7 @@ func countTokens(
     let mcpTools = await mcpManager?.allTools() ?? []
     let outputReserve = options.contextConfig.outputReserve
     let contextSize = await TokenCounter.shared.contextSize
-    let approximate = !(await TokenCounter.shared.isAvailable)
+    let approximate = !(await TokenCounter.shared.isTokenCountingAvailable)
 
     let inputEntries: [Transcript.Entry]
     let noToolEntries: [Transcript.Entry]?
@@ -130,8 +130,8 @@ func countTokens(
     }
 
     var promptParts: [String] = []
-    if !positionalPrompt.isEmpty { promptParts.append(positionalPrompt) }
     if let piped = pipedContent, !piped.isEmpty { promptParts.append(piped) }
+    if !positionalPrompt.isEmpty { promptParts.append(positionalPrompt) }
     let promptText = promptParts.joined(separator: "\n\n")
     let promptTokens = await TokenCounter.shared.count(promptText)
 

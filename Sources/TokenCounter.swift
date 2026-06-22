@@ -45,6 +45,14 @@ actor TokenCounter {
         model.isAvailable
     }
 
+    /// Whether the real tokenCount API is usable (model available AND macOS 26.4+).
+    /// When false, token counts fall back to chars/4 approximation.
+    var isTokenCountingAvailable: Bool {
+        guard isAvailable else { return false }
+        if #available(macOS 26.4, *) { return true }
+        return false
+    }
+
     /// Warm up the model so the first real request does not pay the
     /// cold-start cost. Returns whether prewarming was attempted (i.e. the
     /// model was available). A no-op when the model is unavailable, so an
