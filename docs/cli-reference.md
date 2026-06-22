@@ -11,6 +11,7 @@ MODES
   apfel --chat                            Interactive conversation
   apfel --serve                           Start OpenAI-compatible server
   apfel --benchmark                       Run internal performance benchmarks
+  apfel --count-tokens <prompt>           Preflight token count (no inference)
 
 INPUT
   apfel -f, --file <path> <prompt>        Attach file content (repeatable)
@@ -33,6 +34,8 @@ MODEL
   --permissive                            Relaxed guardrails (reduces false positives)
   --retry [n]                             Retry transient errors with backoff (default: 3)
   --debug                                 Enable debug logging to stderr (all modes)
+  --count-tokens                          Count tokens without calling the model
+  --strict                                With --count-tokens: exit 4 if over budget
 
 CONTEXT (--chat)
   --context-strategy <s>                  newest-first, oldest-first, sliding-window, summarize, strict
@@ -114,6 +117,11 @@ apfel --retry "What is 2+2?"
 # --debug
 apfel --debug "Hello world"
 apfel --serve --debug
+
+# --count-tokens, --strict
+apfel --count-tokens -f README.md "Summarize this"
+apfel --count-tokens -o json "hello" | jq .
+apfel --count-tokens --strict -f large-file.txt "process"
 
 # --stream
 apfel --stream "Write a haiku about code"

@@ -310,6 +310,35 @@ def test_version_exit_success():
     assert result.stdout.startswith("apfel v")
 
 
+def test_count_tokens_in_help():
+    result = run_cli(["--help"])
+    assert result.returncode == 0
+    assert "--count-tokens" in result.stdout
+    assert "--strict" in result.stdout
+
+
+def test_count_tokens_json_shape():
+    """--count-tokens -o json returns the documented breakdown (model-free)."""
+    result = run_cli(["--count-tokens", "-o", "json", "hello"], timeout=30)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    import json
+    data = json.loads(result.stdout.strip())
+    for key in (
+        "prompt_tokens", "system_tokens", "file_tokens", "mcp_tool_tokens",
+        "total", "budget", "output_reserve", "fits", "approximate", "context_size",
+    ):
+        assert key in data, f"missing key {key!r} in {data}"
+    assert isinstance(data["file_tokens"], list)
+    assert isinstance(data["fits"], bool)
+
+
+def test_count_tokens_strict_exit_over_budget():
+    """--strict exits 4 when input exceeds the token budget (approximate ok)."""
+    huge = "x" * 20000
+    result = run_cli(["--count-tokens", "--strict", huge], timeout=30)
+    assert result.returncode == 4, f"expected exit 4, got {result.returncode}: {result.stderr}"
+
+
 def test_invalid_flag_exit_code():
     result = run_cli(["--definitely-not-a-real-flag"])
     assert result.returncode == 2

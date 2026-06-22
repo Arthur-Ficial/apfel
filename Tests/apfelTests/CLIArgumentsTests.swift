@@ -65,6 +65,65 @@ func runCLIArgumentsTests() {
         try assertEqual(args.mode, .benchmark)
     }
 
+    test("--count-tokens sets countTokens mode") {
+        let args = try CLIArguments.parse(["--count-tokens", "hello"])
+        try assertEqual(args.mode, .countTokens)
+        try assertEqual(args.prompt, "hello")
+    }
+
+    test("--count-tokens --strict sets strictCount") {
+        let args = try CLIArguments.parse(["--count-tokens", "--strict", "hello"])
+        try assertEqual(args.mode, .countTokens)
+        try assertTrue(args.strictCount)
+    }
+
+    test("--strict without --count-tokens throws") {
+        do {
+            _ = try CLIArguments.parse(["--strict", "hello"])
+            try assertTrue(false, "should have thrown")
+        } catch let e as CLIParseError {
+            try assertTrue(e.message.contains("--strict"))
+            try assertTrue(e.message.contains("--count-tokens"))
+        }
+    }
+
+    test("--count-tokens --serve throws mode conflict") {
+        do {
+            _ = try CLIArguments.parse(["--count-tokens", "--serve"])
+            try assertTrue(false, "should have thrown")
+        } catch let e as CLIParseError {
+            try assertTrue(e.message.contains("cannot combine"))
+        }
+    }
+
+    test("--count-tokens --chat throws mode conflict") {
+        do {
+            _ = try CLIArguments.parse(["--count-tokens", "--chat"])
+            try assertTrue(false, "should have thrown")
+        } catch let e as CLIParseError {
+            try assertTrue(e.message.contains("cannot combine"))
+        }
+    }
+
+    test("--count-tokens --stream throws mode conflict") {
+        do {
+            _ = try CLIArguments.parse(["--count-tokens", "--stream", "hi"])
+            try assertTrue(false, "should have thrown")
+        } catch let e as CLIParseError {
+            try assertTrue(e.message.contains("cannot combine"))
+        }
+    }
+
+    test("-f retains path in fileAttachments") {
+        let args = try CLIArguments.parse(["-f", "README.md", "summarize"], readFile: { path in
+            guard path == "README.md" else { throw CLIParseError("unexpected path") }
+            return "# Title"
+        })
+        try assertEqual(args.fileAttachments.count, 1)
+        try assertEqual(args.fileAttachments[0].path, "README.md")
+        try assertEqual(args.fileAttachments[0].content, "# Title")
+    }
+
     test("--model-info sets modelInfo mode") {
         let args = try CLIArguments.parse(["--model-info"])
         try assertEqual(args.mode, .modelInfo)

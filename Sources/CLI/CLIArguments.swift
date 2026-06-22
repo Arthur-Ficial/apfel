@@ -9,6 +9,17 @@
 import Foundation
 import ApfelCore
 
+/// A file attached via `-f` / `--file` with its source path retained.
+public struct FileAttachment: Sendable, Equatable {
+    public let path: String
+    public let content: String
+
+    public init(path: String, content: String) {
+        self.path = path
+        self.content = content
+    }
+}
+
 /// Represents the result of parsing CLI arguments into a typed struct.
 public struct CLIArguments: Sendable, Equatable {
 
@@ -23,6 +34,7 @@ public struct CLIArguments: Sendable, Equatable {
         case modelInfo = "model-info"
         case update
         case demos
+        case countTokens = "count-tokens"
         case help
         case version
         case release
@@ -32,7 +44,7 @@ public struct CLIArguments: Sendable, Equatable {
         /// it (or a prefix to it) from stdin.
         public var acceptsStdinInput: Bool {
             switch self {
-            case .single, .stream: return true
+            case .single, .stream, .countTokens: return true
             default: return false
             }
         }
@@ -48,6 +60,11 @@ public struct CLIArguments: Sendable, Equatable {
     public var prompt: String = ""
     public var systemPrompt: String? = nil
     public var fileContents: [String] = []
+    /// Path + content for each `-f` / `--file` attachment (for `--count-tokens` breakdown).
+    public var fileAttachments: [FileAttachment] = []
+
+    /// Exit 4 when over budget (only valid with `--count-tokens`).
+    public var strictCount: Bool = false
 
     // MARK: - Output
 
@@ -151,6 +168,9 @@ extension CLIArguments {
                 context.modeFlagsSeen[0],
                 context.modeFlagsSeen[1]
             )
+        }
+        if strictCount && mode != .countTokens {
+            throw CLIParseError("--strict requires --count-tokens")
         }
         // Future cross-flag checks live here.
     }
@@ -290,6 +310,13 @@ extension CLIArguments {
             case "--benchmark":
                 context.modeFlagsSeen.append("--benchmark")
                 result.mode = .benchmark
+
+            case "--count-tokens":
+                context.modeFlagsSeen.append("--count-tokens")
+                result.mode = .countTokens
+
+            case "--strict":
+                result.strictCount = true
 
             case "--model-info":
                 context.modeFlagsSeen.append("--model-info")
@@ -471,7 +498,9 @@ extension CLIArguments {
                 guard i < args.count else { throw CLIErrors.requires("--file", "a file path") }
                 let path = args[i]
                 do {
-                    result.fileContents.append(try readFile(path))
+                    let content = try readFile(path)
+                    result.fileContents.append(content)
+                    result.fileAttachments.append(FileAttachment(path: path, content: content))
                 } catch let e as CLIParseError {
                     throw e
                 } catch {

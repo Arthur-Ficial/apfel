@@ -77,6 +77,9 @@ git diff HEAD~1 | apfel -f CONVENTIONS.md "Review this diff against our conventi
 # JSON output for scripting
 apfel -o json "Translate to German: hello" | jq .content
 
+# Preflight token budget before a large prompt
+apfel --count-tokens -f README.md "Summarize this"
+
 # System prompt
 apfel -s "You are a pirate" "What is recursion?"
 

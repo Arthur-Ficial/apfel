@@ -13,9 +13,12 @@ actor TokenCounter {
     private let model = SystemLanguageModel.default
 
     /// Count tokens in text using the real FoundationModels API.
-    /// Falls back to chars/4 approximation on error.
+    /// Falls back to chars/4 approximation on error or when the model is unavailable.
     func count(_ text: String) async -> Int {
         guard !text.isEmpty else { return 0 }
+        guard isAvailable else {
+            return max(1, text.count / 4)
+        }
         if #available(macOS 26.4, *) {
             do {
                 return try await model.tokenCount(for: text)
@@ -97,6 +100,9 @@ actor TokenCounter {
     /// More accurate than counting individual text strings.
     func count(entries: [Transcript.Entry]) async -> Int {
         guard !entries.isEmpty else { return 0 }
+        guard isAvailable else {
+            return fallbackCount(entries: entries)
+        }
         if #available(macOS 26.4, *) {
             do {
                 return try await model.tokenCount(for: entries)

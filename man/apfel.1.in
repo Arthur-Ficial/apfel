@@ -34,6 +34,11 @@ apfel \- Apple Intelligence from the command line
 .B \-\-benchmark
 .br
 .B apfel
+.B \-\-count-tokens
+.RI [ options ]
+.I prompt
+.br
+.B apfel
 .B \-\-model-info
 .br
 .B apfel
@@ -160,6 +165,21 @@ Print the active model's capabilities and exit.
 .TP
 .B \-\-benchmark
 Run the internal performance benchmark suite.
+.TP
+.B \-\-count-tokens
+Count tokens for the given prompt without calling the model.
+Accepts the same input flags as a single prompt
+.RB ( \-f ,
+.BR \-\-system ,
+.BR \-\-mcp ,
+etc.).
+.TP
+.B \-\-strict
+With
+.BR \-\-count-tokens ,
+exit with status
+.B 4
+if the input exceeds the token budget.
 .TP
 .B \-\-update
 Check for updates and, if available, upgrade via Homebrew.

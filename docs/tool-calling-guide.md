@@ -9,6 +9,8 @@ and apfel's OpenAI-compatible tool calling implementation.
 
 > **Managing many MCPs?** [Arthur-Ficial/apfel-run](https://github.com/Arthur-Ficial/apfel-run) is an MIT wrapper that keeps an enabled/disabled list in `~/.config/apfel/mcps.conf` (comment out with `-` to disable), builds `APFEL_MCP`, and `execve`s apfel. Stop typing `--mcp` on every call; edit the file instead.
 
+> **Preflight your token budget:** MCP tool schemas consume context fast. Run `apfel --count-tokens --mcp ./server.py "prompt"` before attaching tools in scripts or integrations. See [docs/cli-reference.md](docs/cli-reference.md).
+
 ---
 
 ## How It Works
