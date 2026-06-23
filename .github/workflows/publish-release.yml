@@ -26,7 +26,7 @@ jobs:
       TAP_BRANCH: main
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: main
@@ -153,7 +153,7 @@ jobs:
       # Until then, the tap is the primary distribution channel.
 
       - name: Check out homebrew tap
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: Arthur-Ficial/homebrew-tap
           token: ${{ secrets.HOMEBREW_TAP_PUSH_TOKEN }}
