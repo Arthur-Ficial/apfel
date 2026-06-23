@@ -9,6 +9,15 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [1.6.1] - 2026-06-23
 
+### Added
+
+- `apfel --count-tokens` - zero-inference token-budget preflight. Reports how many tokens a prompt would consume before calling the on-device model, broken down by prompt/system/file/MCP component against the context budget. Accepts the same inputs as prompt mode (stdin, `-f`, `-s`, `--system-file`, `--mcp`), supports `-o json` for a machine-readable breakdown, and `--strict` (exit 4 when over budget). Runs even when Apple Intelligence is unavailable via a chars/4 fallback (`approximate: true`) (#207).
+
+### Fixed
+
+- Tap formula no longer prints Homebrew 6's `depends_on :macos` with `depends_on macos:` runtime deprecation on every `brew` operation. The macOS version floor moved into an `on_macos` block (as Homebrew's deprecation message prescribes) while the bare top-level `depends_on :macos` - the only hard Linux block for the prebuilt-binary tap - is preserved (#206).
+- `message_text_content` benchmark no longer flakes the release preflight. It is a single-pass correctness refactor with no reliably measurable speedup, so the performance test now validates its output rather than asserting a wall-clock speedup ratio it cannot stably deliver.
+
 ## [1.6.0] - 2026-06-14
 
 ### Added
