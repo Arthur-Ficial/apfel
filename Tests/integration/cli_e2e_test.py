@@ -333,8 +333,11 @@ def test_count_tokens_json_shape():
 
 
 def test_count_tokens_strict_exit_over_budget():
-    """--strict exits 4 when input exceeds the token budget (approximate ok)."""
-    huge = "x" * 20000
+    """--strict exits 4 when input exceeds the token budget.
+    50 000 x's ≈ 6 200 real tokens (measured: 20 000 x's → 2 508 tokens),
+    safely above the 3 584-token budget regardless of tokenizer path.
+    """
+    huge = "x" * 50000
     result = run_cli(["--count-tokens", "--strict", huge], timeout=30)
     assert result.returncode == 4, f"expected exit 4, got {result.returncode}: {result.stderr}"
 
