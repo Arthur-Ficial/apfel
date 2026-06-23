@@ -24,6 +24,38 @@ struct ChatMessage: Encodable {
     let model: String?
 }
 
+/// JSON output for `apfel --count-tokens -o json`.
+struct TokenBudgetJSONResponse: Encodable {
+    let prompt_tokens: Int
+    let system_tokens: Int
+    let file_tokens: [FileEntry]
+    let mcp_tool_tokens: Int
+    let total: Int
+    let budget: Int
+    let output_reserve: Int
+    let fits: Bool
+    let approximate: Bool
+    let context_size: Int
+
+    struct FileEntry: Encodable {
+        let path: String
+        let tokens: Int
+    }
+
+    init(report: TokenBudgetReport) {
+        prompt_tokens = report.promptTokens
+        system_tokens = report.systemTokens
+        file_tokens = report.fileTokens.map { FileEntry(path: $0.path, tokens: $0.tokens) }
+        mcp_tool_tokens = report.mcpToolTokens
+        total = report.total
+        budget = report.budget
+        output_reserve = report.outputReserve
+        fits = report.fits
+        approximate = report.approximate
+        context_size = report.contextSize
+    }
+}
+
 // MARK: - OpenAI Response
 
 struct ChatCompletionResponse: Encodable, Sendable {

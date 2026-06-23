@@ -75,6 +75,128 @@ func singlePrompt(_ prompt: String, systemPrompt: String?, stream: Bool, options
     }
 }
 
+// MARK: - Token Budget Preflight
+
+/// Count tokens for a prompt without calling the model (`--count-tokens`).
+func countTokens(
+    mergedPrompt: String,
+    positionalPrompt: String,
+    pipedContent: String?,
+    fileAttachments: [FileAttachment],
+    systemPrompt: String?,
+    options: SessionOptions = .defaults,
+    mcpManager: MCPManager? = nil
+) async throws -> TokenBudgetReport {
+    let mcpTools = await mcpManager?.allTools() ?? []
+    let outputReserve = options.contextConfig.outputReserve
+    let contextSize = await TokenCounter.shared.contextSize
+    let approximate = !(await TokenCounter.shared.isTokenCountingAvailable)
+
+    let inputEntries: [Transcript.Entry]
+    let noToolEntries: [Transcript.Entry]?
+
+    if approximate {
+        // Avoid LanguageModelSession construction when the model is unavailable.
+        inputEntries = []
+        noToolEntries = nil
+    } else if !mcpTools.isEmpty {
+        var msgs: [OpenAIMessage] = []
+        if let sys = systemPrompt { msgs.append(OpenAIMessage(role: "system", content: .text(sys))) }
+        msgs.append(OpenAIMessage(role: "user", content: .text(mergedPrompt)))
+        let (_, _, withTools) = try await ContextManager.makeSession(
+            messages: msgs, tools: mcpTools, options: options, jsonMode: false, toolChoice: nil)
+        inputEntries = withTools
+        let (_, _, withoutTools) = try await ContextManager.makeSession(
+            messages: msgs, tools: nil, options: options, jsonMode: false, toolChoice: nil)
+        noToolEntries = withoutTools
+    } else {
+        var builtEntries: [Transcript.Entry] = []
+        if let sys = systemPrompt, !sys.isEmpty {
+            builtEntries = transcriptEntries(makeSession(systemPrompt: sys, options: options).transcript)
+        }
+        inputEntries = sessionInputEntries(builtEntries: builtEntries, finalPrompt: mergedPrompt, options: options)
+        noToolEntries = nil
+    }
+
+    let total: Int
+    if approximate {
+        var approxTotal = await TokenCounter.shared.count(mergedPrompt)
+        if let sys = systemPrompt, !sys.isEmpty {
+            approxTotal += await TokenCounter.shared.count(sys)
+        }
+        total = approxTotal
+    } else {
+        total = await TokenCounter.shared.count(entries: inputEntries)
+    }
+
+    var promptParts: [String] = []
+    if let piped = pipedContent, !piped.isEmpty { promptParts.append(piped) }
+    if !positionalPrompt.isEmpty { promptParts.append(positionalPrompt) }
+    let promptText = promptParts.joined(separator: "\n\n")
+    let promptTokens = await TokenCounter.shared.count(promptText)
+
+    let systemTokens: Int
+    if let sys = systemPrompt, !sys.isEmpty {
+        systemTokens = await TokenCounter.shared.count(sys)
+    } else {
+        systemTokens = 0
+    }
+
+    var fileTokenCounts: [FileTokenCount] = []
+    for attachment in fileAttachments {
+        let tokens = await TokenCounter.shared.count(attachment.content)
+        fileTokenCounts.append(FileTokenCount(path: attachment.path, tokens: tokens))
+    }
+
+    let mcpToolTokens: Int
+    if approximate {
+        mcpToolTokens = 0
+    } else if let baseline = noToolEntries {
+        let baselineCount = await TokenCounter.shared.count(entries: baseline)
+        mcpToolTokens = max(0, total - baselineCount)
+    } else {
+        mcpToolTokens = 0
+    }
+
+    let report = TokenBudgetReport.make(
+        promptTokens: promptTokens,
+        systemTokens: systemTokens,
+        fileTokens: fileTokenCounts,
+        mcpToolTokens: mcpToolTokens,
+        total: total,
+        contextSize: contextSize,
+        outputReserve: outputReserve,
+        approximate: approximate
+    )
+
+    if approximate && !quietMode {
+        printStderr("\(styled("apfel:", .yellow)) token count is approximate (Apple Intelligence unavailable; using chars/4 fallback)")
+    }
+
+    switch outputFormat {
+    case .plain:
+        let fitLabel = report.fits ? "fits" : "over budget"
+        print("\(report.total)/\(report.budget) tokens (\(fitLabel))")
+        if !quietMode {
+            var parts: [String] = []
+            if report.promptTokens > 0 { parts.append("prompt=\(report.promptTokens)") }
+            if report.systemTokens > 0 { parts.append("system=\(report.systemTokens)") }
+            for ft in report.fileTokens where ft.tokens > 0 {
+                parts.append("\(ft.path)=\(ft.tokens)")
+            }
+            if report.mcpToolTokens > 0 { parts.append("mcp_tools=\(report.mcpToolTokens)") }
+            if !parts.isEmpty {
+                printStderr(styled("  " + parts.joined(separator: ", "), .dim))
+            }
+        }
+    case .json:
+        print(jsonString(TokenBudgetJSONResponse(report: report), pretty: false), terminator: "")
+        fflush(stdout)
+    }
+
+    return report
+}
+
 // MARK: - Interactive Chat
 
 /// Run an interactive multi-turn chat session with context window protection.
@@ -462,6 +584,7 @@ func printUsage() {
       \(appName) --stream <prompt>        Stream a single response
       \(appName) --serve                  Start OpenAI-compatible HTTP server
       \(appName) --benchmark              Run internal performance benchmarks
+      \(appName) --count-tokens <prompt>  Preflight token count (no inference)
 
     \(styled("OPTIONS:", .yellow, .bold))
       -f, --file <path>         Attach file content to prompt (repeatable)
@@ -481,6 +604,8 @@ func printUsage() {
           --retry [n]            Enable retry with exponential backoff [default: 3 retries]
           --model-info           Print model capabilities and exit
           --benchmark            Run internal performance benchmarks
+          --count-tokens         Count tokens without calling the model
+          --strict               With --count-tokens: exit 4 if over budget
           --update               Check for updates and upgrade via Homebrew
           --demos [dir]          Write the bundled demo scripts to dir [default: ./apfel-demos]
           --debug                Enable debug logging to stderr (all modes)
@@ -547,6 +672,8 @@ func printUsage() {
       \(appName) -f a.txt -f b.txt "Compare these files"
       cat README.md | \(appName) "Summarize this"
       \(appName) -o json "Translate to German: hello" | jq .content
+      \(appName) --count-tokens -f README.md "Summarize this"
+      \(appName) --count-tokens -o json "hello" | jq .
       APFEL_SYSTEM_PROMPT="Be brief" \(appName) "Explain TCP"
       \(appName) --serve --port 3000 --host 0.0.0.0 --cors
     """)

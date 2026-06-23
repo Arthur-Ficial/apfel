@@ -116,8 +116,9 @@ if parsed.debug { ApfelDebugConfiguration.isEnabled = true }
 // Build the prompt: positional args + piped stdin + attached files.
 var prompt = parsed.prompt
 var fileContents = parsed.fileContents
+var pipedContent: String? = nil
 
-// Read stdin when piped (single/stream) -- as the prompt (no args) or prepended to the prompt.
+// Read stdin when piped (single/stream/count-tokens) -- as the prompt (no args) or prepended to the prompt.
 if parsed.mode.acceptsStdinInput && isatty(STDIN_FILENO) == 0 {
     var lines: [String] = []
     while let line = readLine(strippingNewline: false) {
@@ -125,6 +126,7 @@ if parsed.mode.acceptsStdinInput && isatty(STDIN_FILENO) == 0 {
     }
     let stdinContent = lines.joined().trimmingCharacters(in: .whitespacesAndNewlines)
     if !stdinContent.isEmpty {
+        pipedContent = stdinContent
         if prompt.isEmpty && fileContents.isEmpty {
             prompt = stdinContent
         } else {
@@ -178,7 +180,7 @@ let serverAllowedOrigins: [String] = {
 // the specific reason (appleIntelligenceNotEnabled / deviceNotEligible /
 // modelNotReady) so users know exactly what to fix. See #59.
 switch parsed.mode {
-case .modelInfo, .serve, .update:
+case .modelInfo, .serve, .update, .countTokens:
     break
 default:
     let availability = await TokenCounter.shared.availability
@@ -254,6 +256,24 @@ do {
             exit(exitUsageError)
         }
         try await singlePrompt(prompt, systemPrompt: parsed.systemPrompt, stream: false, options: sessionOpts, mcpManager: mcpManager)
+
+    case .countTokens:
+        guard !prompt.isEmpty || parsed.systemPrompt != nil else {
+            printError("no prompt or file content provided")
+            exit(exitUsageError)
+        }
+        let report = try await countTokens(
+            mergedPrompt: prompt,
+            positionalPrompt: parsed.prompt,
+            pipedContent: pipedContent,
+            fileAttachments: parsed.fileAttachments,
+            systemPrompt: parsed.systemPrompt,
+            options: sessionOpts,
+            mcpManager: mcpManager
+        )
+        if parsed.strictCount && !report.fits {
+            exit(exitContextOverflow)
+        }
 
     case .help, .version, .release, .demos:
         break   // Already handled above; exhaustive switch.
