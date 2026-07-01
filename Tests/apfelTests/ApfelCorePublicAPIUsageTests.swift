@@ -450,6 +450,15 @@ func runApfelCorePublicAPIUsageTests() {
         try assertEqual(errs.count, 3)
     }
 
+    // MARK: - ToolResultTruncator
+
+    test("ToolResultTruncator public surface compiles") {
+        let _: String = ToolResultTruncator.truncate("hello", maxCharacters: 100)
+        let long = String(repeating: "x", count: 200)
+        let truncated = ToolResultTruncator.truncate(long, maxCharacters: 50)
+        try assertTrue(truncated.contains("[tool output truncated:"))
+    }
+
     // MARK: - ToolCallHandler
 
     test("ToolCallHandler public surface compiles") {
