@@ -328,6 +328,57 @@ func runChatRequestValidatorTests() {
         try assertEqual(ChatRequestValidator.validate(request), .unsupportedParameter(.logprobs))
     }
 
+    test("validator rejects empty string content in last user message") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":""}]}"#
+        )
+        try assertEqual(ChatRequestValidator.validate(request), .emptyLastMessageContent)
+    }
+
+    test("validator rejects null content in last user message") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":null}]}"#
+        )
+        try assertEqual(ChatRequestValidator.validate(request), .emptyLastMessageContent)
+    }
+
+    test("validator allows tool role with empty content") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"tool","tool_call_id":"call_1","name":"lookup","content":""}]}"#
+        )
+        try assertNil(ChatRequestValidator.validate(request))
+    }
+
+    test("validator exposes stable emptyLastMessageContent metadata") {
+        try assertEqual(
+            ChatRequestValidationFailure.emptyLastMessageContent.message,
+            "Last user message must have non-empty text content"
+        )
+        try assertEqual(
+            ChatRequestValidationFailure.emptyLastMessageContent.event,
+            "validation failed: empty last message content"
+        )
+    }
+
+    test("validator prioritizes invalid last role before empty content") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"assistant","content":""}]}"#
+        )
+        try assertEqual(ChatRequestValidator.validate(request), .invalidLastRole)
+    }
+
+    test("validator prioritizes empty content before image content") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":null}]}"#
+        )
+        try assertEqual(ChatRequestValidator.validate(request), .emptyLastMessageContent)
+    }
+
     test("validator prioritizes invalid last role before image content") {
         let request = try decode(
             ChatCompletionRequest.self,
