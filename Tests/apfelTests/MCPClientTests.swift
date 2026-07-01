@@ -299,6 +299,70 @@ func runMCPClientTests() {
         try assertTrue(formatInstructions.contains("tool_calls"), "format must contain call format")
     }
 
+    // MARK: - MCP subprocess environment scrubbing (#229)
+
+    test("scrubbedEnvironment strips APFEL_TOKEN") {
+        let env = ["PATH": "/usr/bin", "HOME": "/Users/me", "APFEL_TOKEN": "secret-bearer-token"]
+        let scrubbed = MCPProtocol.scrubbedEnvironment(from: env)
+        try assertNil(scrubbed["APFEL_TOKEN"], "APFEL_TOKEN must be stripped")
+        try assertEqual(scrubbed["PATH"], "/usr/bin")
+        try assertEqual(scrubbed["HOME"], "/Users/me")
+    }
+
+    test("scrubbedEnvironment strips APFEL_MCP_TOKEN") {
+        let env = ["PATH": "/usr/bin", "APFEL_MCP_TOKEN": "mcp-secret"]
+        let scrubbed = MCPProtocol.scrubbedEnvironment(from: env)
+        try assertNil(scrubbed["APFEL_MCP_TOKEN"], "APFEL_MCP_TOKEN must be stripped")
+        try assertEqual(scrubbed["PATH"], "/usr/bin")
+    }
+
+    test("scrubbedEnvironment strips both token vars simultaneously") {
+        let env = [
+            "PATH": "/usr/bin",
+            "APFEL_TOKEN": "server-token",
+            "APFEL_MCP_TOKEN": "mcp-token",
+            "APFEL_SYSTEM_PROMPT": "Be helpful",
+            "LANG": "en_US.UTF-8",
+        ]
+        let scrubbed = MCPProtocol.scrubbedEnvironment(from: env)
+        try assertNil(scrubbed["APFEL_TOKEN"])
+        try assertNil(scrubbed["APFEL_MCP_TOKEN"])
+        try assertEqual(scrubbed["APFEL_SYSTEM_PROMPT"], "Be helpful")
+        try assertEqual(scrubbed["LANG"], "en_US.UTF-8")
+        try assertEqual(scrubbed["PATH"], "/usr/bin")
+        try assertEqual(scrubbed.count, 3)
+    }
+
+    test("scrubbedEnvironment preserves all non-sensitive vars") {
+        let env = [
+            "PATH": "/usr/bin",
+            "HOME": "/Users/me",
+            "APFEL_SYSTEM_PROMPT": "Be brief",
+            "APFEL_PORT": "11434",
+            "APFEL_HOST": "127.0.0.1",
+            "APFEL_MCP": "mcp/calc.py",
+            "APFEL_DEBUG": "1",
+            "PYTHONPATH": "/opt/venv",
+        ]
+        let scrubbed = MCPProtocol.scrubbedEnvironment(from: env)
+        try assertEqual(scrubbed.count, env.count)
+        for (key, value) in env {
+            try assertEqual(scrubbed[key], value, "expected \(key) to be preserved")
+        }
+    }
+
+    test("scrubbedEnvironment handles empty environment") {
+        let scrubbed = MCPProtocol.scrubbedEnvironment(from: [:])
+        try assertEqual(scrubbed.count, 0)
+    }
+
+    test("sensitiveEnvironmentKeys contains both token vars") {
+        try assertTrue(MCPProtocol.sensitiveEnvironmentKeys.contains("APFEL_TOKEN"))
+        try assertTrue(MCPProtocol.sensitiveEnvironmentKeys.contains("APFEL_MCP_TOKEN"))
+        try assertTrue(!MCPProtocol.sensitiveEnvironmentKeys.contains("APFEL_SYSTEM_PROMPT"))
+        try assertTrue(!MCPProtocol.sensitiveEnvironmentKeys.contains("PATH"))
+    }
+
     test("Tool call detection works on object-argument format from #144 report") {
         // The #144 reporter showed the model producing arguments as a JSON object
         // (not an escaped string). Detection must handle both forms.
