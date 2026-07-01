@@ -129,6 +129,21 @@ public enum MCPProtocol {
         return ToolCallResult(text: text, isError: isError)
     }
 
+    // MARK: - Subprocess environment scrubbing
+
+    /// Environment variable keys stripped from MCP subprocess environments
+    /// to prevent secret leakage to third-party tool scripts.
+    public static let sensitiveEnvironmentKeys: Set<String> = [
+        "APFEL_TOKEN",
+        "APFEL_MCP_TOKEN",
+    ]
+
+    /// Returns a copy of the given environment with apfel-specific auth
+    /// variables removed, suitable for passing to an MCP subprocess.
+    public static func scrubbedEnvironment(from env: [String: String]) -> [String: String] {
+        env.filter { !sensitiveEnvironmentKeys.contains($0.key) }
+    }
+
     // MARK: - Private helpers
 
     private static func jsonRPC(id: Int? = nil, method: String, params: [String: Any]? = nil) -> String {
