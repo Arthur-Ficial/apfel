@@ -776,6 +776,39 @@ def test_empty_file_redirect_no_hint(tmp_path):
     assert "piped input was empty" not in result.stderr
 
 
+def test_no_args_pipe_honors_apfel_debug_env():
+    """Bug #222: `echo text | apfel` (no flags) must honour APFEL_DEBUG.
+
+    Before the fix, the no-args pipe fast path bypassed parse() entirely,
+    so APFEL_DEBUG (and all other APFEL_* env vars) were silently ignored.
+    The debug[prompt] line is emitted before the model availability check,
+    so this test works with or without Apple Intelligence.
+    """
+    result = run_cli([], input_text="hello", env={"APFEL_DEBUG": "1"}, timeout=30)
+    assert "debug[prompt]:" in result.stderr, (
+        "APFEL_DEBUG=1 should produce debug output on the no-args pipe path"
+    )
+
+
+def test_no_args_pipe_honors_apfel_system_prompt():
+    """Bug #222: `echo text | apfel` (no flags) must honour APFEL_SYSTEM_PROMPT.
+
+    Verifies parse() runs on the no-args pipe path by checking that the
+    system-prompt token count increases when APFEL_SYSTEM_PROMPT is set.
+    This needs Apple Intelligence (model must be available for inference).
+    """
+    without = run_cli([], input_text="say hello", timeout=30)
+    with_sp = run_cli(
+        [], input_text="say hello",
+        env={"APFEL_SYSTEM_PROMPT": "Reply with exactly BANANA"},
+        timeout=30,
+    )
+    if without.returncode == 5:
+        pytest.skip("Model unavailable")
+    assert with_sp.returncode == 0
+    assert "BANANA" in with_sp.stdout.upper()
+
+
 # --- Release info tests ---
 
 

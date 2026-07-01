@@ -71,38 +71,15 @@ func stdinPromptText(_ data: Data) throws -> String {
 
 let rawArgs = Array(CommandLine.arguments.dropFirst())
 
-// No-args + stdin-pipe fast path: `echo "prompt" | apfel` with no flags.
-// Must stay above the parse() call because it needs isatty + await singlePrompt
-// before any parsing happens.
-if rawArgs.isEmpty {
-    if isatty(STDIN_FILENO) == 0 {
-        let input: String
-        do {
-            input = try stdinPromptText(readStdinData())
-        } catch let error as CLIParseError {
-            printError(error.message)
-            exit(exitUsageError)
-        }
-        if !input.isEmpty {
-            do {
-                try await singlePrompt(input, systemPrompt: nil, stream: true)
-                exit(exitSuccess)
-            } catch {
-                let classified = ApfelError.classify(error)
-                printError("\(classified.cliLabel) \(classified.openAIMessage)")
-                exit(exitCode(for: classified))
-            }
-        }
-        if stdinIsPipe() {
-            printStderr("\(styled("apfel:", .yellow)) piped input was empty - if the command prints to stderr, try: command 2>&1 | apfel")
-        }
-    }
+// No-args + terminal: show usage and exit. The piped case falls through
+// to parse() so that APFEL_* env vars are honoured (#222).
+if rawArgs.isEmpty && isatty(STDIN_FILENO) != 0 {
     printUsage()
     exit(exitUsageError)
 }
 
 // Pure, testable parsing. Errors land here as CLIParseError.
-let parsed: CLIArguments
+var parsed: CLIArguments
 do {
     parsed = try CLIArguments.parse(
         rawArgs,
@@ -112,6 +89,11 @@ do {
 } catch let error as CLIParseError {
     printError(error.message)
     exit(exitUsageError)
+}
+
+// No-args pipe defaults to streaming, matching `echo "text" | apfel` behavior.
+if rawArgs.isEmpty {
+    parsed.mode = .stream
 }
 
 // Handle immediate-exit modes.
@@ -158,7 +140,7 @@ if parsed.mode.acceptsStdinInput && isatty(STDIN_FILENO) == 0 {
         } else {
             fileContents.append(stdinContent)
         }
-    } else if !prompt.isEmpty && !quietMode && stdinIsPipe() {
+    } else if !quietMode && stdinIsPipe() {
         printStderr("\(styled("apfel:", .yellow)) piped input was empty - if the command prints to stderr, try: command 2>&1 | apfel")
     }
 }
