@@ -173,6 +173,15 @@ if !fileContents.isEmpty {
     }
 }
 
+// Debuggable: with --debug, show exactly what each file extracted to and the full
+// prompt that goes to the model, so you can see what apfel actually puts to the API.
+if ApfelDebugConfiguration.isEnabled {
+    for attachment in parsed.fileAttachments {
+        debugLog("extract", "\(attachment.path) -> \(attachment.content.count) chars:\n\(attachment.content)")
+    }
+    debugLog("prompt", "final prompt to model (\(prompt.count) chars):\n\(prompt)")
+}
+
 // MARK: - Dispatch
 
 let contextConfig = ContextConfig(

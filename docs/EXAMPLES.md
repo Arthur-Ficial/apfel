@@ -21,6 +21,7 @@ This file was generated automatically by `scripts/generate-examples.sh`.
 11. [MCP Tool Calling](#11-mcp-tool-calling)
 12. [Edge Cases](#12-edge-cases)
 13. [Formatting & Structure](#13-formatting--structure)
+14. [File Extraction](#14-file-extraction-pdf-image-ocr--understanding)
 
 ---
 
@@ -1033,6 +1034,69 @@ $ apfel --stream "Count from 1 to 5."
 
 ````
 1, 2, 3, 4, 5.
+````
+
+---
+
+## 14. File Extraction (PDF, image OCR + understanding)
+
+All extraction runs 100% on-device via the shared [lesbar](https://github.com/Arthur-Ficial/lesbar) package (Vision OCR + PDFKit + image classification). Fixtures are public domain; see [Tests/integration/fixtures/lesbar/README.md](../Tests/integration/fixtures/lesbar/README.md).
+
+```
+$ apfel -f irs_w9.pdf --count-tokens "Summarize this form."
+```
+
+````
+apfel: token count is approximate (Apple Intelligence unavailable; using 
+chars/4 fallback)
+  prompt=5, Tests/integration/fixtures/lesbar/irs_w9.pdf=9428
+9434/3584 tokens (over budget)
+````
+
+---
+
+```
+$ apfel -f wikimedia_declaration.jpg "What historic document is this, and what year?"
+```
+
+````
+The image shows the Declaration of Independence, which is dated July 4, 1776.
+````
+
+---
+
+```
+$ apfel -f wikimedia_mona_lisa.jpg "In a few words, what is in this image?"
+```
+
+````
+A painting of a woman with a smile.
+````
+
+---
+
+```
+$ apfel -f apollo11_plaque.jpg --count-tokens --debug
+```
+
+````
+debug[extract]: Tests/integration/fixtures/lesbar/apollo11_plaque.jpg -> 148 
+chars:
+=== apollo11_plaque.jpg (image) ===
+what the image shows: liquid, frozen, water, snow, material
+text in image:
+176Y AID
+AME IN PEACE FOR ALL MANKINE
+debug[prompt]: final prompt to model (148 chars):
+=== apollo11_plaque.jpg (image) ===
+what the image shows: liquid, frozen, water, snow, material
+text in image:
+176Y AID
+AME IN PEACE FOR ALL MANKINE
+apfel: token count is approximate (Apple Intelligence unavailable; using 
+chars/4 fallback)
+  Tests/integration/fixtures/lesbar/apollo11_plaque.jpg=37
+37/3584 tokens (fits)
 ````
 
 ---

@@ -282,6 +282,36 @@ run_with_flags format \
     'apfel --stream "Count from 1 to 5."' \
     --stream "Count from 1 to 5."
 
+# ============================================================================
+echo "## 14. File Extraction (PDF, image OCR + understanding)" >&2
+# ============================================================================
+echo "## 14. File Extraction (PDF, image OCR + understanding)"
+echo ""
+echo "All extraction runs 100% on-device via the shared [lesbar](https://github.com/Arthur-Ficial/lesbar) package (Vision OCR + PDFKit + image classification). Fixtures are public domain; see Tests/integration/fixtures/lesbar/README.md."
+echo ""
+
+LFX="Tests/integration/fixtures/lesbar"
+
+# A text-dense PDF can exceed the 4096-token window; --count-tokens previews the
+# extraction and the honest budget before you spend it.
+run_with_flags files \
+    'apfel -f irs_w9.pdf --count-tokens "Summarize this form."' \
+    -f "$LFX/irs_w9.pdf" --count-tokens "Summarize this form."
+
+run_with_flags files \
+    'apfel -f wikimedia_declaration.jpg "What historic document is this, and what year?"' \
+    -f "$LFX/wikimedia_declaration.jpg" "What historic document is this, and what year?"
+
+run_with_flags files \
+    'apfel -f wikimedia_mona_lisa.jpg "In a few words, what is in this image?"' \
+    -f "$LFX/wikimedia_mona_lisa.jpg" "In a few words, what is in this image?"
+
+# Debuggable: --debug shows exactly what apfel puts to the API, --count-tokens keeps
+# it model-free. Here, on-device OCR of a NASA public-domain photo of an engraved plaque.
+run_with_flags files \
+    'apfel -f apollo11_plaque.jpg --count-tokens --debug' \
+    -f "$LFX/apollo11_plaque.jpg" --count-tokens --debug
+
 } > "$OUT"
 
 echo "" >&2

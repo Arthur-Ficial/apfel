@@ -23,8 +23,15 @@ PLAQUE = FIXTURES / "apollo11_plaque.jpg"   # photo WITH text (NASA, public doma
 SPACE = FIXTURES / "nasa_space.jpg"         # photo WITHOUT text (NASA, public domain)
 W9 = FIXTURES / "irs_w9.pdf"                # document WITH text (US IRS, public domain)
 PLAIN = FIXTURES / "plain.txt"
+MONA = FIXTURES / "wikimedia_mona_lisa.jpg"   # painting WITHOUT text (Wikimedia, public domain)
+DECL = FIXTURES / "wikimedia_declaration.jpg" # document scan WITH text (Wikimedia, public domain)
+TEXT_SAMPLE = FIXTURES / "text_sample.png"    # authored PD text image, converted per-format at runtime
+
+# Image formats apfel must accept (detected by content, not extension).
+FORMATS = ["png", "jpeg", "tiff", "gif", "bmp", "heic"]
 
 TOTAL_RE = re.compile(r"(\d+)/\d+ tokens")
+ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 # Skip the whole module (rather than error) if the release binary is not built.
 pytestmark = pytest.mark.skipif(not BINARY.exists(), reason=f"apfel release binary not built at {BINARY}")
@@ -65,8 +72,32 @@ def model_available() -> bool:
     return r.returncode == 0 and "available:  yes" in r.stdout.lower()
 
 
+def debug_extract(path: pathlib.Path) -> str:
+    """Return exactly what apfel puts to the API for a file.
+
+    Runs `apfel -f <path> --count-tokens --debug`, which is model-free: `--debug` prints
+    the framed extraction (and full prompt) to stderr, `--count-tokens` avoids the model.
+    This is the "see what we actually send" path, used to assert extracted content
+    deterministically without depending on model output.
+    """
+    r = subprocess.run(
+        [str(BINARY), "-f", str(path), "--count-tokens", "--debug"],
+        capture_output=True, text=True, timeout=60,
+    )
+    assert r.returncode == 0, f"extraction failed for {path.name}: {r.stderr}"
+    return ANSI_RE.sub("", r.stderr)
+
+
+def sips_convert(src: pathlib.Path, fmt: str, dest: pathlib.Path) -> bool:
+    r = subprocess.run(
+        ["sips", "-s", "format", fmt, str(src), "--out", str(dest)],
+        capture_output=True, text=True, timeout=30,
+    )
+    return r.returncode == 0 and dest.exists()
+
+
 def test_fixtures_present():
-    for f in (PLAQUE, SPACE, W9, PLAIN):
+    for f in (PLAQUE, SPACE, W9, PLAIN, MONA, DECL, TEXT_SAMPLE):
         assert f.exists(), f"missing fixture {f}"
 
 
@@ -131,3 +162,47 @@ def test_photo_ocr_content_reaches_model():
     out = r.stdout.upper()
     # The plaque reads "...WE CAME IN PEACE FOR ALL MANKIND". OCR + model should surface it.
     assert "PEACE" in out or "MANKIN" in out, f"OCR text did not reach the model: {r.stdout!r}"
+
+
+# --- Wikimedia public-domain fixtures, inspected via --debug (model-free, deterministic) ---
+
+def test_wikimedia_declaration_with_text_ocr():
+    # PD-US document scan. OCR recovers period text; framing shows it as image text.
+    out = debug_extract(DECL).upper()
+    assert "(IMAGE)" in out
+    assert "TEXT IN IMAGE:" in out
+    assert "1776" in out or "CONGRESS" in out, f"expected Declaration text, got:\n{out[:400]}"
+
+
+def test_wikimedia_mona_lisa_without_text_classified():
+    # PD-old painting, no text: classification must supply "what the image is about".
+    out = debug_extract(MONA)
+    assert "(image)" in out
+    lower = out.lower()
+    assert "what the image shows:" in lower
+    assert "art" in lower or "paint" in lower, f"expected art/painting labels, got:\n{out[:400]}"
+
+
+# --- Many image formats, with and without text (converted at runtime with sips) ---
+
+@pytest.mark.parametrize("fmt", FORMATS)
+def test_image_with_text_all_formats(fmt, tmp_path):
+    dest = tmp_path / f"text.{fmt}"
+    if not sips_convert(TEXT_SAMPLE, fmt, dest):
+        pytest.skip(f"sips could not produce {fmt}")
+    out = debug_extract(dest).upper()
+    assert "(IMAGE)" in out
+    assert "TEXT IN IMAGE:" in out
+    assert any(w in out for w in ("APFEL", "LESBAR", "OCR")), f"OCR failed for {fmt}:\n{out[:300]}"
+
+
+@pytest.mark.parametrize("fmt", FORMATS)
+def test_image_without_text_all_formats(fmt, tmp_path):
+    dest = tmp_path / f"notext.{fmt}"
+    if not sips_convert(MONA, fmt, dest):
+        pytest.skip(f"sips could not produce {fmt}")
+    out = debug_extract(dest).lower()
+    assert "(image)" in out
+    # A textless painting still yields a classification ("what the image shows"),
+    # so extraction succeeds and frames it across every format.
+    assert "what the image shows:" in out
