@@ -42,6 +42,7 @@ final class MCPConnection: @unchecked Sendable {
         proc.standardInput = stdinP
         proc.standardOutput = stdoutP
         proc.standardError = FileHandle.nullDevice
+        proc.environment = MCPProtocol.scrubbedEnvironment(ProcessInfo.processInfo.environment)
 
         self.process = proc
         self.stdinPipe = stdinP

@@ -129,6 +129,14 @@ public enum MCPProtocol {
         return ToolCallResult(text: text, isError: isError)
     }
 
+    // MARK: - Environment scrubbing
+
+    /// Returns a copy of `env` with all `APFEL_`-prefixed variables removed.
+    /// MCP subprocesses must not inherit the parent's auth tokens or configuration.
+    public static func scrubbedEnvironment(_ env: [String: String]) -> [String: String] {
+        env.filter { !$0.key.hasPrefix("APFEL_") }
+    }
+
     // MARK: - Private helpers
 
     private static func jsonRPC(id: Int? = nil, method: String, params: [String: Any]? = nil) -> String {
