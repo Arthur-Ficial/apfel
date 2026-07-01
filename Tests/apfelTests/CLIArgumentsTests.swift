@@ -267,6 +267,27 @@ func runCLIArgumentsTests() {
         try assertEqual(args.systemPrompt, "Be brief")
     }
 
+    test("no-args parse still applies APFEL_SYSTEM_PROMPT env (#222)") {
+        let args = try CLIArguments.parse([], env: ["APFEL_SYSTEM_PROMPT": "Be brief"])
+        try assertEqual(args.systemPrompt, "Be brief")
+        try assertEqual(args.mode, .single)
+    }
+
+    test("no-args parse still applies all APFEL_* env vars (#222)") {
+        let args = try CLIArguments.parse([], env: [
+            "APFEL_SYSTEM_PROMPT": "Be brief",
+            "APFEL_TEMPERATURE": "0.5",
+            "APFEL_MAX_TOKENS": "200",
+            "APFEL_DEBUG": "1",
+            "APFEL_MCP": "calc.py",
+        ])
+        try assertEqual(args.systemPrompt, "Be brief")
+        try assertEqual(args.temperature, 0.5)
+        try assertEqual(args.maxTokens, 200)
+        try assertTrue(args.debug)
+        try assertEqual(args.mcpServerPaths, ["calc.py"])
+    }
+
     // ========================================================================
     // MARK: - Output flags
     // ========================================================================

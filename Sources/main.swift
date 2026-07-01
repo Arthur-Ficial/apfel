@@ -71,38 +71,17 @@ func stdinPromptText(_ data: Data) throws -> String {
 
 let rawArgs = Array(CommandLine.arguments.dropFirst())
 
-// No-args + stdin-pipe fast path: `echo "prompt" | apfel` with no flags.
-// Must stay above the parse() call because it needs isatty + await singlePrompt
-// before any parsing happens.
-if rawArgs.isEmpty {
-    if isatty(STDIN_FILENO) == 0 {
-        let input: String
-        do {
-            input = try stdinPromptText(readStdinData())
-        } catch let error as CLIParseError {
-            printError(error.message)
-            exit(exitUsageError)
-        }
-        if !input.isEmpty {
-            do {
-                try await singlePrompt(input, systemPrompt: nil, stream: true)
-                exit(exitSuccess)
-            } catch {
-                let classified = ApfelError.classify(error)
-                printError("\(classified.cliLabel) \(classified.openAIMessage)")
-                exit(exitCode(for: classified))
-            }
-        }
-        if stdinIsPipe() {
-            printStderr("\(styled("apfel:", .yellow)) piped input was empty - if the command prints to stderr, try: command 2>&1 | apfel")
-        }
-    }
+// No args + interactive terminal: show usage and exit.
+if rawArgs.isEmpty && isatty(STDIN_FILENO) != 0 {
     printUsage()
     exit(exitUsageError)
 }
 
 // Pure, testable parsing. Errors land here as CLIParseError.
-let parsed: CLIArguments
+// FIX #222: the old no-args pipe fast path bypassed parse() entirely,
+// silently dropping every APFEL_* env var and skipping the model check.
+// Now all paths go through parse(), which applies env defaults.
+var parsed: CLIArguments
 do {
     parsed = try CLIArguments.parse(
         rawArgs,
@@ -137,6 +116,11 @@ if parsed.quiet { quietMode = true }
 if parsed.noColor { noColorFlag = true }
 if parsed.debug { ApfelDebugConfiguration.isEnabled = true }
 
+// No-args pipe: default to streaming to preserve `echo "text" | apfel` behavior (#222).
+if rawArgs.isEmpty && isatty(STDIN_FILENO) == 0 && parsed.mode == .single {
+    parsed.mode = .stream
+}
+
 // Build the prompt: positional args + piped stdin + attached files.
 var prompt = parsed.prompt
 var fileContents = parsed.fileContents
@@ -158,7 +142,7 @@ if parsed.mode.acceptsStdinInput && isatty(STDIN_FILENO) == 0 {
         } else {
             fileContents.append(stdinContent)
         }
-    } else if !prompt.isEmpty && !quietMode && stdinIsPipe() {
+    } else if !quietMode && stdinIsPipe() {
         printStderr("\(styled("apfel:", .yellow)) piped input was empty - if the command prints to stderr, try: command 2>&1 | apfel")
     }
 }
