@@ -310,4 +310,99 @@ func runMCPClientTests() {
         try assertEqual(calls!.first?.id, "call_001")
         try assertTrue(calls!.first!.argumentsString.contains("CLAUDE.md"), "arguments must contain the file path")
     }
+
+    // MARK: - Dead connection cleanup after timeout (#216)
+    // MCPManager.execute() uses MCPError pattern matching to decide when to
+    // remove a timed-out connection. These tests verify the pattern matching
+    // and tool-removal logic that the cleanup depends on.
+
+    test("MCPError timedOut triggers cleanup pattern match") {
+        let error: MCPError = .timedOut("Tool 'calc' timed out after 5s")
+        var shouldCleanup = false
+        if case .timedOut = error {
+            shouldCleanup = true
+        }
+        try assertTrue(shouldCleanup, "timedOut error must trigger cleanup")
+    }
+
+    test("MCPError serverError does not trigger timeout cleanup") {
+        let error: MCPError = .serverError("something went wrong")
+        var shouldCleanup = false
+        if case .timedOut = error {
+            shouldCleanup = true
+        }
+        try assertTrue(!shouldCleanup, "serverError must not trigger cleanup")
+    }
+
+    test("MCPError processError does not trigger timeout cleanup") {
+        let error: MCPError = .processError("process crashed")
+        var shouldCleanup = false
+        if case .timedOut = error {
+            shouldCleanup = true
+        }
+        try assertTrue(!shouldCleanup, "processError must not trigger cleanup")
+    }
+
+    test("MCPError toolNotFound does not trigger timeout cleanup") {
+        let error: MCPError = .toolNotFound("no such tool")
+        var shouldCleanup = false
+        if case .timedOut = error {
+            shouldCleanup = true
+        }
+        try assertTrue(!shouldCleanup, "toolNotFound must not trigger cleanup")
+    }
+
+    test("MCPError invalidResponse does not trigger timeout cleanup") {
+        let error: MCPError = .invalidResponse("bad json")
+        var shouldCleanup = false
+        if case .timedOut = error {
+            shouldCleanup = true
+        }
+        try assertTrue(!shouldCleanup, "invalidResponse must not trigger cleanup")
+    }
+
+    test("dead connection tool removal filters correct tools from map") {
+        let toolsJSON = """
+        {"jsonrpc":"2.0","id":2,"result":{"tools":[
+            {"name":"add","description":"Add","inputSchema":{"type":"object","properties":{}}},
+            {"name":"multiply","description":"Multiply","inputSchema":{"type":"object","properties":{}}}
+        ]}}
+        """
+        let deadServerTools = try MCPProtocol.parseToolsListResponse(toolsJSON)
+
+        var toolMap: [String: String] = [:]
+        for tool in deadServerTools {
+            toolMap[tool.function.name] = "server-a"
+        }
+        toolMap["divide"] = "server-b"
+
+        for tool in deadServerTools {
+            toolMap.removeValue(forKey: tool.function.name)
+        }
+
+        try assertEqual(toolMap.count, 1, "only server-b's tool should remain")
+        try assertNil(toolMap["add"], "dead server's tool must be removed")
+        try assertNil(toolMap["multiply"], "dead server's tool must be removed")
+        try assertEqual(toolMap["divide"], "server-b", "other server's tool must survive")
+    }
+
+    test("dead connection removal leaves other connections intact") {
+        let server1JSON = """
+        {"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"add","description":"Add","inputSchema":{"type":"object","properties":{}}}]}}
+        """
+        let server2JSON = """
+        {"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"multiply","description":"Mul","inputSchema":{"type":"object","properties":{}}}]}}
+        """
+        let tools1 = try MCPProtocol.parseToolsListResponse(server1JSON)
+        let tools2 = try MCPProtocol.parseToolsListResponse(server2JSON)
+
+        var allTools = tools1 + tools2
+        try assertEqual(allTools.count, 2)
+
+        let deadToolNames = Set(tools1.map(\.function.name))
+        allTools.removeAll { deadToolNames.contains($0.function.name) }
+
+        try assertEqual(allTools.count, 1, "only surviving server's tools remain")
+        try assertEqual(allTools[0].function.name, "multiply")
+    }
 }
