@@ -225,6 +225,9 @@ public enum ChatRequestValidator {
         if let reserve = request.x_context_output_reserve, reserve <= 0 {
             return .invalidParameterValue("'x_context_output_reserve' must be a positive integer, got \(reserve)")
         }
+        if case .invalid(let raw) = request.tool_choice {
+            return .invalidParameterValue("Invalid 'tool_choice' value: \(raw). Must be 'auto', 'none', 'required', or a {\"type\":\"function\",\"function\":{\"name\":\"...\"}} object.")
+        }
 
         return nil
     }

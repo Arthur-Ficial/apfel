@@ -178,6 +178,7 @@ func runApfelCorePublicAPIUsageTests() {
         let _: ToolChoice = .none
         let _: ToolChoice = .required
         let _: ToolChoice = .specific(name: "x")
+        let _: ToolChoice = .invalid("banana")
         let _: Set<ToolChoice> = [.auto, .required]
 
         // ResponseFormat

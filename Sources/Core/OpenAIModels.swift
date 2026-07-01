@@ -332,18 +332,27 @@ public enum ToolChoice: Decodable, Sendable, Equatable, Hashable {
     case required
     /// Force a specific tool name.
     case specific(name: String)
+    /// An unrecognized string or undecodable object. Rejected by the validator
+    /// with a 400 instead of being silently coerced to `.auto` (#238).
+    case invalid(String)
 
     /// Decodes the OpenAI string-or-object tool choice format.
+    ///
+    /// Unrecognized values decode to `.invalid` rather than throwing, so the
+    /// validator can return a specific `invalid_request_error` (a thrown
+    /// DecodingError here would surface as a generic "Invalid JSON" 400).
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         if let string = try? container.decode(String.self) {
             switch string {
+            case "auto":
+                self = .auto
             case "none":
                 self = .none
             case "required":
                 self = .required
             default:
-                self = .auto
+                self = .invalid(string)
             }
             return
         }
@@ -361,7 +370,7 @@ public enum ToolChoice: Decodable, Sendable, Equatable, Hashable {
             return
         }
 
-        self = .auto
+        self = .invalid("<object>")
     }
 }
 

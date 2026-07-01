@@ -44,9 +44,14 @@ func runOpenAIModelsTests() {
         try assertEqual(choice, .specific(name: "lookup"))
     }
 
-    test("ToolChoice falls back to auto for unknown string") {
+    test("ToolChoice decodes auto string") {
         let choice = try decode(ToolChoice.self, from: #""auto""#)
         try assertEqual(choice, .auto)
+    }
+
+    test("ToolChoice decodes unrecognized string to .invalid (#238)") {
+        let choice = try decode(ToolChoice.self, from: #""banana""#)
+        try assertEqual(choice, .invalid("banana"))
     }
 
     test("ChatCompletionRequest decodes stream_options.include_usage=true") {
@@ -416,6 +421,37 @@ func runChatRequestValidatorTests() {
             from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"presence_penalty":1,"frequency_penalty":1}"#
         )
         try assertEqual(UnsupportedChatParameter.detect(in: request), .presencePenalty)
+    }
+
+    test("validator rejects invalid tool_choice string (#238)") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"tool_choice":"banana"}"#
+        )
+        guard case .invalidParameterValue(let detail) = ChatRequestValidator.validate(request) else {
+            throw TestFailure("expected .invalidParameterValue for tool_choice=banana")
+        }
+        try assertTrue(detail.contains("tool_choice"))
+    }
+
+    test("validator rejects undecodable tool_choice object (#238)") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"tool_choice":{"foo":"bar"}}"#
+        )
+        if case .invalidParameterValue = ChatRequestValidator.validate(request) { } else {
+            throw TestFailure("expected .invalidParameterValue for undecodable tool_choice object")
+        }
+    }
+
+    test("validator accepts recognized tool_choice values (#238)") {
+        for raw in [#""auto""#, #""none""#, #""required""#, #"{"type":"function","function":{"name":"f"}}"#] {
+            let request = try decode(
+                ChatCompletionRequest.self,
+                from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"tool_choice":\#(raw)}"#
+            )
+            try assertNil(ChatRequestValidator.validate(request))
+        }
     }
 
     test("validator prioritizes empty messages before invalid model") {

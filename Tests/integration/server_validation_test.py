@@ -122,3 +122,88 @@ def test_unknown_context_strategy_returns_400_listing_valid_values():
     assert resp.status_code == 400, resp.text
     err = _assert_openai_error(resp, expected_type="invalid_request_error")
     assert "newest-first" in err["message"], err
+
+
+# ============================================================================
+# #238b - invalid tool_choice rejected (not silently coerced to auto)
+# ============================================================================
+
+def test_invalid_tool_choice_string_returns_400():
+    payload = {
+        "model": MODEL,
+        "messages": [{"role": "user", "content": "hi"}],
+        "tool_choice": "banana",
+    }
+    resp = _post(payload)
+    assert resp.status_code == 400, resp.text
+    err = _assert_openai_error(resp, expected_type="invalid_request_error")
+    assert "tool_choice" in err["message"], err
+
+
+def test_undecodable_tool_choice_object_returns_400():
+    payload = {
+        "model": MODEL,
+        "messages": [{"role": "user", "content": "hi"}],
+        "tool_choice": {"foo": "bar"},
+    }
+    resp = _post(payload)
+    assert resp.status_code == 400, resp.text
+    _assert_openai_error(resp, expected_type="invalid_request_error")
+
+
+# ============================================================================
+# #238a - stream_options.include_usage emits usage:null on non-final chunks
+# (model-dependent: needs Apple Intelligence, run by the controller)
+# ============================================================================
+
+def _sse_chunks(text):
+    import json
+    for line in text.splitlines():
+        line = line.strip()
+        if not line.startswith("data:"):
+            continue
+        payload = line[len("data:"):].strip()
+        if payload == "[DONE]":
+            continue
+        yield json.loads(payload)
+
+
+def test_include_usage_emits_usage_null_on_non_final_chunks():
+    payload = {
+        "model": MODEL,
+        "messages": [{"role": "user", "content": "Say hi in one word."}],
+        "stream": True,
+        "stream_options": {"include_usage": True},
+        "max_tokens": 32,
+    }
+    with httpx.stream("POST", f"{BASE_URL}/v1/chat/completions", json=payload, timeout=60) as r:
+        assert r.status_code == 200
+        body = r.read().decode()
+    chunks = list(_sse_chunks(body))
+    assert chunks, body
+    # Exactly one final chunk carries the real usage stats (choices == []).
+    usage_chunks = [c for c in chunks if c.get("usage")]
+    assert len(usage_chunks) == 1, [c.get("usage") for c in chunks]
+    assert usage_chunks[-1]["choices"] == []
+    # Every other (non-final) chunk must carry an explicit usage: null key.
+    non_final = [c for c in chunks if c is not usage_chunks[-1]]
+    for c in non_final:
+        assert "usage" in c, f"non-final chunk missing usage key: {c}"
+        assert c["usage"] is None, f"non-final chunk usage not null: {c}"
+
+
+def test_without_include_usage_no_usage_key_on_chunks():
+    payload = {
+        "model": MODEL,
+        "messages": [{"role": "user", "content": "Say hi in one word."}],
+        "stream": True,
+        "max_tokens": 32,
+    }
+    with httpx.stream("POST", f"{BASE_URL}/v1/chat/completions", json=payload, timeout=60) as r:
+        assert r.status_code == 200
+        body = r.read().decode()
+    chunks = list(_sse_chunks(body))
+    assert chunks, body
+    # No opt-in -> no usage key anywhere (and no separate usage chunk).
+    for c in chunks:
+        assert "usage" not in c, f"chunk unexpectedly carries usage: {c}"

@@ -9,6 +9,8 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ### Fixed
 
+- Streaming responses with `stream_options.include_usage: true` now send an explicit `"usage": null` on every non-final chunk (matching OpenAI), instead of omitting the key; the single final chunk still carries the real usage stats. Without the opt-in no `usage` key is emitted at all (#238).
+- An invalid `tool_choice` (an unrecognized string like `"banana"` or an undecodable object) now returns `400 invalid_request_error` instead of being silently coerced to `auto`. `ToolChoice` decodes such values to a new `.invalid` case that the validator rejects (#238).
 - An unknown `x_context_strategy` value (e.g. `sliding-window` typo'd as `sliding_window`) now returns `400 invalid_request_error` listing the valid values, instead of silently falling back to `newest-first` while the caller believes their strategy is active. The sibling `x_context_max_turns`/`x_context_output_reserve` params were already strictly validated (#237).
 - The OpenAI error object now always includes `param` and `code` (explicit `null` when absent), so router/proxy front-ends that branch on `error.code` see the key. An unknown `model` now returns `404` with `code: "model_not_found"` and `param: "model"` (OpenAI parity) instead of `400` with the keys omitted (#236).
 - `top_p` outside `[0, 1]` and `temperature` above `2` now return `400 invalid_request_error` instead of passing through to FoundationModels and surfacing as an opaque `500`. The existing `temperature < 0` check is unchanged; OpenAI caps `temperature` at 2 and requires `top_p` in `[0, 1]` (#235).

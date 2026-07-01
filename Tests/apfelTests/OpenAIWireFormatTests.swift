@@ -274,9 +274,11 @@ func runOpenAIWireFormatTests() {
         try assertEqual(choice, ToolChoice.none)
     }
 
-    test("ToolChoice falls back to auto for empty object") {
+    test("ToolChoice decodes an undecodable object to .invalid (#238)") {
+        // Previously any object without function.name silently coerced to .auto;
+        // the validator now rejects .invalid with a 400 instead.
         let choice = try decode(ToolChoice.self, from: "{}")
-        try assertEqual(choice, .auto)
+        try assertEqual(choice, .invalid("<object>"))
     }
 
     // MARK: - ResponseFormat

@@ -101,6 +101,31 @@ struct ChatCompletionChunk: Encodable, Sendable {
     let model: String
     let choices: [ChunkChoice]
     let usage: ChunkUsage?
+    /// Control flag (not a wire field). When true and `usage` is nil, the chunk
+    /// encodes `"usage": null` explicitly. OpenAI sends `usage: null` on every
+    /// non-final chunk when `stream_options.include_usage` is set; without the
+    /// opt-in a nil usage is omitted entirely (#238).
+    var includeUsageNull: Bool = false
+
+    // Custom encoder so `usage` is emitted as explicit null only when opted in,
+    // and omitted otherwise. Swift's synthesized Encodable would always drop a
+    // nil optional, losing the include_usage null-usage contract.
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(object, forKey: .object)
+        try c.encode(created, forKey: .created)
+        try c.encode(model, forKey: .model)
+        try c.encode(choices, forKey: .choices)
+        if let usage = usage {
+            try c.encode(usage, forKey: .usage)
+        } else if includeUsageNull {
+            try c.encodeNil(forKey: .usage)
+        }
+    }
+    private enum CodingKeys: String, CodingKey {
+        case id, object, created, model, choices, usage
+    }
 
     struct ChunkChoice: Encodable, Sendable {
         let index: Int

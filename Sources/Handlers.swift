@@ -338,12 +338,13 @@ private func mcpAutoExecuteResponse(
     if streaming {
         // SSE event order: role -> content -> stop [-> usage when opted in] -> [DONE]
         var chunks: [String] = [
-            sseDataLine(sseRoleChunk(id: id, created: created)),
-            sseDataLine(sseContentChunk(id: id, created: created, content: deliveredContent)),
+            sseDataLine(sseRoleChunk(id: id, created: created, includeUsage: includeUsage)),
+            sseDataLine(sseContentChunk(id: id, created: created, content: deliveredContent, includeUsage: includeUsage)),
             sseDataLine(ChatCompletionChunk(
                 id: id, object: "chat.completion.chunk", created: created, model: modelName,
                 choices: [.init(index: 0, delta: .init(role: nil, content: nil, tool_calls: nil), finish_reason: finishReason, logprobs: nil)],
-                usage: nil
+                usage: nil,
+                includeUsageNull: includeUsage
             )),
         ]
         if includeUsage {
@@ -530,7 +531,7 @@ private func streamingResponse(
             }
 
             // Role announcement chunk
-            let roleLine = sseDataLine(sseRoleChunk(id: id, created: created))
+            let roleLine = sseDataLine(sseRoleChunk(id: id, created: created, includeUsage: includeUsage))
             responseLines?.append(roleLine.trimmingCharacters(in: .whitespacesAndNewlines))
             continuation.yield(ByteBuffer(string: roleLine))
             await eventBox.append("sent role chunk")
@@ -545,7 +546,7 @@ private func streamingResponse(
                     if content.count > prev.count {
                         let idx = content.index(content.startIndex, offsetBy: prev.count)
                         let delta = String(content[idx...])
-                        let chunkLine = sseDataLine(sseContentChunk(id: id, created: created, content: delta))
+                        let chunkLine = sseDataLine(sseContentChunk(id: id, created: created, content: delta, includeUsage: includeUsage))
                         responseLines?.append(chunkLine.trimmingCharacters(in: .whitespacesAndNewlines))
                         continuation.yield(ByteBuffer(string: chunkLine))
                         chunkCount += 1
@@ -584,7 +585,8 @@ private func streamingResponse(
                             finish_reason: finishReason,
                             logprobs: nil
                         )],
-                        usage: nil
+                        usage: nil,
+                        includeUsageNull: includeUsage
                     )
                     let toolLine = sseDataLine(toolChunk)
                     responseLines?.append(toolLine.trimmingCharacters(in: .whitespacesAndNewlines))
@@ -594,7 +596,8 @@ private func streamingResponse(
                     let stopChunk = ChatCompletionChunk(
                         id: id, object: "chat.completion.chunk", created: created, model: modelName,
                         choices: [.init(index: 0, delta: .init(role: nil, content: nil, tool_calls: nil), finish_reason: finishReason, logprobs: nil)],
-                        usage: nil
+                        usage: nil,
+                        includeUsageNull: includeUsage
                     )
                     let stopLine = sseDataLine(stopChunk)
                     responseLines?.append(stopLine.trimmingCharacters(in: .whitespacesAndNewlines))
@@ -631,7 +634,8 @@ private func streamingResponse(
                             finish_reason: FinishReason.length.openAIValue,
                             logprobs: nil
                         )],
-                        usage: nil
+                        usage: nil,
+                        includeUsageNull: includeUsage
                     )
                     let lengthLine = sseDataLine(lengthChunk)
                     responseLines?.append(lengthLine.trimmingCharacters(in: .whitespacesAndNewlines))
@@ -653,11 +657,11 @@ private func streamingResponse(
                 } else if case .refusal(let explanation) = classified {
                     // OpenAI wire format: stream a refusal delta, then a final
                     // chunk with finish_reason=content_filter, then [DONE].
-                    let refusalLine = sseDataLine(sseRefusalChunk(id: id, created: created, refusal: explanation))
+                    let refusalLine = sseDataLine(sseRefusalChunk(id: id, created: created, refusal: explanation, includeUsage: includeUsage))
                     responseLines?.append(refusalLine.trimmingCharacters(in: .whitespacesAndNewlines))
                     continuation.yield(ByteBuffer(string: refusalLine))
 
-                    let finishLine = sseDataLine(sseContentFilterFinishChunk(id: id, created: created))
+                    let finishLine = sseDataLine(sseContentFilterFinishChunk(id: id, created: created, includeUsage: includeUsage))
                     responseLines?.append(finishLine.trimmingCharacters(in: .whitespacesAndNewlines))
                     continuation.yield(ByteBuffer(string: finishLine))
 
@@ -858,7 +862,7 @@ private func structuredStreamingResponse(
                 }
             }
 
-            let roleLine = sseDataLine(sseRoleChunk(id: id, created: created))
+            let roleLine = sseDataLine(sseRoleChunk(id: id, created: created, includeUsage: includeUsage))
             responseLines?.append(roleLine.trimmingCharacters(in: .whitespacesAndNewlines))
             continuation.yield(ByteBuffer(string: roleLine))
             await eventBox.append("sent role chunk")
@@ -878,7 +882,7 @@ private func structuredStreamingResponse(
                     prev = snapshot.content.jsonString
                 }
 
-                let contentLine = sseDataLine(sseContentChunk(id: id, created: created, content: prev))
+                let contentLine = sseDataLine(sseContentChunk(id: id, created: created, content: prev, includeUsage: includeUsage))
                 responseLines?.append(contentLine.trimmingCharacters(in: .whitespacesAndNewlines))
                 continuation.yield(ByteBuffer(string: contentLine))
                 await eventBox.append("structured content delta chars=\(prev.count)")
@@ -888,7 +892,8 @@ private func structuredStreamingResponse(
                 let stopChunk = ChatCompletionChunk(
                     id: id, object: "chat.completion.chunk", created: created, model: modelName,
                     choices: [.init(index: 0, delta: .init(role: nil, content: nil, tool_calls: nil), finish_reason: finishReason, logprobs: nil)],
-                    usage: nil
+                    usage: nil,
+                    includeUsageNull: includeUsage
                 )
                 let stopLine = sseDataLine(stopChunk)
                 responseLines?.append(stopLine.trimmingCharacters(in: .whitespacesAndNewlines))
@@ -910,11 +915,11 @@ private func structuredStreamingResponse(
             } catch {
                 let classified = ApfelError.classify(error)
                 if case .refusal(let explanation) = classified {
-                    let refusalLine = sseDataLine(sseRefusalChunk(id: id, created: created, refusal: explanation))
+                    let refusalLine = sseDataLine(sseRefusalChunk(id: id, created: created, refusal: explanation, includeUsage: includeUsage))
                     responseLines?.append(refusalLine.trimmingCharacters(in: .whitespacesAndNewlines))
                     continuation.yield(ByteBuffer(string: refusalLine))
 
-                    let finishLine = sseDataLine(sseContentFilterFinishChunk(id: id, created: created))
+                    let finishLine = sseDataLine(sseContentFilterFinishChunk(id: id, created: created, includeUsage: includeUsage))
                     responseLines?.append(finishLine.trimmingCharacters(in: .whitespacesAndNewlines))
                     continuation.yield(ByteBuffer(string: finishLine))
 
@@ -1075,9 +1080,9 @@ private func refusalStreamingResponse(
     let completionTokens = await TokenCounter.shared.count(refusal)
     let finishReason = FinishReason.contentFilter.openAIValue
     var chunks: [String] = [
-        sseDataLine(sseRoleChunk(id: id, created: created)),
-        sseDataLine(sseRefusalChunk(id: id, created: created, refusal: refusal)),
-        sseDataLine(sseContentFilterFinishChunk(id: id, created: created)),
+        sseDataLine(sseRoleChunk(id: id, created: created, includeUsage: includeUsage)),
+        sseDataLine(sseRefusalChunk(id: id, created: created, refusal: refusal, includeUsage: includeUsage)),
+        sseDataLine(sseContentFilterFinishChunk(id: id, created: created, includeUsage: includeUsage)),
     ]
     if includeUsage {
         chunks.append(sseDataLine(sseUsageChunk(
