@@ -38,8 +38,26 @@ func capturedRequestBody(_ body: ByteBuffer, debugEnabled: Bool) -> String? {
 func handleChatCompletion(_ request: Request, context: some RequestContext) async throws -> (response: Response, trace: ChatRequestTrace) {
     var events: [String] = []
 
-    // Decode request body
-    let body = try await request.body.collect(upTo: BodyLimits.maxRequestBodyBytes)
+    // Decode request body. Collecting over the 1 MiB cap throws; if it
+    // propagates out of the handler it bypasses SecurityMiddleware's CORS
+    // headers and the request log (the route handler only logs returned
+    // responses). Catch it here so a too-large body returns a proper 413
+    // with an OpenAI error object, CORS headers, and a log entry (#234).
+    let body: ByteBuffer
+    do {
+        body = try await request.body.collect(upTo: BodyLimits.maxRequestBodyBytes)
+    } catch {
+        let mib = BodyLimits.maxRequestBodyBytes / (1024 * 1024)
+        return chatFailure(
+            status: .init(code: 413),
+            message: "Request body exceeds the \(mib) MiB limit.",
+            type: "invalid_request_error",
+            stream: false,
+            requestBody: nil,
+            events: events,
+            event: "request body too large (limit \(BodyLimits.maxRequestBodyBytes) bytes)"
+        )
+    }
     let requestBodyString = capturedRequestBody(body, debugEnabled: serverState.config.debug)
     events.append("request bytes=\(body.readableBytes)")
 
