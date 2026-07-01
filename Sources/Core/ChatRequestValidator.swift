@@ -75,6 +75,8 @@ public enum ChatRequestValidationFailure: Sendable, Equatable, Hashable, CustomS
     case unsupportedParameter(UnsupportedChatParameter)
     /// The final message role was not `user` or `tool`.
     case invalidLastRole
+    /// The final user message has empty or null text content.
+    case emptyLastMessageContent
     /// The request included image content.
     case imageContent
     /// A numeric or string parameter had an invalid value.
@@ -91,6 +93,8 @@ public enum ChatRequestValidationFailure: Sendable, Equatable, Hashable, CustomS
             return parameter.message
         case .invalidLastRole:
             return "Last message must have role 'user' or 'tool'"
+        case .emptyLastMessageContent:
+            return "Last user message must have non-empty text content"
         case .imageContent:
             return "Image content is not supported by the Apple on-device model"
         case .invalidParameterValue(let detail):
@@ -109,6 +113,8 @@ public enum ChatRequestValidationFailure: Sendable, Equatable, Hashable, CustomS
             return "validation failed: unsupported parameter \(parameter.name)"
         case .invalidLastRole:
             return "validation failed: last role != user/tool"
+        case .emptyLastMessageContent:
+            return "validation failed: empty last message content"
         case .imageContent:
             return "rejected: image content"
         case .invalidParameterValue(let detail):
@@ -146,6 +152,12 @@ public enum ChatRequestValidator {
 
         guard let lastRole = request.messages.last?.role, ["user", "tool"].contains(lastRole) else {
             return .invalidLastRole
+        }
+
+        if lastRole == "user" {
+            guard let text = request.messages.last?.textContent, !text.isEmpty else {
+                return .emptyLastMessageContent
+            }
         }
 
         if request.messages.contains(where: \.containsImageContent) {

@@ -185,6 +185,10 @@ func runApfelErrorMessageTests() {
             "Last message must have role 'user' or 'tool'"
         )
         try assertEqual(
+            ChatRequestValidationFailure.emptyLastMessageContent.message,
+            "Last user message must have non-empty text content"
+        )
+        try assertEqual(
             ChatRequestValidationFailure.imageContent.message,
             "Image content is not supported by the Apple on-device model"
         )
@@ -218,6 +222,10 @@ func runApfelErrorMessageTests() {
         try assertEqual(
             ChatRequestValidationFailure.invalidLastRole.event,
             "validation failed: last role != user/tool"
+        )
+        try assertEqual(
+            ChatRequestValidationFailure.emptyLastMessageContent.event,
+            "validation failed: empty last message content"
         )
         try assertEqual(
             ChatRequestValidationFailure.imageContent.event,
