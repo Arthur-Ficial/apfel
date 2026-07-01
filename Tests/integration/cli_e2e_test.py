@@ -776,6 +776,36 @@ def test_empty_file_redirect_no_hint(tmp_path):
     assert "piped input was empty" not in result.stderr
 
 
+# --- No-args pipe + env var tests (GH-222) ---
+
+
+def test_no_args_pipe_honors_system_prompt_env():
+    """echo 'text' | APFEL_SYSTEM_PROMPT='...' apfel must apply the env var (#222).
+    The old no-args fast path bypassed parse() entirely, dropping all APFEL_* vars."""
+    require_model()
+    result = run_cli(
+        [],
+        input_text="Reply with exactly the word BANANA and nothing else.",
+        env={"APFEL_SYSTEM_PROMPT": "You must reply with exactly the word BANANA and nothing else."},
+        timeout=60,
+    )
+    assert result.returncode == 0, f"Expected exit 0, got {result.returncode}: {result.stderr}"
+
+
+def test_no_args_pipe_honors_debug_env():
+    """echo 'text' | APFEL_DEBUG=1 apfel must enable debug logging (#222)."""
+    require_model()
+    result = run_cli(
+        [],
+        input_text="hi",
+        env={"APFEL_DEBUG": "1"},
+        timeout=60,
+    )
+    assert result.returncode == 0, f"Expected exit 0, got {result.returncode}: {result.stderr}"
+    assert "debug" in result.stderr.lower() or "prompt" in result.stderr.lower(), \
+        "APFEL_DEBUG=1 should produce debug output on stderr"
+
+
 # --- Release info tests ---
 
 
