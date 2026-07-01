@@ -299,6 +299,36 @@ func runMCPClientTests() {
         try assertTrue(formatInstructions.contains("tool_calls"), "format must contain call format")
     }
 
+    // MARK: - JSON-RPC response ID correlation (#217)
+
+    test("isResponse matches response with correct id") {
+        let json = #"{"jsonrpc":"2.0","id":7,"result":{"content":[{"type":"text","text":"42"}]}}"#
+        try assertTrue(MCPProtocol.isResponse(json, forRequestId: 7))
+    }
+
+    test("isResponse rejects notification without id") {
+        let json = #"{"jsonrpc":"2.0","method":"notifications/message","params":{"level":"info","data":"hello"}}"#
+        try assertTrue(!MCPProtocol.isResponse(json, forRequestId: 1))
+    }
+
+    test("isResponse rejects response with mismatched id") {
+        let json = #"{"jsonrpc":"2.0","id":5,"result":{"content":[{"type":"text","text":"42"}]}}"#
+        try assertTrue(!MCPProtocol.isResponse(json, forRequestId: 3))
+    }
+
+    test("isResponse rejects invalid JSON") {
+        try assertTrue(!MCPProtocol.isResponse("{not json}", forRequestId: 1))
+    }
+
+    test("isResponse rejects empty string") {
+        try assertTrue(!MCPProtocol.isResponse("", forRequestId: 1))
+    }
+
+    test("isResponse matches JSON-RPC error response with correct id") {
+        let json = #"{"jsonrpc":"2.0","id":4,"error":{"code":-32602,"message":"Unknown tool"}}"#
+        try assertTrue(MCPProtocol.isResponse(json, forRequestId: 4))
+    }
+
     test("Tool call detection works on object-argument format from #144 report") {
         // The #144 reporter showed the model producing arguments as a JSON object
         // (not an escaped string). Detection must handle both forms.
