@@ -310,4 +310,65 @@ func runMCPClientTests() {
         try assertEqual(calls!.first?.id, "call_001")
         try assertTrue(calls!.first!.argumentsString.contains("CLAUDE.md"), "arguments must contain the file path")
     }
+
+    // MARK: - Environment scrubbing (#229)
+
+    test("scrubbedEnvironment removes APFEL_TOKEN") {
+        let env = ["PATH": "/usr/bin", "HOME": "/Users/me", "APFEL_TOKEN": "secret-bearer"]
+        let scrubbed = MCPProtocol.scrubbedEnvironment(env)
+        try assertNil(scrubbed["APFEL_TOKEN"])
+        try assertEqual(scrubbed["PATH"], "/usr/bin")
+    }
+
+    test("scrubbedEnvironment removes APFEL_MCP_TOKEN") {
+        let env = ["PATH": "/usr/bin", "APFEL_MCP_TOKEN": "mcp-secret"]
+        let scrubbed = MCPProtocol.scrubbedEnvironment(env)
+        try assertNil(scrubbed["APFEL_MCP_TOKEN"])
+        try assertEqual(scrubbed["PATH"], "/usr/bin")
+    }
+
+    test("scrubbedEnvironment removes all APFEL_ prefixed vars") {
+        let env = [
+            "PATH": "/usr/bin",
+            "HOME": "/Users/me",
+            "APFEL_TOKEN": "secret",
+            "APFEL_MCP_TOKEN": "mcp-secret",
+            "APFEL_DEBUG": "1",
+            "APFEL_HOST": "0.0.0.0",
+            "APFEL_PORT": "8080",
+            "APFEL_SYSTEM_PROMPT": "be brief",
+            "LANG": "en_US.UTF-8",
+        ]
+        let scrubbed = MCPProtocol.scrubbedEnvironment(env)
+        try assertEqual(scrubbed.count, 3)
+        try assertEqual(scrubbed["PATH"], "/usr/bin")
+        try assertEqual(scrubbed["HOME"], "/Users/me")
+        try assertEqual(scrubbed["LANG"], "en_US.UTF-8")
+    }
+
+    test("scrubbedEnvironment preserves non-apfel vars") {
+        let env = [
+            "PATH": "/usr/bin",
+            "HOME": "/Users/me",
+            "PYTHONPATH": "/lib/python",
+            "VIRTUAL_ENV": "/venv",
+            "NO_COLOR": "1",
+        ]
+        let scrubbed = MCPProtocol.scrubbedEnvironment(env)
+        try assertEqual(scrubbed.count, 5)
+    }
+
+    test("scrubbedEnvironment handles empty environment") {
+        let scrubbed = MCPProtocol.scrubbedEnvironment([:])
+        try assertEqual(scrubbed.count, 0)
+    }
+
+    test("scrubbedEnvironment is case-sensitive on prefix") {
+        let env = ["apfel_token": "lower", "Apfel_Token": "mixed", "APFEL_TOKEN": "upper"]
+        let scrubbed = MCPProtocol.scrubbedEnvironment(env)
+        try assertEqual(scrubbed.count, 2)
+        try assertEqual(scrubbed["apfel_token"], "lower")
+        try assertEqual(scrubbed["Apfel_Token"], "mixed")
+        try assertNil(scrubbed["APFEL_TOKEN"])
+    }
 }
