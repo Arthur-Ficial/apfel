@@ -250,6 +250,156 @@ func runSchemaParserTests() {
         }
     }
 
+    // MARK: anyOf / oneOf / type-array (nullable optional pattern)
+
+    test("anyOf nullable pattern parses the non-null variant") {
+        let json = #"""
+        {"anyOf":[{"type":"string"},{"type":"null"}]}
+        """#
+        let ir = try SchemaParser.parse(json: json, name: "opt")
+        guard case .string(let name, _, _) = ir else {
+            throw TestFailure("expected .string, got \(ir)")
+        }
+        try assertEqual(name, "opt")
+    }
+
+    test("oneOf nullable pattern parses the non-null variant") {
+        let json = #"""
+        {"oneOf":[{"type":"integer"},{"type":"null"}]}
+        """#
+        let ir = try SchemaParser.parse(json: json, name: "optInt")
+        guard case .number(let name, _) = ir else {
+            throw TestFailure("expected .number, got \(ir)")
+        }
+        try assertEqual(name, "optInt")
+    }
+
+    test("type array nullable parses the non-null type") {
+        let json = #"""
+        {"type":["string","null"]}
+        """#
+        let ir = try SchemaParser.parse(json: json, name: "nullable")
+        guard case .string(let name, _, _) = ir else {
+            throw TestFailure("expected .string, got \(ir)")
+        }
+        try assertEqual(name, "nullable")
+    }
+
+    test("type array with description preserved") {
+        let json = #"""
+        {"type":["boolean","null"],"description":"flag"}
+        """#
+        let ir = try SchemaParser.parse(json: json, name: "flag")
+        guard case .bool(_, let desc) = ir else {
+            throw TestFailure("expected .bool, got \(ir)")
+        }
+        try assertEqual(desc, "flag")
+    }
+
+    test("anyOf description inherited from outer schema") {
+        let json = #"""
+        {"anyOf":[{"type":"string"},{"type":"null"}],"description":"city name"}
+        """#
+        let ir = try SchemaParser.parse(json: json, name: "city")
+        guard case .string(_, let desc, _) = ir else {
+            throw TestFailure("expected .string, got \(ir)")
+        }
+        try assertEqual(desc, "city name")
+    }
+
+    test("anyOf inner description takes precedence over outer") {
+        let json = #"""
+        {"anyOf":[{"type":"string","description":"inner"},{"type":"null"}],"description":"outer"}
+        """#
+        let ir = try SchemaParser.parse(json: json, name: "x")
+        guard case .string(_, let desc, _) = ir else {
+            throw TestFailure("expected .string, got \(ir)")
+        }
+        try assertEqual(desc, "inner")
+    }
+
+    test("anyOf with object variant (Pydantic-style optional object)") {
+        let json = #"""
+        {"anyOf":[{"type":"object","properties":{"lat":{"type":"number"},"lon":{"type":"number"}},"required":["lat","lon"]},{"type":"null"}]}
+        """#
+        let ir = try SchemaParser.parse(json: json, name: "location")
+        guard case .object(_, _, let props) = ir else {
+            throw TestFailure("expected .object, got \(ir)")
+        }
+        try assertEqual(props.count, 2)
+        try assertTrue(props.allSatisfy { !$0.isOptional })
+    }
+
+    test("anyOf with multiple non-null variants throws unsupportedType") {
+        let json = #"""
+        {"anyOf":[{"type":"string"},{"type":"integer"}]}
+        """#
+        do {
+            _ = try SchemaParser.parse(json: json, name: "bad")
+            throw TestFailure("expected throw")
+        } catch SchemaParser.Error.unsupportedType(let t) {
+            try assertTrue(t.contains("union"), "message should mention union: \(t)")
+        }
+    }
+
+    test("type array with multiple non-null types throws unsupportedType") {
+        let json = #"""
+        {"type":["string","integer"]}
+        """#
+        do {
+            _ = try SchemaParser.parse(json: json, name: "bad")
+            throw TestFailure("expected throw")
+        } catch SchemaParser.Error.unsupportedType(let t) {
+            try assertTrue(t.contains("string"), "message should list types: \(t)")
+        }
+    }
+
+    test("allOf throws unsupportedType") {
+        let json = #"""
+        {"allOf":[{"type":"object","properties":{"x":{"type":"string"}}},{"type":"object","properties":{"y":{"type":"string"}}}]}
+        """#
+        do {
+            _ = try SchemaParser.parse(json: json, name: "bad")
+            throw TestFailure("expected throw")
+        } catch SchemaParser.Error.unsupportedType(let t) {
+            try assertTrue(t.contains("allOf"), "message should mention allOf: \(t)")
+        }
+    }
+
+    test("anyOf inside object property (real-world Pydantic optional field)") {
+        let json = #"""
+        {
+          "type": "object",
+          "properties": {
+            "name": {"type": "string"},
+            "age": {"anyOf": [{"type": "integer"}, {"type": "null"}], "description": "optional age"}
+          },
+          "required": ["name"]
+        }
+        """#
+        let ir = try SchemaParser.parse(json: json, name: "person")
+        guard case .object(_, _, let props) = ir else {
+            throw TestFailure("expected .object")
+        }
+        try assertEqual(props.count, 2)
+        let age = props.first { $0.name == "age" }!
+        guard case .number = age.schema else {
+            throw TestFailure("age should be .number, got \(age.schema)")
+        }
+        try assertEqual(age.description, "optional age")
+        try assertTrue(age.isOptional, "age not in required")
+    }
+
+    test("missing type without anyOf/oneOf/allOf still defaults to object") {
+        let ir = try SchemaParser.parse(
+            json: #"{"properties":{"x":{"type":"string"}}}"#,
+            name: "root"
+        )
+        guard case .object = ir else {
+            throw TestFailure("expected .object when type omitted and no composition keywords")
+        }
+    }
+
     // MARK: Real-world fixtures
 
     test("OpenAI weather function fixture") {

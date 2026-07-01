@@ -29,6 +29,35 @@ public enum SchemaParser {
     /// absent (matches OpenAI function-schema conventions where the root
     /// object sometimes omits its type).
     private static func parseObject(_ schema: [String: Any], name: String) throws -> SchemaIR {
+        // Type arrays like ["string", "null"] (JSON Schema nullable shorthand).
+        if let typeArray = schema["type"] as? [String] {
+            let nonNull = typeArray.filter { $0 != "null" }
+            guard nonNull.count == 1 else {
+                throw Error.unsupportedType("[\(typeArray.joined(separator: ", "))]")
+            }
+            var resolved = schema
+            resolved["type"] = nonNull[0]
+            return try parseObject(resolved, name: name)
+        }
+
+        // anyOf/oneOf nullable pattern: [{type: X, ...}, {type: "null"}].
+        if schema["type"] == nil,
+           let variants = (schema["anyOf"] ?? schema["oneOf"]) as? [[String: Any]] {
+            let nonNull = variants.filter { ($0["type"] as? String) != "null" }
+            guard nonNull.count == 1 else {
+                throw Error.unsupportedType("union with \(variants.count) variants")
+            }
+            var resolved = nonNull[0]
+            if resolved["description"] == nil, let desc = schema["description"] as? String {
+                resolved["description"] = desc
+            }
+            return try parseObject(resolved, name: name)
+        }
+
+        if schema["type"] == nil, schema["allOf"] != nil {
+            throw Error.unsupportedType("allOf")
+        }
+
         let type = schema["type"] as? String ?? "object"
         let description = schema["description"] as? String
 
