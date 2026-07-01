@@ -267,6 +267,21 @@ func runCLIArgumentsTests() {
         try assertEqual(args.systemPrompt, "Be brief")
     }
 
+    test("empty args with env vars honours all APFEL_* settings") {
+        let args = try CLIArguments.parse([], env: [
+            "APFEL_SYSTEM_PROMPT": "Be brief",
+            "APFEL_TEMPERATURE": "0.5",
+            "APFEL_MAX_TOKENS": "100",
+            "APFEL_DEBUG": "1",
+        ])
+        try assertEqual(args.systemPrompt, "Be brief")
+        try assertEqual(args.temperature, 0.5)
+        try assertEqual(args.maxTokens, 100)
+        try assertTrue(args.debug)
+        try assertEqual(args.mode, .single)
+        try assertEqual(args.prompt, "")
+    }
+
     // ========================================================================
     // MARK: - Output flags
     // ========================================================================
