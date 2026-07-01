@@ -230,8 +230,8 @@ public enum ToolCallHandler {
               !rawCalls.isEmpty else { return nil }
 
         var result: [ParsedToolCall] = []
-        for call in rawCalls {
-            guard let id = call["id"] as? String else { continue }
+        for (index, call) in rawCalls.enumerated() {
+            let id = call["id"] as? String ?? "call_synth_\(index)"
 
             let name: String
             let rawArguments: Any?

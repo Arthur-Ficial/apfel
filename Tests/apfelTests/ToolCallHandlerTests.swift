@@ -275,6 +275,50 @@ func runToolCallHandlerTests() {
         try assertEqual(parsed!["value"] as? String, "ls -l")
     }
 
+    // MARK: - Missing tool call ID synthesis (#244)
+
+    test("synthesizes id when tool call has no id field (#244)") {
+        let response = #"{"tool_calls": [{"type": "function", "function": {"name": "get_weather", "arguments": "{\"city\":\"Vienna\"}"}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.count, 1)
+        try assertEqual(result!.first?.name, "get_weather")
+        try assertTrue(!result!.first!.id.isEmpty, "synthesized id must be non-empty")
+        try assertTrue(result!.first!.id.hasPrefix("call_"), "synthesized id must start with call_")
+    }
+
+    test("synthesizes id when tool call id is non-string type (#244)") {
+        let response = #"{"tool_calls": [{"id": 42, "type": "function", "function": {"name": "search", "arguments": "{}"}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "search")
+        try assertTrue(result!.first!.id.hasPrefix("call_"))
+    }
+
+    test("preserves explicit id when present (#244)") {
+        let response = #"{"tool_calls": [{"id": "call_real", "type": "function", "function": {"name": "fn", "arguments": "{}"}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.id, "call_real")
+    }
+
+    test("synthesizes unique ids for multiple tool calls without ids (#244)") {
+        let response = #"{"tool_calls": [{"type": "function", "function": {"name": "fn1", "arguments": "{}"}}, {"type": "function", "function": {"name": "fn2", "arguments": "{}"}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.count, 2)
+        try assertTrue(result![0].id != result![1].id, "synthesized ids must be unique")
+    }
+
+    test("mixes real and synthesized ids (#244)") {
+        let response = #"{"tool_calls": [{"id": "call_real", "type": "function", "function": {"name": "fn1", "arguments": "{}"}}, {"type": "function", "function": {"name": "fn2", "arguments": "{}"}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.count, 2)
+        try assertEqual(result![0].id, "call_real")
+        try assertTrue(result![1].id.hasPrefix("call_"))
+    }
+
     // MARK: - Split prompt methods
 
     test("buildOutputFormatInstructions contains tool names") {
