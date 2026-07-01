@@ -53,8 +53,10 @@ final class MCPConnection: @unchecked Sendable {
 
         do {
             // Initialize handshake
+            let initId = allocId()
             let initResp = try sendAndReceive(
-                MCPProtocol.initializeRequest(id: allocId()),
+                MCPProtocol.initializeRequest(id: initId),
+                requestId: initId,
                 timeoutMilliseconds: timeoutMilliseconds,
                 operationDescription: "initialize"
             )
@@ -62,8 +64,10 @@ final class MCPConnection: @unchecked Sendable {
             send(MCPProtocol.initializedNotification())
 
             // Discover tools
+            let toolsId = allocId()
             let toolsResp = try sendAndReceive(
-                MCPProtocol.toolsListRequest(id: allocId()),
+                MCPProtocol.toolsListRequest(id: toolsId),
+                requestId: toolsId,
                 timeoutMilliseconds: timeoutMilliseconds,
                 operationDescription: "tools/list"
             )
@@ -79,8 +83,10 @@ final class MCPConnection: @unchecked Sendable {
     func callTool(name: String, arguments: String) throws -> String {
         let resp: String
         do {
+            let callId = allocId()
             resp = try sendAndReceive(
-                MCPProtocol.toolsCallRequest(id: allocId(), name: name, arguments: arguments),
+                MCPProtocol.toolsCallRequest(id: callId, name: name, arguments: arguments),
+                requestId: callId,
                 timeoutMilliseconds: timeoutMilliseconds,
                 operationDescription: "tool '\(name)'"
             )
@@ -122,14 +128,25 @@ final class MCPConnection: @unchecked Sendable {
 
     private func sendAndReceive(
         _ message: String,
+        requestId: Int,
         timeoutMilliseconds: Int,
         operationDescription: String
     ) throws -> String {
         send(message)
-        return try lineReader.readLine(
-            timeoutMilliseconds: timeoutMilliseconds,
-            operationDescription: operationDescription
-        )
+        let deadline = Date().addingTimeInterval(Double(timeoutMilliseconds) / 1000.0)
+        while true {
+            let remaining = Int(deadline.timeIntervalSinceNow * 1000.0)
+            if remaining <= 0 {
+                throw MCPError.timedOut("\(operationDescription.capitalized) timed out after \(timeoutMilliseconds / 1000)s")
+            }
+            let line = try lineReader.readLine(
+                timeoutMilliseconds: remaining,
+                operationDescription: operationDescription
+            )
+            if MCPProtocol.isResponse(line, forRequestId: requestId) {
+                return line
+            }
+        }
     }
 }
 

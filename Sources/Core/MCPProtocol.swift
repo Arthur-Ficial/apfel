@@ -129,6 +129,19 @@ public enum MCPProtocol {
         return ToolCallResult(text: text, isError: isError)
     }
 
+    // MARK: - ID correlation
+
+    /// Returns true if `json` is a JSON-RPC response whose `id` matches `requestId`.
+    /// Notifications (no `id`) and mismatched IDs return false.
+    public static func isResponse(_ json: String, forRequestId id: Int) -> Bool {
+        guard let data = json.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let responseId = obj["id"] as? Int else {
+            return false
+        }
+        return responseId == id
+    }
+
     // MARK: - Private helpers
 
     private static func jsonRPC(id: Int? = nil, method: String, params: [String: Any]? = nil) -> String {
