@@ -114,6 +114,7 @@ suite("DemoInstallerTests") { runDemoInstallerTests() }
 suite("FileFramingTests") { runFileFramingTests() }
 suite("RedTDDTests") { runRedTDDTests() }
 suite("AsyncSemaphoreTests") { runAsyncSemaphoreTests() }
+suite("ToolResultTruncatorTests") { runToolResultTruncatorTests() }
 
 // MARK: - Summary
 

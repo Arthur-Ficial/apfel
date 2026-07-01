@@ -365,7 +365,16 @@ func executeMCPToolCallsForCLI(
 
     var aggregatedLog = executed.toolLog
     let plainSession = makeSession(systemPrompt: systemPrompt)
-    var toolResult = executed.resultParts.joined(separator: "\n")
+
+    let templateText = "The user asked: \n\nThe tool returned: \n\nAnswer the user's question using this result."
+    let inputBudgetChars = await TokenCounter.shared.inputBudget() * 4
+    let promptOverheadChars = templateText.count + userPrompt.count
+    let toolResultBudget = max(1000, inputBudgetChars - promptOverheadChars)
+
+    var toolResult = ToolResultTruncator.truncate(
+        executed.resultParts.joined(separator: "\n"),
+        maxCharacters: toolResultBudget
+    )
     var finalContent = try await plainSession.respond(
         to: "The user asked: \(userPrompt)\n\nThe tool returned: \(toolResult)\n\nAnswer the user's question using this result.",
         options: options
@@ -383,7 +392,10 @@ func executeMCPToolCallsForCLI(
           let followUp = try await detectAndExecuteMCPTools(in: finalContent, mcpManager: mcpManager) {
         reprompts += 1
         aggregatedLog.append(contentsOf: followUp.toolLog)
-        toolResult = followUp.resultParts.joined(separator: "\n")
+        toolResult = ToolResultTruncator.truncate(
+            followUp.resultParts.joined(separator: "\n"),
+            maxCharacters: toolResultBudget
+        )
         finalContent = try await plainSession.respond(
             to: "The user asked: \(userPrompt)\n\nThe tool returned: \(toolResult)\n\nAnswer the user's question using this result.",
             options: options
@@ -450,10 +462,14 @@ func executeMCPToolCallsForServer(
         return nil
     }
 
+    let perResultBudget = await TokenCounter.shared.inputBudget() * 2
+    let truncatedToolResults = executed.toolLog.map {
+        ($0.name, ToolResultTruncator.truncate($0.result, maxCharacters: perResultBudget))
+    }
     let followUpMessages = appendExecutedToolResults(
         to: messages,
         toolCalls: executed.toolCalls,
-        toolResults: executed.toolLog.map { ($0.name, $0.result) }
+        toolResults: truncatedToolResults
     )
     let (followUpSession, followUpPrompt, _) = try await ContextManager.makeSession(
         messages: followUpMessages,
