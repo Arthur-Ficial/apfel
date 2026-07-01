@@ -190,11 +190,17 @@ extension CLIArguments {
     ///   - env: Environment variables. Env defaults are applied first, CLI
     ///     flags override them.
     ///   - readFile: Closure to read file contents by path. Defaults to
-    ///     `String(contentsOfFile:)`. Injectable for testing.
+    ///     `String(contentsOfFile:)`. Injectable for testing. Used by `--system-file`
+    ///     (which stays text-only).
+    ///   - extractFile: Closure that turns a `-f` file into prompt-ready text. Defaults to
+    ///     the same plain UTF-8 read as `readFile`; the executable injects a lesbar-backed
+    ///     extractor that also handles PDF and images (OCR + classification). Injectable so
+    ///     `parse` stays pure and framework-free.
     public static func parse(
         _ args: [String],
         env: [String: String] = [:],
-        readFile: (_ path: String) throws -> String = { try String(contentsOfFile: $0, encoding: .utf8) }
+        readFile: (_ path: String) throws -> String = { try String(contentsOfFile: $0, encoding: .utf8) },
+        extractFile: (_ path: String) throws -> String = { try String(contentsOfFile: $0, encoding: .utf8) }
     ) throws -> CLIArguments {
         var result = CLIArguments()
 
@@ -498,7 +504,7 @@ extension CLIArguments {
                 guard i < args.count else { throw CLIErrors.requires("--file", "a file path") }
                 let path = args[i]
                 do {
-                    let content = try readFile(path)
+                    let content = try extractFile(path)
                     result.fileContents.append(content)
                     result.fileAttachments.append(FileAttachment(path: path, content: content))
                 } catch let e as CLIParseError {
@@ -600,10 +606,8 @@ extension CLIArguments {
         }
         let ext = (path.lowercased() as NSString).pathExtension
         switch ext {
-        case "jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "tiff", "bmp", "svg", "ico":
-            return "cannot attach image: \(path) -- the on-device model is text-only (no vision). Try: tesseract \(path) stdout | apfel \"describe this\""
-        case "pdf", "zip", "tar", "gz", "dmg", "pkg", "exe", "bin", "dat", "mp3", "mp4", "mov", "avi", "wav":
-            return "cannot attach binary file: \(path) -- only text files are supported"
+        case "zip", "tar", "gz", "dmg", "pkg", "exe", "bin", "dat", "mp3", "mp4", "mov", "avi", "wav":
+            return "unsupported file: \(path) -- apfel -f reads text, PDF, and images (JPEG, PNG, HEIC, TIFF, ...)"
         default:
             return "file is not valid UTF-8 text: \(path) (binary file?)"
         }

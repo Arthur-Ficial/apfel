@@ -115,7 +115,7 @@ func runCLIArgumentsTests() {
     }
 
     test("-f retains path in fileAttachments") {
-        let args = try CLIArguments.parse(["-f", "README.md", "summarize"], readFile: { path in
+        let args = try CLIArguments.parse(["-f", "README.md", "summarize"], extractFile: { path in
             guard path == "README.md" else { throw CLIParseError("unexpected path") }
             return "# Title"
         })
@@ -834,10 +834,10 @@ func runCLIArgumentsTests() {
     // MARK: - File reader injection
     // ========================================================================
 
-    test("--file uses injected readFile closure") {
+    test("--file uses injected extractFile closure") {
         let args = try CLIArguments.parse(
             ["--file", "test.txt", "summarize"],
-            readFile: { path in
+            extractFile: { path in
                 try assertEqual(path, "test.txt")
                 return "file content here"
             }
@@ -871,7 +871,7 @@ func runCLIArgumentsTests() {
         var callCount = 0
         let args = try CLIArguments.parse(
             ["-f", "a.txt", "-f", "b.txt", "compare"],
-            readFile: { path in
+            extractFile: { path in
                 callCount += 1
                 return "content of \(path)"
             }

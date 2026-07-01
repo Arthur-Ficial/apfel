@@ -71,6 +71,13 @@ apfel -f README.md "Summarize this project"
 # Attach multiple files
 apfel -f old.swift -f new.swift "What changed between these two files?"
 
+# Attach a PDF or image - on-device text extraction, OCR, and "what the image is about"
+apfel -f report.pdf "Summarize the key findings"
+apfel -f receipt.jpg "What is the total?"
+
+# Pipe a file straight in (PDF, image, or text)
+cat report.pdf | apfel "Summarize this"
+
 # Combine files with piped input
 git diff HEAD~1 | apfel -f CONVENTIONS.md "Review this diff against our conventions"
 
@@ -351,6 +358,7 @@ Guides to use apfel from [Python](docs/guides/python.md), [Node.js](docs/guides/
 
 - [docs/install.md](docs/install.md) - install, troubleshooting, and Apple Intelligence setup
 - [docs/cli-reference.md](docs/cli-reference.md) - every flag, exit code, and environment variable
+- [docs/file-extraction.md](docs/file-extraction.md) - `-f` and piped PDF / image / text extraction (OCR + image understanding)
 - [docs/background-service.md](docs/background-service.md) - `brew services` and launchd usage
 - [docs/openai-api-compatibility.md](docs/openai-api-compatibility.md) - `/v1/*` support matrix in depth
 - [docs/server-security.md](docs/server-security.md) - origin checks, CORS, tokens, and `--footgun`

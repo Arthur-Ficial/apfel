@@ -109,6 +109,7 @@ suite("ApfelCorePublicAPIUsageTests") { runApfelCorePublicAPIUsageTests() }
 suite("InstallMethodTests") { runInstallMethodTests() }
 suite("SamplingDecisionTests") { runSamplingDecisionTests() }
 suite("DemoInstallerTests") { runDemoInstallerTests() }
+suite("FileFramingTests") { runFileFramingTests() }
 suite("RedTDDTests") { runRedTDDTests() }
 
 // MARK: - Summary

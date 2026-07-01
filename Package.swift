@@ -12,6 +12,10 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.0.0"),
         .package(url: "https://github.com/apple/swift-docc-plugin.git", from: "1.4.6"),
+        // lesbar: shared on-device file -> text (Vision OCR + PDFKit) + image
+        // classification. Owns the -f/pipe extraction stack so it is maintained once
+        // (also consumed by auge). Framework-bearing target used only by the executable.
+        .package(url: "https://github.com/Arthur-Ficial/lesbar.git", from: "0.3.0"),
     ],
     targets: [
         .systemLibrary(
@@ -38,6 +42,8 @@ let package = Package(
                 "ApfelCore",
                 "ApfelCLI",
                 "CReadline",
+                .product(name: "Lesbar", package: "lesbar"),
+                .product(name: "LesbarCore", package: "lesbar"),
             ],
             path: "Sources",
             exclude: ["Core", "CLI"],

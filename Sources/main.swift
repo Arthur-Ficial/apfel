@@ -49,6 +49,24 @@ func stdinIsPipe() -> Bool {
     return (st.st_mode & S_IFMT) == S_IFIFO
 }
 
+/// Read all of stdin as raw bytes — works for piped text and piped binary files alike.
+func readStdinData() -> Data {
+    (try? FileHandle.standardInput.readToEnd()) ?? Data()
+}
+
+/// Turn piped stdin into prompt text: a piped PDF or image is extracted via lesbar
+/// (OCR + "what the image is about", same as `-f`); anything else is decoded as UTF-8
+/// text — apfel's existing pipe behaviour. Empty stdin returns "".
+/// Throws `CLIParseError` when the bytes are a PDF/image but extraction fails.
+func stdinPromptText(_ data: Data) throws -> String {
+    if data.isEmpty { return "" }
+    if let extracted = try LesbarFileReader.extractPipedIfBinary(data) {
+        return extracted
+    }
+    return (String(data: data, encoding: .utf8) ?? "")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
 // MARK: - Argument Parsing
 
 let rawArgs = Array(CommandLine.arguments.dropFirst())
@@ -58,11 +76,13 @@ let rawArgs = Array(CommandLine.arguments.dropFirst())
 // before any parsing happens.
 if rawArgs.isEmpty {
     if isatty(STDIN_FILENO) == 0 {
-        var lines: [String] = []
-        while let line = readLine(strippingNewline: false) {
-            lines.append(line)
+        let input: String
+        do {
+            input = try stdinPromptText(readStdinData())
+        } catch let error as CLIParseError {
+            printError(error.message)
+            exit(exitUsageError)
         }
-        let input = lines.joined().trimmingCharacters(in: .whitespacesAndNewlines)
         if !input.isEmpty {
             do {
                 try await singlePrompt(input, systemPrompt: nil, stream: true)
@@ -84,7 +104,11 @@ if rawArgs.isEmpty {
 // Pure, testable parsing. Errors land here as CLIParseError.
 let parsed: CLIArguments
 do {
-    parsed = try CLIArguments.parse(rawArgs, env: ProcessInfo.processInfo.environment)
+    parsed = try CLIArguments.parse(
+        rawArgs,
+        env: ProcessInfo.processInfo.environment,
+        extractFile: { try LesbarFileReader.extractForPrompt(path: $0) }
+    )
 } catch let error as CLIParseError {
     printError(error.message)
     exit(exitUsageError)
@@ -120,11 +144,13 @@ var pipedContent: String? = nil
 
 // Read stdin when piped (single/stream/count-tokens) -- as the prompt (no args) or prepended to the prompt.
 if parsed.mode.acceptsStdinInput && isatty(STDIN_FILENO) == 0 {
-    var lines: [String] = []
-    while let line = readLine(strippingNewline: false) {
-        lines.append(line)
+    let stdinContent: String
+    do {
+        stdinContent = try stdinPromptText(readStdinData())
+    } catch let error as CLIParseError {
+        printError(error.message)
+        exit(exitUsageError)
     }
-    let stdinContent = lines.joined().trimmingCharacters(in: .whitespacesAndNewlines)
     if !stdinContent.isEmpty {
         pipedContent = stdinContent
         if prompt.isEmpty && fileContents.isEmpty {

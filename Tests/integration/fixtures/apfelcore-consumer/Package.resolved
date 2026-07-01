@@ -20,6 +20,15 @@
       }
     },
     {
+      "identity" : "lesbar",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Arthur-Ficial/lesbar.git",
+      "state" : {
+        "revision" : "e19a0384bc3dba94541508d0e8337fa8b4ffa2e5",
+        "version" : "0.3.0"
+      }
+    },
+    {
       "identity" : "swift-algorithms",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-algorithms.git",
