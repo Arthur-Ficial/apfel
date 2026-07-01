@@ -39,8 +39,12 @@ public enum MCPProtocol {
     ///   - id: The JSON-RPC request identifier.
     ///   - name: The tool name to invoke.
     ///   - arguments: JSON text describing the tool-call arguments.
-    public static func toolsCallRequest(id: Int, name: String, arguments: String) -> String {
-        let argsObj = (try? JSONSerialization.jsonObject(with: Data(arguments.utf8))) ?? [:]
+    public static func toolsCallRequest(id: Int, name: String, arguments: String) throws -> String {
+        guard let argsObj = try? JSONSerialization.jsonObject(with: Data(arguments.utf8)) else {
+            throw MCPError.invalidResponse(
+                "Invalid JSON in tool-call arguments for '\(name)': \(String(arguments.prefix(200)))"
+            )
+        }
         return jsonRPC(id: id, method: "tools/call", params: [
             "name": name,
             "arguments": argsObj

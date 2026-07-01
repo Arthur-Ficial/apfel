@@ -90,7 +90,7 @@ func runApfelCorePublicAPIUsageTests() {
         let _: String = MCPProtocol.initializeRequest(id: 1)
         let _: String = MCPProtocol.initializedNotification()
         let _: String = MCPProtocol.toolsListRequest(id: 2)
-        let _: String = MCPProtocol.toolsCallRequest(id: 3, name: "f", arguments: "{}")
+        let _: String = try MCPProtocol.toolsCallRequest(id: 3, name: "f", arguments: "{}")
 
         let info = try MCPProtocol.parseInitializeResponse(
             #"{"result":{"serverInfo":{"name":"s","version":"1"}}}"#

@@ -28,7 +28,7 @@ func runMCPClientTests() {
     }
 
     test("formatToolsCall produces valid JSON-RPC") {
-        let msg = MCPProtocol.toolsCallRequest(id: 3, name: "multiply", arguments: "{\"a\":247,\"b\":83}")
+        let msg = try MCPProtocol.toolsCallRequest(id: 3, name: "multiply", arguments: "{\"a\":247,\"b\":83}")
         let data = msg.data(using: .utf8)!
         let obj = try JSONSerialization.jsonObject(with: data) as! [String: Any]
         try assertEqual(obj["method"] as! String, "tools/call")
@@ -38,17 +38,35 @@ func runMCPClientTests() {
         try assertEqual(args["a"] as! Int, 247)
     }
 
-    test("formatToolsCall falls back to empty object when arguments are invalid JSON") {
-        let msg = MCPProtocol.toolsCallRequest(id: 3, name: "multiply", arguments: "{not json}")
-        let data = msg.data(using: .utf8)!
-        let obj = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        let params = obj["params"] as! [String: Any]
-        let args = params["arguments"] as! [String: Any]
-        try assertEqual(args.count, 0)
+    test("toolsCallRequest throws on malformed JSON arguments") {
+        do {
+            _ = try MCPProtocol.toolsCallRequest(id: 3, name: "multiply", arguments: "{not json}")
+            try assertTrue(false, "should have thrown")
+        } catch let e as MCPError {
+            if case .invalidResponse(let msg) = e {
+                try assertTrue(msg.contains("Invalid JSON"), "error should mention invalid JSON")
+                try assertTrue(msg.contains("multiply"), "error should include the tool name")
+            } else {
+                try assertTrue(false, "expected .invalidResponse, got \(e)")
+            }
+        }
+    }
+
+    test("toolsCallRequest throws on truncated JSON arguments") {
+        do {
+            _ = try MCPProtocol.toolsCallRequest(id: 3, name: "calc", arguments: "{\"lat\": 48.2, \"lon\":")
+            try assertTrue(false, "should have thrown")
+        } catch let e as MCPError {
+            if case .invalidResponse(let msg) = e {
+                try assertTrue(msg.contains("Invalid JSON"), "error should mention invalid JSON")
+            } else {
+                try assertTrue(false, "expected .invalidResponse, got \(e)")
+            }
+        }
     }
 
     test("formatToolsCall preserves JSON array arguments") {
-        let msg = MCPProtocol.toolsCallRequest(id: 3, name: "sum", arguments: "[1,2,3]")
+        let msg = try MCPProtocol.toolsCallRequest(id: 3, name: "sum", arguments: "[1,2,3]")
         let data = msg.data(using: .utf8)!
         let obj = try JSONSerialization.jsonObject(with: data) as! [String: Any]
         let params = obj["params"] as! [String: Any]
