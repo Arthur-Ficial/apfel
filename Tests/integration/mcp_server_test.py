@@ -332,8 +332,8 @@ def test_client_tools_not_auto_executed():
         f"Expected 'tool_calls' for client tools but got '{data['choices'][0]['finish_reason']}'"
 
 
-def test_mcp_tool_error_returns_structured_error():
-    """MCP tool failures must be surfaced honestly, not rewritten by the model."""
+def test_mcp_tool_error_fed_back_to_model():
+    """MCP isError results are fed back to the model, not thrown as HTTP 500 (#220)."""
     resp = httpx.post(f"{API_URL}/chat/completions", json={
         "model": MODEL,
         "messages": [
@@ -341,12 +341,11 @@ def test_mcp_tool_error_returns_structured_error():
         ],
         "seed": 42,
     }, timeout=TIMEOUT)
-    assert resp.status_code == 500
+    assert resp.status_code == 200, f"Expected 200 (error fed to model), got {resp.status_code}: {resp.text}"
     data = resp.json()
-    assert data["error"]["type"] == "server_error"
-    message = data["error"]["message"].lower()
-    assert "divide" in message
-    assert "division by zero" in message
+    content = data["choices"][0]["message"]["content"].lower()
+    assert any(w in content for w in ["error", "zero", "undefined", "cannot", "divide", "impossible"]), \
+        f"Expected model to acknowledge the tool error, got: {content}"
 
 
 def test_mcp_tool_timeout_returns_structured_error():

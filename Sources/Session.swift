@@ -337,10 +337,15 @@ func detectAndExecuteMCPTools(
             resultParts.append("\(call.name): \(result)")
             toolLog.append((name: call.name, args: call.argumentsString, result: result, isError: false))
         } catch {
-            if case .toolNotFound = error as? MCPError {
-                let msg = "\(error)"
-                resultParts.append("\(call.name): error - \(msg)")
-                toolLog.append((name: call.name, args: call.argumentsString, result: msg, isError: true))
+            if let mcpErr = error as? MCPError {
+                switch mcpErr {
+                case .toolNotFound, .serverError:
+                    let msg = "\(error)"
+                    resultParts.append("\(call.name): error - \(msg)")
+                    toolLog.append((name: call.name, args: call.argumentsString, result: msg, isError: true))
+                default:
+                    throw error
+                }
             } else {
                 throw error
             }

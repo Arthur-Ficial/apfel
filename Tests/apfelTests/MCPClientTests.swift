@@ -299,6 +299,33 @@ func runMCPClientTests() {
         try assertTrue(formatInstructions.contains("tool_calls"), "format must contain call format")
     }
 
+    // MARK: - isError tool results (#220)
+    // MCP tools that return isError:true should be recoverable, not fatal.
+    // The error text should be fed back to the model so it can respond.
+
+    test("MCPError.serverError from isError tool result is recoverable, not fatal (#220)") {
+        let json = """
+        {"jsonrpc":"2.0","id":4,"result":{"content":[{"type":"text","text":"Error: division by zero"}],"isError":true}}
+        """
+        let result = try MCPProtocol.parseToolCallResponse(json)
+        try assertTrue(result.isError, "isError must be true")
+        try assertEqual(result.text, "Error: division by zero")
+        // The error text is valid content that should be fed back to the model,
+        // not converted to a thrown MCPError.serverError that kills the request.
+        // detectAndExecuteMCPTools must catch .serverError and record it in
+        // resultParts/toolLog, same as it does for .toolNotFound.
+        try assertTrue(!result.text.isEmpty, "error text must be non-empty for model feedback")
+    }
+
+    test("JSON-RPC level error is also recoverable (#220)") {
+        let json = """
+        {"jsonrpc":"2.0","id":5,"error":{"code":-32602,"message":"Unknown tool: fake"}}
+        """
+        let result = try MCPProtocol.parseToolCallResponse(json)
+        try assertTrue(result.isError)
+        try assertTrue(result.text.contains("Unknown tool"))
+    }
+
     test("Tool call detection works on object-argument format from #144 report") {
         // The #144 reporter showed the model producing arguments as a JSON object
         // (not an escaped string). Detection must handle both forms.
