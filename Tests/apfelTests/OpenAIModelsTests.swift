@@ -225,6 +225,33 @@ func runChatRequestValidatorTests() {
         try assertNil(ChatRequestValidator.validate(request))
     }
 
+    test("validator rejects negative seed") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"seed":-1}"#
+        )
+        try assertEqual(
+            ChatRequestValidator.validate(request),
+            .invalidParameterValue("'seed' must be a non-negative integer, got -1")
+        )
+    }
+
+    test("validator accepts non-negative seed") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"seed":42}"#
+        )
+        try assertNil(ChatRequestValidator.validate(request))
+    }
+
+    test("validator accepts seed of zero") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"seed":0}"#
+        )
+        try assertNil(ChatRequestValidator.validate(request))
+    }
+
     test("validator rejects x_context_max_turns <= 0") {
         let request = try decode(
             ChatCompletionRequest.self,
@@ -325,6 +352,28 @@ func runChatRequestValidatorTests() {
         try assertEqual(
             ChatRequestValidator.validate(request),
             .invalidParameterValue("'max_tokens' must be a positive integer, got 0")
+        )
+    }
+
+    test("validator reports temperature before negative seed") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"temperature":-1,"seed":-1}"#
+        )
+        try assertEqual(
+            ChatRequestValidator.validate(request),
+            .invalidParameterValue("'temperature' must be non-negative, got -1.0")
+        )
+    }
+
+    test("validator reports negative seed before invalid context knobs") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"seed":-1,"x_context_max_turns":0,"x_context_output_reserve":0}"#
+        )
+        try assertEqual(
+            ChatRequestValidator.validate(request),
+            .invalidParameterValue("'seed' must be a non-negative integer, got -1")
         )
     }
 
