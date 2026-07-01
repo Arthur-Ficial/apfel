@@ -98,11 +98,15 @@ final class MCPConnection: @unchecked Sendable {
     }
 
     func shutdown() {
-        process.terminate()
+        if process.isRunning {
+            process.terminate()
+        }
+        process.waitUntilExit()
     }
 
     deinit {
         if process.isRunning { process.terminate() }
+        process.waitUntilExit()
     }
 
     // MARK: - Private
@@ -341,7 +345,21 @@ actor MCPManager {
         guard let conn = toolMap[name] else {
             throw MCPError.toolNotFound("No MCP server provides tool '\(name)'")
         }
-        return try await conn.callTool(name: name, arguments: arguments)
+        do {
+            return try await conn.callTool(name: name, arguments: arguments)
+        } catch {
+            if case .timedOut = error as? MCPError {
+                removeDeadConnection(conn)
+            }
+            throw error
+        }
+    }
+
+    private func removeDeadConnection(_ conn: AnyMCPConnection) {
+        for tool in conn.tools {
+            toolMap.removeValue(forKey: tool.function.name)
+        }
+        connections.removeAll { $0.identifier == conn.identifier }
     }
 
     func shutdown() {
