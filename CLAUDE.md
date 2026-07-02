@@ -108,7 +108,7 @@ make preflight                 # full release qualification (unit + integration 
 
 **Version is in `.version` file** (single source of truth). Local builds (`make build`, `make install`) do NOT change the version. Only the release workflow (`make release`) bumps versions. This ensures patch versions mean "published compatible fix", not "someone ran a build". **Never manually edit `.version`, `BuildInfo.swift`, or the README badge** - these are updated atomically by the release workflow.
 
-Regenerate `docs/EXAMPLES.md` (runs 53 prompts against the installed binary, captures real unedited output):
+Regenerate `docs/EXAMPLES.md` (runs the example prompt suite against the installed binary, captures real unedited output):
 ```bash
 bash scripts/generate-examples.sh          # ~2 minutes, overwrites docs/EXAMPLES.md
 ```
