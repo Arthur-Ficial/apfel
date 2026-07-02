@@ -117,11 +117,30 @@ def get_nums(args):
     return nums
 
 
+def to_num(v):
+    """Coerce a value to a number. The on-device model routinely emits string
+    arguments; without coercion, add("999","1") string-concatenates to "9991"."""
+    if isinstance(v, (int, float)):
+        return v
+    if isinstance(v, str):
+        try:
+            return float(v) if "." in v else int(v)
+        except ValueError:
+            pass
+    raise TypeError(f"not a number: {v!r}")
+
+
 def execute(name, args):
     """Execute a tool by name. Tolerates improvised argument keys."""
     nums = get_nums(args)
     a = args.get("a", nums[0] if nums else 0)
     b = args.get("b", nums[1] if len(nums) > 1 else 0)
+
+    try:
+        a = to_num(a)
+        b = to_num(b)
+    except TypeError as e:
+        return f"Error: {e}"
 
     try:
         if name == "add":

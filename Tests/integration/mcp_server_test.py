@@ -980,3 +980,72 @@ def test_temperature_zero_with_mcp():
     assert data["choices"][0]["finish_reason"] == "stop"
     content = data["choices"][0]["message"]["content"]
     assert content is not None
+
+
+# ============================================================================
+# Calculator execute() direct tests - model-free (#322)
+#
+# The on-device model routinely emits string arguments (e.g. {"a":"999","b":"1"}).
+# Before #322, add() string-concatenated instead of adding: 999+1 = "9991".
+# These tests import the calculator module directly - no server, no model needed.
+# ============================================================================
+
+def _load_calculator():
+    """Import the calculator server module for direct testing."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "calculator_server", str(ROOT / "mcp" / "calculator" / "server.py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_calculator_add_string_args_coerced():
+    """String arguments to add() must be coerced to numbers, not concatenated (#322)."""
+    mod = _load_calculator()
+    result = mod.execute("add", {"a": "999", "b": "1"})
+    assert result == "1000", f"String args concatenated instead of added: {result}"
+
+
+def test_calculator_add_numeric_args_unchanged():
+    """Numeric arguments to add() still work correctly after coercion fix."""
+    mod = _load_calculator()
+    assert mod.execute("add", {"a": 999, "b": 1}) == "1000"
+
+
+def test_calculator_multiply_string_args_coerced():
+    """String arguments to multiply() must be coerced to numbers (#322)."""
+    mod = _load_calculator()
+    result = mod.execute("multiply", {"a": "247", "b": "83"})
+    assert result == "20501", f"String multiply failed: {result}"
+
+
+def test_calculator_string_float_args_coerced():
+    """String float arguments are coerced correctly."""
+    mod = _load_calculator()
+    assert mod.execute("add", {"a": "1.5", "b": "2.5"}) == "4"
+
+
+def test_calculator_non_numeric_string_returns_error():
+    """Non-numeric string args return an error, not a crash (#322)."""
+    mod = _load_calculator()
+    result = mod.execute("add", {"a": "abc", "b": "1"})
+    assert result.startswith("Error:"), f"Expected error for non-numeric args, got: {result}"
+
+
+def test_calculator_all_tools_coerce_string_args():
+    """All seven calculator tools coerce string arguments to numbers (#322)."""
+    mod = _load_calculator()
+    cases = [
+        ("add", {"a": "10", "b": "3"}, "13"),
+        ("subtract", {"a": "10", "b": "3"}, "7"),
+        ("multiply", {"a": "10", "b": "3"}, "30"),
+        ("divide", {"a": "10", "b": "4"}, "2.5"),
+        ("sqrt", {"a": "144"}, "12"),
+        ("power", {"a": "2", "b": "10"}, "1024"),
+        ("round_number", {"a": "3.14159", "decimals": "2"}, "3.14"),
+    ]
+    for tool, args, expected in cases:
+        result = mod.execute(tool, args)
+        assert result == expected, f"{tool}({args}) = {result}, expected {expected}"
