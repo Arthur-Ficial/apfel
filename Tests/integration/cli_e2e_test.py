@@ -304,6 +304,14 @@ def test_help_exit_success():
     assert "USAGE:" in result.stdout
 
 
+def test_usage_error_writes_usage_to_stderr_not_stdout():
+    """Usage text on error exits (exit 2) must go to stderr, not stdout (#250)."""
+    result = run_cli([], input_text="", timeout=10)
+    assert result.returncode == 2
+    assert "USAGE:" not in result.stdout, "usage text must not pollute stdout on error exits"
+    assert "USAGE:" in result.stderr
+
+
 def test_version_exit_success():
     result = run_cli(["--version"])
     assert result.returncode == 0
