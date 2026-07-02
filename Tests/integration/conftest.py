@@ -9,6 +9,45 @@ import httpx
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
+
+
+def is_guardrail_refusal(text):
+    """Detect the on-device model's in-band guardrail refusals.
+
+    Handles ASCII and curly apostrophes (U+2019), leading whitespace,
+    and common phrasings: "I'm sorry", "I can't", "Sorry, ...",
+    "I cannot provide ...", "violates ... guidelines", etc.
+    """
+    lowered = text.strip().lower().replace("’", "'")
+    if not lowered:
+        return False
+    starts = ("i'm sorry", "sorry,", "sorry ", "i apologize", "i cannot", "i can't")
+    if any(lowered.startswith(s) for s in starts):
+        return True
+    has_sorry = "sorry" in lowered
+    has_cannot = "cannot" in lowered or "can't" in lowered
+    has_violates = "violates" in lowered or "guidelines" in lowered
+    return (has_sorry and has_cannot) or (has_sorry and has_violates)
+
+
+def post_with_seed_rotation(url, json_body, seeds=(42, 7, 123, 99), timeout=60):
+    """POST with automatic seed rotation on guardrail refusals.
+
+    Returns the response JSON for the first non-refused seed.
+    Fails with pytest.fail if every seed is refused.
+    """
+    last_content = ""
+    for seed in seeds:
+        body = {**json_body, "seed": seed}
+        resp = httpx.post(url, json=body, timeout=timeout)
+        data = resp.json()
+        content = (data.get("choices") or [{}])[0].get("message", {}).get("content") or ""
+        if not is_guardrail_refusal(content):
+            return data
+        last_content = content
+    pytest.fail(f"model guardrail-refused every seed; last: {last_content}")
+
+
 BINARY = ROOT / ".build" / "release" / "apfel"
 MCP_SERVER = ROOT / "mcp" / "calculator" / "server.py"
 OPENAI_SPEC = pathlib.Path(__file__).parent / "openai_spec" / "openapi.yaml"
