@@ -231,7 +231,7 @@ public enum ToolCallHandler {
 
         var result: [ParsedToolCall] = []
         for call in rawCalls {
-            guard let id = call["id"] as? String else { continue }
+            let id = (call["id"] as? String) ?? "call_\(UUID().uuidString.prefix(8))"
 
             let name: String
             let rawArguments: Any?
