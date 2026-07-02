@@ -76,3 +76,22 @@ def test_benchmark_reports_real_speedups():
         "response_encode",
     ]:
         assert benchmarks[name]["current_avg_ms"] >= 0
+
+
+def test_benchmark_environment_token_counter_reflects_tokenizer():
+    """token_counter_available must reflect tokenizer API availability, not
+    model generation availability (#328, #325). On macOS < 26.4 with Apple
+    Intelligence enabled, the model can generate but the tokenizer API does
+    not exist - the field must be false in that case."""
+    result = subprocess.run(
+        [str(BINARY), "--benchmark", "-o", "json"],
+        text=True,
+        capture_output=True,
+        timeout=180,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    env = payload["environment"]
+    assert isinstance(env["token_counter_available"], bool)
+    assert env["context_window"] > 0
