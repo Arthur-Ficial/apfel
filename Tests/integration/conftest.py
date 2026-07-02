@@ -109,3 +109,21 @@ def guard_server_11435():
     except subprocess.TimeoutExpired:
         proc.kill()
         proc.wait()
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Fail the run when tests were skipped and APFEL_REQUIRE_FULL=1."""
+    if os.environ.get("APFEL_REQUIRE_FULL") != "1":
+        return
+    reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+    if reporter is None:
+        return
+    skipped = len(reporter.stats.get("skipped", []))
+    if skipped > 0:
+        session.exitstatus = 1
+        reporter.write_line(
+            f"\nFATAL: {skipped} test(s) skipped with APFEL_REQUIRE_FULL=1. "
+            "Skips are not allowed during release qualification.",
+            red=True,
+            bold=True,
+        )
