@@ -163,6 +163,38 @@ func runToolCallHandlerTests() {
         try assertEqual(result!.first?.name, "add")
     }
 
+    // MARK: - Missing id field (#244)
+
+    test("synthesizes id when tool call omits id field (#244)") {
+        let response = #"{"tool_calls": [{"type": "function", "function": {"name": "get_weather", "arguments": "{\"city\":\"Vienna\"}"}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.count, 1)
+        try assertEqual(result!.first?.name, "get_weather")
+        try assertTrue(result!.first!.id.hasPrefix("call_"), "synthesized id must start with call_")
+        try assertEqual(result!.first?.argumentsString, #"{"city":"Vienna"}"#)
+    }
+
+    test("synthesizes id for multiple tool calls without ids (#244)") {
+        let response = #"{"tool_calls": [{"type": "function", "function": {"name": "fn1", "arguments": "{}"}}, {"type": "function", "function": {"name": "fn2", "arguments": "{}"}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.count, 2)
+        try assertEqual(result!.first?.name, "fn1")
+        try assertEqual(result!.last?.name, "fn2")
+        try assertTrue(result![0].id != result![1].id, "each synthesized id must be unique")
+    }
+
+    test("synthesizes id for mixed calls - some with id, some without (#244)") {
+        let response = #"{"tool_calls": [{"id": "call_real", "type": "function", "function": {"name": "fn1", "arguments": "{}"}}, {"type": "function", "function": {"name": "fn2", "arguments": "{}"}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.count, 2)
+        try assertEqual(result![0].id, "call_real")
+        try assertTrue(result![1].id.hasPrefix("call_"), "missing id must be synthesized")
+        try assertTrue(result![1].id != "call_real", "synthesized id must differ from existing")
+    }
+
     // MARK: - JSON escaping in buildFallbackPrompt
 
     test("buildFallbackPrompt escapes special characters in descriptions") {
