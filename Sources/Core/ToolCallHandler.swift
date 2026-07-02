@@ -86,7 +86,7 @@ public enum ToolCallHandler {
                 return calls
             }
         }
-        return nil
+        return salvageUnparseableToolCall(from: response)
     }
 
     // MARK: - Private Helpers
@@ -280,5 +280,67 @@ public enum ToolCallHandler {
             return nil
         }
         return string.replacingOccurrences(of: "\\/", with: "/")
+    }
+
+    // MARK: - Unparseable Tool Call Salvage (#358)
+
+    /// Last-resort extraction when text contains `{"tool_calls"` but no
+    /// candidate parsed as valid JSON. Extracts the function name via regex
+    /// so the downstream invalidArguments recovery (#241) can feed an error
+    /// back to the model instead of leaking raw JSON to the client.
+    private static func salvageUnparseableToolCall(from text: String) -> [ParsedToolCall]? {
+        guard text.contains("{\"tool_calls\"") else { return nil }
+
+        let namePattern = #""name"\s*:\s*"([A-Za-z_][A-Za-z0-9_]*)""#
+        guard let regex = try? NSRegularExpression(pattern: namePattern),
+              let match = regex.firstMatch(
+                  in: text, range: NSRange(text.startIndex..., in: text)),
+              let range = Range(match.range(at: 1), in: text) else {
+            return nil
+        }
+        let name = String(text[range])
+        let id = "call_\(UUID().uuidString.prefix(8))"
+        return [ParsedToolCall(
+            id: id, name: name,
+            argumentsString: "<malformed tool-call arguments>"
+        )]
+    }
+
+    // MARK: - Output Backstop (#358)
+
+    /// Strip `{"tool_calls" ...}` from text so raw protocol JSON never
+    /// reaches the client as message content. Uses the same string-aware
+    /// balanced-brace scan as `extractCandidates`. If no balanced block
+    /// is found, drops everything from `{"tool_calls"` onward.
+    public static func stripToolCallAttempt(from text: String) -> String {
+        guard let range = text.range(of: "{\"tool_calls\"") else {
+            return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        var depth = 0
+        var inString = false
+        var escaped = false
+        var idx = range.lowerBound
+        while idx < text.endIndex {
+            let ch = text[idx]
+            if inString {
+                if escaped { escaped = false }
+                else if ch == "\\" { escaped = true }
+                else if ch == "\"" { inString = false }
+            } else if ch == "\"" {
+                inString = true
+            } else if ch == "{" {
+                depth += 1
+            } else if ch == "}" {
+                depth -= 1
+                if depth == 0 {
+                    let before = String(text[text.startIndex..<range.lowerBound])
+                    let after = String(text[text.index(after: idx)...])
+                    return (before + after).trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            }
+            idx = text.index(after: idx)
+        }
+        return String(text[text.startIndex..<range.lowerBound])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

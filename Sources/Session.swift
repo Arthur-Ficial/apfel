@@ -428,50 +428,20 @@ func executeMCPToolCallsForCLI(
         ).content
     }
 
-    // Cap exhausted but the model is still emitting a tool call: strip the raw
-    // JSON so it never reaches the user as text.
-    if ToolCallHandler.detectToolCall(in: finalContent) != nil {
-        finalContent = stripToolCallJSON(from: finalContent)
+    // Cap exhausted or salvage-only parse: strip any remaining tool-call
+    // JSON so it never reaches the user as text (#240, #358).
+    if finalContent.contains("{\"tool_calls\"") {
+        finalContent = ToolCallHandler.stripToolCallAttempt(from: finalContent)
     }
 
     return (content: finalContent, toolLog: aggregatedLog)
 }
 
 /// Remove a trailing `{"tool_calls": ...}` JSON block from model output so it
-/// never leaks to the user as raw protocol text. Mirrors the string-aware
-/// balanced-brace scan in `ToolCallHandler.extractCandidates`. If no balanced
-/// block is found, the original text (trimmed) is returned unchanged.
+/// never leaks to the user as raw protocol text. Delegates to the canonical
+/// implementation in `ToolCallHandler.stripToolCallAttempt`.
 func stripToolCallJSON(from text: String) -> String {
-    guard let range = text.range(of: "{\"tool_calls\"") else {
-        return text.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-    var depth = 0
-    var inString = false
-    var escaped = false
-    var idx = range.lowerBound
-    while idx < text.endIndex {
-        let ch = text[idx]
-        if inString {
-            if escaped { escaped = false }
-            else if ch == "\\" { escaped = true }
-            else if ch == "\"" { inString = false }
-        } else if ch == "\"" {
-            inString = true
-        } else if ch == "{" {
-            depth += 1
-        } else if ch == "}" {
-            depth -= 1
-            if depth == 0 {
-                let before = String(text[text.startIndex..<range.lowerBound])
-                let after = String(text[text.index(after: idx)...])
-                return (before + after).trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-        }
-        idx = text.index(after: idx)
-    }
-    // No balanced close — drop everything from the marker onward.
-    return String(text[text.startIndex..<range.lowerBound])
-        .trimmingCharacters(in: .whitespacesAndNewlines)
+    ToolCallHandler.stripToolCallAttempt(from: text)
 }
 
 /// Token-budget each executed tool result for a server follow-up, given the
@@ -555,10 +525,10 @@ func executeMCPToolCallsForServer(
         currentExecuted = next
     }
 
-    // Cap exhausted but the model is still emitting a tool call: strip the raw
-    // JSON so it never reaches the client as content with finish_reason stop.
-    if ToolCallHandler.detectToolCall(in: finalContent) != nil {
-        finalContent = stripToolCallJSON(from: finalContent)
+    // Cap exhausted or salvage-only parse: strip any remaining tool-call
+    // JSON so it never reaches the client as content (#240, #358).
+    if finalContent.contains("{\"tool_calls\"") {
+        finalContent = ToolCallHandler.stripToolCallAttempt(from: finalContent)
     }
 
     return (content: finalContent, toolLog: aggregatedLog)

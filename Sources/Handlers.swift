@@ -332,7 +332,8 @@ private func mcpAutoExecuteResponse(
         )
     }
 
-    let deliveredContent = jsonMode ? JSONFenceStripper.strip(content) : content
+    let cleaned = jsonMode ? JSONFenceStripper.strip(content) : content
+    let deliveredContent = ToolCallHandler.stripToolCallAttempt(from: cleaned)
     let completionTokens = await TokenCounter.shared.count(deliveredContent)
     let finishReason = "stop"
 
@@ -453,7 +454,8 @@ private func nonStreamingResponse(
         responseMessage = OpenAIMessage(role: "assistant", content: nil, tool_calls: openAIToolCalls)
         deliveredContent = rawContent
     } else {
-        deliveredContent = jsonMode ? JSONFenceStripper.strip(rawContent) : rawContent
+        let cleaned = jsonMode ? JSONFenceStripper.strip(rawContent) : rawContent
+        deliveredContent = ToolCallHandler.stripToolCallAttempt(from: cleaned)
         responseMessage = OpenAIMessage(role: "assistant", content: .text(deliveredContent))
     }
 
@@ -592,9 +594,10 @@ private func streamingResponse(
                 // by the tool_calls branch below).
                 let deliveredContent: String
                 if toolCalls == nil, jsonMode || emittedContentCount < prev.count {
-                    deliveredContent = jsonMode
+                    let raw = jsonMode
                         ? JSONFenceStripper.strip(prev)
                         : String(prev[prev.index(prev.startIndex, offsetBy: emittedContentCount)...])
+                    deliveredContent = ToolCallHandler.stripToolCallAttempt(from: raw)
                     if !deliveredContent.isEmpty {
                         let contentLine = sseDataLine(sseContentChunk(id: id, created: created, content: deliveredContent, includeUsage: includeUsage))
                         responseLines?.append(contentLine.trimmingCharacters(in: .whitespacesAndNewlines))

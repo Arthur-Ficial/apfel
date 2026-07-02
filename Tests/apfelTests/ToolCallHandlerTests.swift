@@ -402,4 +402,60 @@ func runToolCallHandlerTests() {
         let result = ProcessPromptResult(content: "", toolLog: [])
         try assertTrue(result.content.isEmpty)
     }
+
+    // MARK: - Unparseable tool-call salvage (#358)
+
+    test("salvages function name from unparseable tool-call JSON (#358)") {
+        // The exact malformed output from the issue: unescaped nested quotes
+        // make JSONSerialization fail on every candidate, but the function name
+        // is still extractable.
+        let response = #"{"tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "add", "arguments": {"": "{"name": "100", "arguments": {"": "200"}}}}}}}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.count, 1)
+        try assertEqual(result!.first?.name, "add")
+        try assertTrue(result!.first!.id.hasPrefix("call_"), "salvaged call must have a synthesized id")
+    }
+
+    test("salvage returns nil when no tool_calls marker present") {
+        let response = "Just some normal text with no tool calls at all."
+        try assertNil(ToolCallHandler.detectToolCall(in: response))
+    }
+
+    test("salvage returns nil when tool_calls present but no function name extractable") {
+        let response = #"{"tool_calls": [{"completely": "garbled", "no": "name field"}]}"#
+        // Valid JSON, no tool call structure. parseToolCallJSON returns nil
+        // (no function key), salvage fires but also returns nil because the
+        // regex finds no "name": "..." pattern.
+        try assertNil(ToolCallHandler.detectToolCall(in: response))
+    }
+
+    test("salvage extracts name from deeply malformed JSON with preamble (#358)") {
+        let response = "Let me calculate that.\n{\"tool_calls\": [{\"function\": {\"name\": \"multiply\", \"arguments\": BROKEN}}}}"
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "multiply")
+    }
+
+    // MARK: - stripToolCallAttempt (#358 backstop)
+
+    test("stripToolCallAttempt removes balanced tool-call JSON") {
+        let text = "Here is the answer.\n{\"tool_calls\": [{\"id\": \"c1\", \"function\": {\"name\": \"add\"}}]}\nDone."
+        let stripped = ToolCallHandler.stripToolCallAttempt(from: text)
+        try assertTrue(!stripped.contains("tool_calls"), "tool_calls JSON must be removed")
+        try assertTrue(stripped.contains("Here is the answer"), "surrounding text preserved")
+    }
+
+    test("stripToolCallAttempt removes unbalanced tool-call JSON to end") {
+        let text = "Preamble\n{\"tool_calls\": [{\"broken\": true"
+        let stripped = ToolCallHandler.stripToolCallAttempt(from: text)
+        try assertTrue(!stripped.contains("tool_calls"), "unbalanced tool_calls must be stripped")
+        try assertEqual(stripped, "Preamble")
+    }
+
+    test("stripToolCallAttempt returns text unchanged when no tool_calls present") {
+        let text = "Vienna is the capital of Austria."
+        let stripped = ToolCallHandler.stripToolCallAttempt(from: text)
+        try assertEqual(stripped, text)
+    }
 }
