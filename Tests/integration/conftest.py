@@ -8,6 +8,44 @@ import time
 import httpx
 import pytest
 
+
+# ---------------------------------------------------------------------------
+# Skip-as-failure gate (#227)
+# When APFEL_REQUIRE_FULL=1, any skipped test fails the session. This
+# prevents silent green-by-skip during release qualification: if a server
+# did not start or Apple Intelligence is missing, pytest must exit non-zero
+# so `make test` / `make release` abort instead of publishing.
+# ---------------------------------------------------------------------------
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Fail the session when tests were skipped under APFEL_REQUIRE_FULL=1."""
+    if os.environ.get("APFEL_REQUIRE_FULL") != "1":
+        return
+    reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+    if not reporter:
+        return
+    skipped = reporter.stats.get("skipped", [])
+    if not skipped:
+        return
+    session.exitstatus = 1
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config):
+    """Print which tests were skipped when APFEL_REQUIRE_FULL=1."""
+    if os.environ.get("APFEL_REQUIRE_FULL") != "1":
+        return
+    skipped = terminalreporter.stats.get("skipped", [])
+    if not skipped:
+        return
+    terminalreporter.section("APFEL_REQUIRE_FULL: skipped tests are failures")
+    for report in skipped:
+        terminalreporter.line(f"  SKIPPED: {report.nodeid}")
+    terminalreporter.line(
+        f"\n{len(skipped)} test(s) skipped. "
+        "Release qualification requires 0 skips."
+    )
+
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 BINARY = ROOT / ".build" / "release" / "apfel"
 MCP_SERVER = ROOT / "mcp" / "calculator" / "server.py"
@@ -47,11 +85,14 @@ def _start_server(port, extra_args=None):
     cmd = [str(BINARY), "--serve", "--port", str(port)]
     if extra_args:
         cmd.extend(extra_args)
-    proc = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except FileNotFoundError:
+        return None
     # Wait for server to be ready
     url = f"http://127.0.0.1:{port}"
     for _ in range(20):  # 10 seconds max
