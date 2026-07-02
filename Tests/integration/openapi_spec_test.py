@@ -584,6 +584,17 @@ def test_health_schema():
     validate(instance=resp.json(), schema=HEALTH_SCHEMA)
 
 
+def test_health_no_duplicate_languages():
+    """supported_languages must not contain duplicate entries (#329)."""
+    resp = httpx.get(f"{BASE_URL}/health", timeout=10)
+    data = resp.json()
+    langs = data.get("supported_languages", [])
+    assert isinstance(langs, list)
+    assert len(langs) == len(set(langs)), (
+        f"supported_languages contains duplicates: {langs}"
+    )
+
+
 # ============================================================================
 # Tests — CORS
 # ============================================================================
