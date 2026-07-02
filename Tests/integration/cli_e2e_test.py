@@ -1250,6 +1250,7 @@ def test_mcp_timeout_env_var_in_help():
 # MCP timeout path is unreachable on GitHub runners.
 def test_mcp_timeout_short_causes_fast_failure():
     """--mcp-timeout 1 with a slow MCP server should fail within ~2 seconds."""
+    require_model()
     slow_server = str(ROOT / "Tests" / "integration" / "fixtures" / "slow_startup_mcp_server.py")
     start = time.time()
     result = run_cli(
@@ -1268,6 +1269,7 @@ def test_mcp_timeout_short_causes_fast_failure():
 # MCP timeout path is unreachable on GitHub runners.
 def test_mcp_timeout_env_var_works():
     """APFEL_MCP_TIMEOUT=1 should timeout same as --mcp-timeout 1."""
+    require_model()
     slow_server = str(ROOT / "Tests" / "integration" / "fixtures" / "slow_startup_mcp_server.py")
     start = time.time()
     result = run_cli(
