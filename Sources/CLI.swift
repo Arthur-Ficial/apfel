@@ -239,6 +239,7 @@ func chat(systemPrompt: String?, options: SessionOptions = .defaults, mcpManager
     let genOpts = makeGenerationOptions(options)
     let lineEditor = ChatLineEditor(outputFormat: outputFormat)
     var turn = 0
+    var chatFatalError: Error?
 
     printHeader()
     if !quietMode {
@@ -320,6 +321,7 @@ func chat(systemPrompt: String?, options: SessionOptions = .defaults, mcpManager
                 } catch {
                     let classified = ApfelError.classify(error)
                     printError("\(classified.cliLabel) \(classified.openAIMessage)")
+                    chatFatalError = error
                     break
                 }
             }
@@ -336,6 +338,10 @@ func chat(systemPrompt: String?, options: SessionOptions = .defaults, mcpManager
         } else {
             print(bye)
         }
+    }
+
+    if let error = chatFatalError {
+        throw error
     }
 }
 

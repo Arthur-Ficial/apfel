@@ -873,3 +873,27 @@ def test_chat_hint_message_shown():
     clean = strip_ansi(output)
     assert "quit" in clean.lower() and "exit" in clean.lower(), \
         f"Quit hint not shown: {clean[:300]}"
+
+
+def test_chat_context_rotation_failure_exits_nonzero():
+    """Context rotation failure (strict strategy, overflow) must exit 4, not 0.
+
+    Regression test for #252: the inner catch in the chat loop used `break`
+    which returned from chat() normally, so the process exited 0 even though
+    single-prompt mode maps the same contextOverflow error to exit 4.
+    """
+    require_model()
+    long_text = "word " * 2500
+    returncode, output = run_chat_tty(
+        ["--chat", "--context-strategy", "strict"],
+        steps=[
+            (b"you", (long_text + "\n").encode()),
+            (b"you", (long_text + "\n").encode()),
+            (b"you", (long_text + "\n").encode()),
+        ],
+        timeout=120,
+    )
+    assert returncode == 4, (
+        f"Expected exit 4 (contextOverflow) from context rotation failure, "
+        f"got {returncode}. Output tail: {strip_ansi(output)[-500:]}"
+    )
