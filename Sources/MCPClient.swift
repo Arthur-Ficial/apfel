@@ -12,6 +12,20 @@ import ApfelCore
 private let mcpShutdownGraceSeconds: TimeInterval = 2.0
 
 /// A connection to a single MCP server process (stdio transport).
+///
+/// Thread safety (justifying `@unchecked Sendable`): in `--serve` mode,
+/// `AnyMCPConnection.callTool` runs this connection's blocking stdio I/O via
+/// `Task.detached`, so concurrent requests reach one instance from multiple
+/// threads. All mutable state is confined behind locks: `nextId` is guarded by
+/// `lock` (`allocId()`), and every wire exchange - the full send+receive pair
+/// in `sendAndReceive` and standalone notification writes via `sendLocked` -
+/// is serialized by `ioLock`, so two concurrent tool calls can neither
+/// interleave stdin writes (corruption for payloads > PIPE_BUF) nor consume
+/// each other's stdout lines (cross-delivered or dropped responses, #218).
+/// `tools` is written once during `init`, before the instance is published to
+/// any other thread, and is read-only afterwards. `process`, the pipes, and
+/// `lineReader` are `let` bindings set in `init`; post-init writes to the
+/// child's stdin all go through the `ioLock`-guarded paths.
 final class MCPConnection: @unchecked Sendable {
     private let timeoutMilliseconds: Int
 
@@ -23,6 +37,8 @@ final class MCPConnection: @unchecked Sendable {
     private let stdoutPipe: Pipe
     private let lineReader: BufferedLineReader
     private let lock = NSLock()
+    /// Serializes complete wire exchanges (send+receive) per connection (#218).
+    private let ioLock = NSLock()
     private var nextId = 1
 
     init(path: String, timeoutSeconds: Int = 5) async throws {
@@ -65,7 +81,7 @@ final class MCPConnection: @unchecked Sendable {
                 operationDescription: "initialize"
             )
             let _ = try MCPProtocol.parseInitializeResponse(initResp)
-            try send(MCPProtocol.initializedNotification())
+            try sendLocked(MCPProtocol.initializedNotification())
 
             // Discover tools
             let listId = allocId()
@@ -156,18 +172,34 @@ final class MCPConnection: @unchecked Sendable {
         }
     }
 
+    /// Standalone write (notification path) serialized against in-flight
+    /// exchanges so it cannot interleave with another request's stdin bytes
+    /// (#218). Never call while holding `ioLock` - NSLock is not reentrant.
+    private func sendLocked(_ message: String) throws {
+        ioLock.lock()
+        defer { ioLock.unlock() }
+        try send(message)
+    }
+
     /// Sends `message` and reads until the response whose JSON-RPC `"id"`
     /// matches `id` arrives, under one shared deadline (#217). Notifications
     /// and responses to other ids are skipped; server `ping` requests are
     /// answered inline. Without this, a single server log notification
     /// (FastMCP `ctx.info()` emits `notifications/message` on stdout) was
     /// returned as the tool response and every later call was off-by-one.
+    ///
+    /// The whole exchange holds `ioLock` (#218): concurrent tool calls in
+    /// `--serve` mode would otherwise interleave stdin writes and race for
+    /// each other's stdout lines - id correlation alone drops the other
+    /// request's response instead of leaving it for its owner.
     private func sendAndReceive(
         _ message: String,
         id: Int,
         timeoutMilliseconds: Int,
         operationDescription: String
     ) throws -> String {
+        ioLock.lock()
+        defer { ioLock.unlock() }
         try send(message)
         let deadline = Date().timeIntervalSinceReferenceDate + Double(timeoutMilliseconds) / 1000.0
         while true {

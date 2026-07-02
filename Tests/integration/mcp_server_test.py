@@ -491,6 +491,42 @@ def test_mcp_noisy_server_tool_call_succeeds():
             f"Expected 20501 through the noisy server, got: {content}"
 
 
+def test_mcp_concurrent_tool_calls_do_not_cross_deliver():
+    """Two simultaneous tool calls must each get their own result (#218).
+
+    Runs against the standing 11435 calculator server (--max-concurrent
+    default 5). Before the per-connection send+receive serialization, the two
+    detached stdio exchanges interleaved on one pipe: request B could consume
+    request A's response line (swapped or lost results).
+    """
+    import concurrent.futures
+
+    def ask(prompt):
+        return httpx.post(f"{API_URL}/chat/completions", json={
+            "model": MODEL,
+            "messages": [{"role": "user", "content": prompt}],
+            "seed": 42,
+            "max_tokens": 128,
+        }, timeout=TIMEOUT)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        fut_multiply = pool.submit(
+            ask, "Use the multiply tool to compute 247 times 83. Reply with just the number.")
+        fut_add = pool.submit(
+            ask, "Use the add function to add 111 and 222. Reply with just the number.")
+        resp_multiply = fut_multiply.result()
+        resp_add = fut_add.result()
+
+    assert resp_multiply.status_code == 200, f"{resp_multiply.status_code}: {resp_multiply.text[:200]}"
+    assert resp_add.status_code == 200, f"{resp_add.status_code}: {resp_add.text[:200]}"
+    multiply_content = resp_multiply.json()["choices"][0]["message"]["content"] or ""
+    add_content = resp_add.json()["choices"][0]["message"]["content"] or ""
+    assert "20501" in multiply_content or "20,501" in multiply_content, \
+        f"multiply got the wrong result (cross-delivered?): {multiply_content}"
+    assert "333" in add_content, \
+        f"add got the wrong result (cross-delivered?): {add_content}"
+
+
 # ============================================================================
 # MCP tool routing (different calculator tools)
 # ============================================================================
