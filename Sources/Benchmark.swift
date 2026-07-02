@@ -95,7 +95,7 @@ private func benchmarkReport() async throws -> BenchmarkReport {
         environment: BenchmarkEnvironment(
             model: modelName,
             context_window: await TokenCounter.shared.contextSize,
-            token_counter_available: await TokenCounter.shared.isAvailable
+            token_counter_available: await TokenCounter.shared.isTokenCountingAvailable
         ),
         benchmarks: [
             textExtraction,

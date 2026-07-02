@@ -44,4 +44,16 @@ func runTokenCountFallbackTests() {
         try assertTrue(msg.contains("Apple Intelligence unavailable"))
         try assertTrue(msg.contains("chars/4"))
     }
+
+    test("model available does not imply token counting available (#325)") {
+        let reason = TokenCountFallback.reason(
+            modelAvailable: true, osSupportsTokenCounting: false, currentOS: "26.3.0")
+        try assertTrue(reason != nil)
+    }
+
+    test("token counting available only when both OS and model are ready") {
+        let reason = TokenCountFallback.reason(
+            modelAvailable: true, osSupportsTokenCounting: true, currentOS: "26.4.0")
+        try assertTrue(reason == nil)
+    }
 }
