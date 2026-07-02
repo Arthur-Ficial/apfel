@@ -1026,3 +1026,29 @@ def test_mcp_timeout_default_unchanged():
     mcp_path = str(ROOT / "mcp" / "calculator" / "server.py")
     result = run_cli(["--mcp", mcp_path, "What is 1+1?"], timeout=120)
     assert result.returncode == 0, f"Normal MCP should work with default timeout: {result.stderr}"
+
+
+def test_mcp_child_reaped_on_exit_path():
+    """MCP children are reaped on exit paths, not orphaned (#246).
+
+    apfel with --mcp and empty stdin initializes the MCP server, then exits 2
+    ("no prompt provided"). The eof-ignoring fixture never observes stdin EOF,
+    so before the fix - which fired shutdown as a `defer { Task { ... } }` the
+    exiting process never scheduled - the child was orphaned. The fix awaits MCP
+    shutdown on every exit path (terminate + bounded waitUntilExit), so the child
+    is reaped. Model-free: the exit-2 guard runs before any model call.
+    """
+    fixture = ROOT / "Tests" / "integration" / "fixtures" / "eof_ignoring_mcp_server.py"
+    subprocess.run(["pkill", "-f", "eof_ignoring_mcp_server"], capture_output=True)
+    time.sleep(0.5)
+    result = run_cli(["--mcp", str(fixture)], input_text="", timeout=30)
+    assert result.returncode == 2, f"expected exit 2, got {result.returncode}: {result.stderr}"
+    # Any orphaned child would still be alive; the reap must have removed it.
+    time.sleep(1)
+    check = subprocess.run(
+        ["pgrep", "-f", "eof_ignoring_mcp_server"], capture_output=True, text=True
+    )
+    orphans = [line for line in check.stdout.strip().split("\n") if line]
+    if orphans:
+        subprocess.run(["pkill", "-f", "eof_ignoring_mcp_server"], capture_output=True)
+    assert not orphans, f"MCP child orphaned after exit (#246): pids {orphans}"

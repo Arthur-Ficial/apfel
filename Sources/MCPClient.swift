@@ -230,13 +230,16 @@ actor RemoteMCPConnection: Sendable {
         return result.text
     }
 
-    func shutdown() {
+    func shutdown() async {
         guard let sid = sessionId else { return }
         var req = URLRequest(url: url, timeoutInterval: 5)
         req.httpMethod = "DELETE"
         if let token = bearerToken { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         req.setValue(sid, forHTTPHeaderField: "Mcp-Session-Id")
-        session.dataTask(with: req).resume()
+        // Await the DELETE (bounded by the 5s timeoutInterval) so the session is
+        // actually released before the process exits, instead of firing a
+        // detached task that the exiting process never schedules (#246).
+        _ = try? await session.data(for: req)
     }
 
     private func allocId() -> Int {
@@ -322,8 +325,18 @@ enum AnyMCPConnection: Sendable {
     func shutdown() {
         switch self {
         case .local(let c): c.shutdown()
-        // Best-effort: fire-and-forget (session will expire on the server)
+        // Best-effort: fire-and-forget (session will expire on the server).
+        // Used on the deregister-on-timeout path (#216) where we cannot await.
         case .remote(let c): Task { await c.shutdown() }
+        }
+    }
+
+    /// Awaited shutdown for the process-exit path: reap local children and await
+    /// the remote DELETE so cleanup completes before exit (#246).
+    func shutdownAndWait() async {
+        switch self {
+        case .local(let c): c.shutdown()
+        case .remote(let c): await c.shutdown()
         }
     }
 }
@@ -394,9 +407,11 @@ actor MCPManager {
         conn.shutdown()
     }
 
-    func shutdown() {
+    func shutdown() async {
         for conn in connections {
-            conn.shutdown()
+            await conn.shutdownAndWait()
         }
+        connections.removeAll()
+        toolMap.removeAll()
     }
 }

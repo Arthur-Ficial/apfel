@@ -246,7 +246,16 @@ if !parsed.mcpServerPaths.isEmpty {
         exit(exitRuntimeError)
     }
 }
-defer { Task { await mcpManager?.shutdown() } }
+
+// Shut MCP servers down before the process exits. This must be an awaited call
+// on every exit path, NOT a `defer { Task { ... } }`: async main returns and the
+// process exits before an unstructured Task is ever scheduled, so children would
+// only die on stdin EOF (a server ignoring EOF is orphaned) and the remote DELETE
+// would never fire. terminate() + bounded waitUntilExit() reaps locals; the
+// remote branch awaits its DELETE (#246).
+func shutdownMCP() async {
+    await mcpManager?.shutdown()
+}
 
 do {
     switch parsed.mode {
@@ -288,6 +297,7 @@ do {
     case .stream:
         guard !prompt.isEmpty else {
             printError("no prompt provided")
+            await shutdownMCP()
             exit(exitUsageError)
         }
         try await singlePrompt(prompt, systemPrompt: parsed.systemPrompt, stream: true, options: sessionOpts, mcpManager: mcpManager)
@@ -295,6 +305,7 @@ do {
     case .single:
         guard !prompt.isEmpty else {
             printError("no prompt provided")
+            await shutdownMCP()
             exit(exitUsageError)
         }
         try await singlePrompt(prompt, systemPrompt: parsed.systemPrompt, stream: false, options: sessionOpts, mcpManager: mcpManager)
@@ -302,6 +313,7 @@ do {
     case .countTokens:
         guard !prompt.isEmpty || parsed.systemPrompt != nil else {
             printError("no prompt or file content provided")
+            await shutdownMCP()
             exit(exitUsageError)
         }
         let report = try await countTokens(
@@ -314,6 +326,7 @@ do {
             mcpManager: mcpManager
         )
         if parsed.strictCount && !report.fits {
+            await shutdownMCP()
             exit(exitContextOverflow)
         }
 
@@ -323,5 +336,9 @@ do {
 } catch {
     let classified = ApfelError.classify(error)
     printError("\(classified.cliLabel) \(classified.openAIMessage)")
+    await shutdownMCP()
     exit(exitCode(for: classified))
 }
+
+// Normal completion: await MCP shutdown before the process exits (#246).
+await shutdownMCP()
