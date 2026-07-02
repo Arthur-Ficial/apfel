@@ -337,10 +337,12 @@ def test_chat_multibyte_backspace_is_character_wise():
     """#256: with setlocale(LC_CTYPE,"") libedit edits non-ASCII by character.
 
     Type "cafe-acute" (the 'e' is U+00E9, 2 UTF-8 bytes) then one backspace then
-    'X'. Locale-aware libedit deletes the whole 2-byte character with a single
-    backspace/erase, so the erased region leaves no dangling UTF-8 lead byte. In
-    the "C" locale the backspace would delete a single byte and leave a stray
-    0xC3, corrupting the line.
+    'X'. Locale-aware libedit deletes the whole 2-byte character in one operation,
+    so the erased region leaves no dangling UTF-8 lead byte. In the "C" locale the
+    backspace would delete a single byte and leave a stray 0xC3, corrupting the
+    line. The exact erase echo varies by macOS version (bare \\x08 pre-26.3.1,
+    BS-SP-BS on 26.3.1+), so we check for at least one \\x08 and rely on the
+    no-dangling-lead-byte assertion as the primary correctness signal.
     """
     require_model()
     with warnings.catch_warnings():
@@ -386,8 +388,10 @@ def test_chat_multibyte_backspace_is_character_wise():
     echo = bytes(echo)
     # The 2-byte character was echoed once when typed.
     assert b"\xc3\xa9" in echo, f"multibyte char not echoed: {echo!r}"
-    # A single backspace deleted the whole character (character-wise, not byte-wise).
-    assert echo.count(b"\x08") == 1, f"expected one backspace erase, got: {echo!r}"
+    # At least one backspace proves an erase happened. The exact count varies by
+    # macOS version: pre-26.3.1 libedit emits a bare \x08, 26.3.1+ emits
+    # BS-SP-BS (\x08 \x08) to visually clear the cell. Both are character-wise.
+    assert echo.count(b"\x08") >= 1, f"expected at least one backspace byte, got: {echo!r}"
     # No dangling UTF-8 lead byte after the erase (the byte-wise-deletion signature).
     after_erase = echo.rsplit(b"\x08", 1)[1]
     assert b"\xc3" not in after_erase, f"dangling lead byte after erase: {echo!r}"
