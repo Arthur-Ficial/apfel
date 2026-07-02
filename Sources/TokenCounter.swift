@@ -11,21 +11,33 @@ import ApfelCore
 actor TokenCounter {
     static let shared = TokenCounter()
     private let model = SystemLanguageModel.default
+    private var _fellBack = false
+
+    func resetFallbackTracking() {
+        _fellBack = false
+    }
+
+    var didFallBack: Bool {
+        _fellBack
+    }
 
     /// Count tokens in text using the real FoundationModels API.
     /// Falls back to chars/4 approximation on error or when the model is unavailable.
     func count(_ text: String) async -> Int {
         guard !text.isEmpty else { return 0 }
         guard isAvailable else {
+            _fellBack = true
             return max(1, text.count / 4)
         }
         if #available(macOS 26.4, *) {
             do {
                 return try await model.tokenCount(for: text)
             } catch {
+                _fellBack = true
                 return max(1, text.count / 4)
             }
         } else {
+            _fellBack = true
             return max(1, text.count / 4)
         }
     }
@@ -125,15 +137,18 @@ actor TokenCounter {
     func count(entries: [Transcript.Entry]) async -> Int {
         guard !entries.isEmpty else { return 0 }
         guard isAvailable else {
+            _fellBack = true
             return fallbackCount(entries: entries)
         }
         if #available(macOS 26.4, *) {
             do {
                 return try await model.tokenCount(for: entries)
             } catch {
+                _fellBack = true
                 return fallbackCount(entries: entries)
             }
         } else {
+            _fellBack = true
             return fallbackCount(entries: entries)
         }
     }

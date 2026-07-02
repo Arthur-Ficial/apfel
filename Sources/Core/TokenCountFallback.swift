@@ -16,6 +16,11 @@ public enum TokenCountFallback: Sendable, Equatable {
     /// The on-device model reports unavailable (Apple Intelligence disabled,
     /// device not eligible, model not ready).
     case modelUnavailable
+    /// The real tokenizer API was expected to work (OS new enough, model
+    /// available) but threw an error during counting. The chars/4 fallback
+    /// was used silently; this case surfaces that to the caller so the
+    /// `approximate` flag stays truthful (#327).
+    case transientError
 
     /// Decide the fallback reason from runtime facts. The OS check wins over
     /// model availability: on an old OS the real API does not exist at all,
@@ -37,6 +42,8 @@ public enum TokenCountFallback: Sendable, Equatable {
             return "token count is approximate (the on-device tokenizer API requires macOS 26.4+; this Mac runs macOS \(currentOS); using chars/4 fallback)"
         case .modelUnavailable:
             return "token count is approximate (Apple Intelligence unavailable; using chars/4 fallback)"
+        case .transientError:
+            return "token count is approximate (the on-device tokenizer returned an error during counting; using chars/4 fallback)"
         }
     }
 }

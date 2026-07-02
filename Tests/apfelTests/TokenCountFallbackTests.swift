@@ -44,4 +44,18 @@ func runTokenCountFallbackTests() {
         try assertTrue(msg.contains("Apple Intelligence unavailable"))
         try assertTrue(msg.contains("chars/4"))
     }
+
+    test("transientError message names the runtime error and the fallback (#327)") {
+        let msg = TokenCountFallback.transientError.message
+        try assertTrue(msg.contains("error during counting"))
+        try assertTrue(msg.contains("chars/4"))
+        try assertTrue(!msg.contains("Apple Intelligence unavailable"))
+        try assertTrue(!msg.contains("macOS 26.4"))
+    }
+
+    test("reason returns nil even when transientError exists as a case (#327)") {
+        let reason = TokenCountFallback.reason(
+            modelAvailable: true, osSupportsTokenCounting: true, currentOS: "26.5.0")
+        try assertTrue(reason == nil)
+    }
 }

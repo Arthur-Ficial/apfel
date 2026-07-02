@@ -91,12 +91,13 @@ func countTokens(
     let outputReserve = options.contextConfig.outputReserve
     let contextSize = await TokenCounter.shared.contextSize
     let tokenCountFallback = await TokenCounter.shared.tokenCountFallback
-    let approximate = tokenCountFallback != nil
+    let preflightApproximate = tokenCountFallback != nil
+    await TokenCounter.shared.resetFallbackTracking()
 
     let inputEntries: [Transcript.Entry]
     let noToolEntries: [Transcript.Entry]?
 
-    if approximate {
+    if preflightApproximate {
         // Avoid LanguageModelSession construction when the model is unavailable.
         inputEntries = []
         noToolEntries = nil
@@ -120,7 +121,7 @@ func countTokens(
     }
 
     let total: Int
-    if approximate {
+    if preflightApproximate {
         var approxTotal = await TokenCounter.shared.count(mergedPrompt)
         if let sys = systemPrompt, !sys.isEmpty {
             approxTotal += await TokenCounter.shared.count(sys)
@@ -150,7 +151,7 @@ func countTokens(
     }
 
     let mcpToolTokens: Int
-    if approximate {
+    if preflightApproximate {
         mcpToolTokens = 0
     } else if let baseline = noToolEntries {
         let baselineCount = await TokenCounter.shared.count(entries: baseline)
@@ -158,6 +159,9 @@ func countTokens(
     } else {
         mcpToolTokens = 0
     }
+
+    let runtimeFellBack = await TokenCounter.shared.didFallBack
+    let approximate = preflightApproximate || runtimeFellBack
 
     let report = TokenBudgetReport.make(
         promptTokens: promptTokens,
@@ -170,8 +174,16 @@ func countTokens(
         approximate: approximate
     )
 
-    if let tokenCountFallback, !quietMode {
-        printStderr("\(styledErr("apfel:", .yellow)) \(tokenCountFallback.message)")
+    let effectiveFallback: TokenCountFallback?
+    if let tokenCountFallback {
+        effectiveFallback = tokenCountFallback
+    } else if runtimeFellBack {
+        effectiveFallback = .transientError
+    } else {
+        effectiveFallback = nil
+    }
+    if let effectiveFallback, !quietMode {
+        printStderr("\(styledErr("apfel:", .yellow)) \(effectiveFallback.message)")
     }
 
     switch outputFormat {
