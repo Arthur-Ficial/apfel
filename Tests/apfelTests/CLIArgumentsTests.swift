@@ -158,6 +158,27 @@ func runCLIArgumentsTests() {
         try assertEqual(args.demosTarget, "./my-demos")
     }
 
+    test("demos --help sets help mode (#248)") {
+        let args = try CLIArguments.parse(["demos", "--help"])
+        try assertEqual(args.mode, .help)
+    }
+
+    test("demos -h sets help mode (#248)") {
+        let args = try CLIArguments.parse(["demos", "-h"])
+        try assertEqual(args.mode, .help)
+    }
+
+    test("demos with unknown flag throws (#248)") {
+        var threw = false
+        do {
+            _ = try CLIArguments.parse(["demos", "--output", "json"])
+        } catch let e as CLIParseError {
+            try assertTrue(e.message.contains("unknown option"))
+            threw = true
+        }
+        try assertTrue(threw)
+    }
+
     test("quoted prompt 'demos' is NOT the subcommand when it is the prompt value") {
         // A real prompt that happens to equal "demos" still triggers the
         // subcommand (bare first token); users wanting it as a prompt can phrase
