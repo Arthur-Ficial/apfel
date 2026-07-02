@@ -215,7 +215,7 @@ test: build
 		curl -sf http://localhost:11435/health >/dev/null 2>&1 && \
 		READY=1 && break; sleep 1; done; \
 	if [ "$$READY" -ne 1 ]; then echo "FATAL: servers did not start"; exit 1; fi; \
-	python3 -m pytest Tests/integration/ -v --tb=short; \
+	APFEL_REQUIRE_FULL=1 python3 -m pytest Tests/integration/ -v --tb=short; \
 	STATUS=$$?; \
 	kill $$(cat /tmp/apfel-test-server.pid) $$(cat /tmp/apfel-test-mcp.pid) 2>/dev/null || true; \
 	rm -f /tmp/apfel-test-server.pid /tmp/apfel-test-mcp.pid; \
