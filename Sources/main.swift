@@ -9,6 +9,11 @@ import ApfelCore
 import ApfelCLI
 import CReadline
 
+// MARK: - Locale
+// Honour the user's LC_CTYPE so libedit handles multibyte characters
+// (backspace, arrow keys, Ctrl-W) correctly in --chat (#256).
+setlocale(LC_CTYPE, "")
+
 // MARK: - Configuration
 
 let version = buildVersion
