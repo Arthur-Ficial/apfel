@@ -115,7 +115,9 @@ if [ "$READY" -ne 1 ]; then
 else
     # Run ALL integration test files — directory discovery, not explicit lists.
     # This ensures new test files are never silently excluded.
-    if python3 -m pytest Tests/integration/ -v --tb=short -x 2>&1; then
+    # APFEL_REQUIRE_FULL=1: any skipped test fails the run (#227) — a skip during
+    # release qualification means a feature is silently unverified.
+    if APFEL_REQUIRE_FULL=1 python3 -m pytest Tests/integration/ -v --tb=short -x 2>&1; then
         suite_count=$(find Tests/integration -name '*test*.py' ! -name 'conftest.py' | wc -l | tr -d ' ')
         pass "integration tests ($suite_count suites)"
     else

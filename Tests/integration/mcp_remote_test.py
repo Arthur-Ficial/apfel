@@ -79,6 +79,11 @@ def _wait_for_port(port, timeout=10):
 
 # ============================================================================
 # Fixtures: HTTP MCP server (no auth) + apfel
+#
+# A server that never becomes healthy is a critical failure, not a skip (#227):
+# skipping turned all 17 remote-MCP tests green when remote MCP was broken, so
+# a startup-breaking regression could pass release qualification. These fixtures
+# pytest.fail instead.
 # ============================================================================
 
 
@@ -99,7 +104,7 @@ def http_mcp_port():
         stderr=subprocess.PIPE,
     ):
         if not _wait_for_port(port):
-            pytest.skip("HTTP MCP server did not start in time")
+            pytest.fail("HTTP MCP server did not start in time")
         yield port
 
 
@@ -121,7 +126,7 @@ def apfel_remote_mcp_url(http_mcp_port):
         if not wait_for_http(
             f"http://127.0.0.1:{apfel_port}/health", timeout=20
         ):
-            pytest.skip("apfel with remote MCP did not become healthy")
+            pytest.fail("apfel with remote MCP did not become healthy")
         yield f"http://127.0.0.1:{apfel_port}/v1"
 
 
@@ -187,7 +192,7 @@ def auth_mcp_port():
         stderr=subprocess.PIPE,
     ):
         if not _wait_for_port(port):
-            pytest.skip("Auth MCP server did not start in time")
+            pytest.fail("Auth MCP server did not start in time")
         yield port
 
 
@@ -211,7 +216,7 @@ def apfel_auth_mcp_url(auth_mcp_port):
         if not wait_for_http(
             f"http://127.0.0.1:{apfel_port}/health", timeout=20
         ):
-            pytest.skip("apfel with auth MCP did not become healthy")
+            pytest.fail("apfel with auth MCP did not become healthy")
         yield f"http://127.0.0.1:{apfel_port}/v1"
 
 
@@ -242,7 +247,7 @@ def apfel_mixed_mcp_url(http_mcp_port):
         if not wait_for_http(
             f"http://127.0.0.1:{apfel_port}/health", timeout=25
         ):
-            pytest.skip("apfel with mixed MCP did not become healthy")
+            pytest.fail("apfel with mixed MCP did not become healthy")
         yield f"http://127.0.0.1:{apfel_port}/v1"
 
 

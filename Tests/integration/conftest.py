@@ -14,6 +14,35 @@ MCP_SERVER = ROOT / "mcp" / "calculator" / "server.py"
 OPENAI_SPEC = pathlib.Path(__file__).parent / "openai_spec" / "openapi.yaml"
 
 
+def pytest_sessionfinish(session, exitstatus):
+    """Enforce the "never skip" rule during release qualification (#227).
+
+    CLAUDE.md: "Never skip tests. A skipped test is a critical error." But
+    pytest exits 0 when tests skip, and nothing checked the skip count - so a
+    regression that prevents the server from starting (or any other broken-by-
+    skip failure) turned the suite green-by-skip and let `make release` publish.
+
+    When APFEL_REQUIRE_FULL=1 (exported by `make test`, release-preflight.sh, and
+    publish-release.sh) any skipped test fails the whole session. In ordinary
+    local/CI runs the variable is unset, so environment-gated skips still work.
+    """
+    if not os.environ.get("APFEL_REQUIRE_FULL"):
+        return
+    reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+    if reporter is None:
+        return
+    skipped = reporter.stats.get("skipped", [])
+    if not skipped:
+        return
+    nodeids = sorted({rep.nodeid for rep in skipped})
+    reporter.write_sep(
+        "=", "APFEL_REQUIRE_FULL=1: skipped tests are forbidden", red=True
+    )
+    for nid in nodeids:
+        reporter.write_line(f"  SKIPPED (forbidden under APFEL_REQUIRE_FULL): {nid}")
+    session.exitstatus = 1
+
+
 @pytest.fixture(scope="session")
 def openai_spec():
     """Load the vendored OpenAI API spec for conformance tests.
@@ -76,7 +105,10 @@ def guard_server_11434():
 
     proc = _start_server(11434)
     if proc is None:
-        pytest.skip("Could not start apfel server on port 11434")
+        # A server that will not start is a critical failure, never a skip (#227):
+        # skipping here turned every server test green and let a startup-breaking
+        # regression pass release qualification.
+        pytest.fail("Could not start apfel server on port 11434")
         return
 
     yield
@@ -98,7 +130,8 @@ def guard_server_11435():
 
     proc = _start_server(11435, ["--mcp", str(MCP_SERVER)])
     if proc is None:
-        pytest.skip("Could not start apfel MCP server on port 11435")
+        # See guard_server_11434: a non-starting server is a failure (#227).
+        pytest.fail("Could not start apfel MCP server on port 11435")
         return
 
     yield
