@@ -474,8 +474,36 @@ func stripToolCallJSON(from text: String) -> String {
         .trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
+/// Token-budget each executed tool result for a server follow-up, given the
+/// prior conversation, so no single `role: "tool"` message exceeds the context
+/// budget and gets dropped whole by the trimmer (#221). The returned toolLog is
+/// left full elsewhere; only the prompt-bound copy is truncated.
+private func truncatedServerToolResults(
+    toolLog: [(name: String, args: String, result: String, isError: Bool)],
+    priorMessages: [OpenAIMessage]
+) async -> [(name: String, result: String)] {
+    let inputBudget = await TokenCounter.shared.inputBudget(reservedForOutput: 512)
+    let conversationText = priorMessages.compactMap { $0.textContent }.joined(separator: "\n")
+    let overheadTokens = await TokenCounter.shared.count(conversationText)
+    let perResultBudget = max(0, inputBudget - overheadTokens) / max(1, toolLog.count)
+    var out: [(name: String, result: String)] = []
+    for entry in toolLog {
+        let tokens = await TokenCounter.shared.count(entry.result)
+        let text = ToolOutputTruncator.truncate(
+            entry.result, tokenCount: tokens, budgetTokens: perResultBudget).text
+        out.append((name: entry.name, result: text))
+    }
+    return out
+}
+
 /// Server path: execute MCP tool calls and re-prompt with full conversation context.
 /// Appends tool call/result messages to the conversation and rebuilds a session via ContextManager.
+///
+/// Runs the same bounded re-detection loop as the CLI path (#240): if the model
+/// answers the tool-result follow-up with another `{"tool_calls": ...}` (common
+/// in tool chains), that round is executed and re-prompted, up to `maxReprompts`.
+/// On cap exhaustion any trailing tool-call JSON is stripped so it never leaks to
+/// the HTTP client as `message.content` with `finish_reason: "stop"`.
 func executeMCPToolCallsForServer(
     in content: String,
     mcpManager: MCPManager?,
@@ -488,39 +516,52 @@ func executeMCPToolCallsForServer(
         return nil
     }
 
-    // Token-budget the tool results before appending them as `role: "tool"`
-    // messages. The context trimmer treats each message atomically, so a result
-    // bigger than the budget makes keepCount = 0 and the tool message is dropped
-    // while the synthetic prompt still references it - a confident
-    // hallucination. Truncating head+tail keeps the message present and small
-    // enough to survive trimming (#221). The returned toolLog stays full so the
-    // events log reports the real output.
-    let inputBudget = await TokenCounter.shared.inputBudget(reservedForOutput: 512)
-    let conversationText = messages.compactMap { $0.textContent }.joined(separator: "\n")
-    let overheadTokens = await TokenCounter.shared.count(conversationText)
-    let perResultBudget = max(0, inputBudget - overheadTokens) / max(1, executed.toolLog.count)
-    var truncatedResults: [(name: String, result: String)] = []
-    for entry in executed.toolLog {
-        let tokens = await TokenCounter.shared.count(entry.result)
-        let text = ToolOutputTruncator.truncate(
-            entry.result, tokenCount: tokens, budgetTokens: perResultBudget).text
-        truncatedResults.append((name: entry.name, result: text))
+    var aggregatedLog = executed.toolLog
+    var currentMessages = messages
+    var currentExecuted = executed
+    var finalContent = ""
+
+    // Mirror the CLI path's bounded loop: initial re-prompt plus up to
+    // maxReprompts further rounds when the model keeps emitting tool calls.
+    let maxReprompts = 3
+    var reprompts = 0
+    while true {
+        let truncated = await truncatedServerToolResults(
+            toolLog: currentExecuted.toolLog, priorMessages: currentMessages)
+        let followUpMessages = appendExecutedToolResults(
+            to: currentMessages,
+            toolCalls: currentExecuted.toolCalls,
+            toolResults: truncated
+        )
+        let (followUpSession, followUpPrompt, _) = try await ContextManager.makeSession(
+            messages: followUpMessages,
+            tools: nil,
+            options: sessionOptions,
+            jsonMode: false,
+            toolChoice: nil
+        )
+        finalContent = try await followUpSession.respond(to: followUpPrompt, options: options).content
+
+        // The re-prompt answer may itself request another tool call. Execute and
+        // re-prompt again with a hard cap so a model that keeps emitting
+        // tool_calls cannot spin forever.
+        guard reprompts < maxReprompts,
+              let next = try await detectAndExecuteMCPTools(in: finalContent, mcpManager: mcpManager) else {
+            break
+        }
+        reprompts += 1
+        aggregatedLog.append(contentsOf: next.toolLog)
+        currentMessages = followUpMessages
+        currentExecuted = next
     }
 
-    let followUpMessages = appendExecutedToolResults(
-        to: messages,
-        toolCalls: executed.toolCalls,
-        toolResults: truncatedResults
-    )
-    let (followUpSession, followUpPrompt, _) = try await ContextManager.makeSession(
-        messages: followUpMessages,
-        tools: nil,
-        options: sessionOptions,
-        jsonMode: false,
-        toolChoice: nil
-    )
-    let finalContent = try await followUpSession.respond(to: followUpPrompt, options: options).content
-    return (content: finalContent, toolLog: executed.toolLog)
+    // Cap exhausted but the model is still emitting a tool call: strip the raw
+    // JSON so it never reaches the client as content with finish_reason stop.
+    if ToolCallHandler.detectToolCall(in: finalContent) != nil {
+        finalContent = stripToolCallJSON(from: finalContent)
+    }
+
+    return (content: finalContent, toolLog: aggregatedLog)
 }
 
 private func appendExecutedToolResults(

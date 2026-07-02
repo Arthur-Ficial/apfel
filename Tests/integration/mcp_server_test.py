@@ -476,6 +476,31 @@ def test_mcp_duplicate_tool_names_warn_and_dedupe():
     assert "only_b" in log
 
 
+def test_mcp_server_chained_tool_calls_do_not_leak_json():
+    """The server MCP auto-execute path must run the CLI's bounded re-detection
+    loop: if the model answers the tool-result follow-up with another tool call,
+    it is executed and re-prompted, and any trailing tool-call JSON is stripped
+    on cap exhaustion - never returned as message.content with finish_reason
+    stop (#240).
+    """
+    resp = httpx.post(f"{API_URL}/chat/completions", json={
+        "model": MODEL,
+        "messages": [
+            {"role": "user", "content": "First use the multiply tool to compute 6 times 7, then use the add tool to add 100 to that result. Give me the final number."}
+        ],
+        "seed": 42,
+        "max_tokens": 300,
+    }, timeout=TIMEOUT)
+    assert resp.status_code == 200
+    data = resp.json()
+    choice = data["choices"][0]
+    content = choice["message"]["content"]
+    # Whether or not the model chains, raw tool-call protocol JSON must never
+    # reach the client as the answer.
+    assert '"tool_calls"' not in content, f"raw tool-call JSON leaked to client: {content[:300]}"
+    assert content and content.strip(), "must produce a natural-language answer"
+
+
 def test_mcp_huge_tool_output_is_truncated_not_fatal():
     """A tool result far larger than the 4096-token window must be truncated
     head+tail before the follow-up prompt, not overflow or be dropped (#221).
