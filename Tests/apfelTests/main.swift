@@ -100,6 +100,7 @@ suite("StreamingToolCallGateTests") { runStreamingToolCallGateTests() }
 suite("ToolResolutionTests") { runToolResolutionTests() }
 suite("BodyLimitsTests") { runBodyLimitsTests() }
 suite("TokenBudgetTests") { runTokenBudgetTests() }
+suite("TokenCountFallbackTests") { runTokenCountFallbackTests() }
 suite("CLIServerParityTests") { runCLIServerParityTests() }
 suite("TraceBufferTests") { runTraceBufferTests() }
 suite("StreamTaskBoxTests") { runStreamTaskBoxTests() }
