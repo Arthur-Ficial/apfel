@@ -376,6 +376,75 @@ func runMCPClientTests() {
         try assertTrue(formatInstructions.contains("tool_calls"), "format must contain call format")
     }
 
+    // MARK: - JSON-RPC id correlation (#217)
+    // sendAndReceive must keep reading until the response whose "id" matches
+    // the request id arrives: notifications (no id) and other-id responses are
+    // skipped, server "ping" requests are answered.
+
+    test("classifyIncoming matches the response with the awaited id") {
+        let line = #"{"jsonrpc":"2.0","id":7,"result":{"content":[{"type":"text","text":"42"}]}}"#
+        try assertEqual(MCPProtocol.classifyIncoming(line, awaitingId: 7), .matchingResponse)
+    }
+
+    test("classifyIncoming skips a notification (method, no id)") {
+        let line = #"{"jsonrpc":"2.0","method":"notifications/message","params":{"level":"info","data":"tool starting"}}"#
+        try assertEqual(MCPProtocol.classifyIncoming(line, awaitingId: 7), .unrelated)
+    }
+
+    test("classifyIncoming skips a response with a different id") {
+        let line = #"{"jsonrpc":"2.0","id":6,"result":{}}"#
+        try assertEqual(MCPProtocol.classifyIncoming(line, awaitingId: 7), .unrelated)
+    }
+
+    test("classifyIncoming skips an error response with a different id") {
+        let line = #"{"jsonrpc":"2.0","id":6,"error":{"code":-32603,"message":"boom"}}"#
+        try assertEqual(MCPProtocol.classifyIncoming(line, awaitingId: 7), .unrelated)
+    }
+
+    test("classifyIncoming matches an error response with the awaited id") {
+        let line = #"{"jsonrpc":"2.0","id":7,"error":{"code":-32603,"message":"boom"}}"#
+        try assertEqual(MCPProtocol.classifyIncoming(line, awaitingId: 7), .matchingResponse)
+    }
+
+    test("classifyIncoming answers a server ping request, echoing its id") {
+        let line = #"{"jsonrpc":"2.0","id":9001,"method":"ping"}"#
+        guard case .pingRequest(let reply) = MCPProtocol.classifyIncoming(line, awaitingId: 7) else {
+            throw TestFailure("expected .pingRequest")
+        }
+        let obj = try JSONSerialization.jsonObject(with: Data(reply.utf8)) as! [String: Any]
+        try assertEqual(obj["jsonrpc"] as! String, "2.0")
+        try assertEqual(obj["id"] as! Int, 9001)
+        try assertEqual((obj["result"] as! [String: Any]).count, 0)
+        try assertNil(obj["method"])
+    }
+
+    test("classifyIncoming answers a ping with a string id, echoing it verbatim") {
+        let line = #"{"jsonrpc":"2.0","id":"ping-1","method":"ping"}"#
+        guard case .pingRequest(let reply) = MCPProtocol.classifyIncoming(line, awaitingId: 7) else {
+            throw TestFailure("expected .pingRequest")
+        }
+        let obj = try JSONSerialization.jsonObject(with: Data(reply.utf8)) as! [String: Any]
+        try assertEqual(obj["id"] as! String, "ping-1")
+    }
+
+    test("classifyIncoming skips a non-ping server request") {
+        let line = #"{"jsonrpc":"2.0","id":9002,"method":"roots/list"}"#
+        try assertEqual(MCPProtocol.classifyIncoming(line, awaitingId: 7), .unrelated)
+    }
+
+    test("classifyIncoming skips stray non-JSON stdout noise") {
+        try assertEqual(MCPProtocol.classifyIncoming("INFO: server warming up", awaitingId: 7), .unrelated)
+    }
+
+    test("classifyIncoming matches a string-typed echo of the awaited id") {
+        let line = #"{"jsonrpc":"2.0","id":"7","result":{}}"#
+        try assertEqual(MCPProtocol.classifyIncoming(line, awaitingId: 7), .matchingResponse)
+    }
+
+    test("classifyIncoming skips an id-less, method-less message") {
+        try assertEqual(MCPProtocol.classifyIncoming(#"{"jsonrpc":"2.0"}"#, awaitingId: 7), .unrelated)
+    }
+
     // MARK: - Malformed model-emitted arguments must fail loudly (#241)
     // The formatting fallback in toolsCallRequest silently replaced malformed
     // JSON with {}; the call sites must validate first and throw a typed error.

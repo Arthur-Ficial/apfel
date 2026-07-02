@@ -187,6 +187,57 @@ public enum MCPProtocol {
         throw MCPError.invalidResponse("Missing content in tools/call response")
     }
 
+    // MARK: - Incoming message routing (#217)
+
+    /// How one incoming JSON-RPC message relates to an awaited response id.
+    public enum IncomingMessage: Equatable, Sendable {
+        /// The response whose `"id"` matches the awaited request id.
+        case matchingResponse
+        /// A notification, a response to a different id, a server request we
+        /// cannot serve, or stray non-JSON noise - skip it and keep reading.
+        case unrelated
+        /// A server `ping` request: send `reply`, then keep reading.
+        case pingRequest(reply: String)
+    }
+
+    /// Classifies one incoming stdout line against the request id being
+    /// awaited.
+    ///
+    /// MCP servers legitimately interleave server-to-client traffic with
+    /// responses (`notifications/message` logging, `ping`, ...). Returning the
+    /// next line as "the response" desyncs the connection permanently after a
+    /// single log line, so readers must skip everything that is not the
+    /// response to the awaited id (#217).
+    public static func classifyIncoming(_ json: String, awaitingId: Int) -> IncomingMessage {
+        guard let data = json.data(using: .utf8),
+              let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            return .unrelated
+        }
+        // Server-to-client traffic carries a method: requests have an id,
+        // notifications do not. Answer pings; skip everything else.
+        if let method = obj["method"] as? String {
+            if method == "ping", let pingId = obj["id"] {
+                let reply: [String: Any] = ["jsonrpc": "2.0", "id": pingId, "result": [:] as [String: Any]]
+                if JSONSerialization.isValidJSONObject(reply),
+                   let replyData = try? JSONSerialization.data(withJSONObject: reply, options: [.sortedKeys]),
+                   let replyString = String(data: replyData, encoding: .utf8) {
+                    return .pingRequest(reply: replyString)
+                }
+            }
+            return .unrelated
+        }
+        // A response: ours only when the id matches the awaited request id.
+        // Requests always carry Int ids; tolerate a server echoing it back as
+        // a numeric string.
+        if let id = obj["id"] as? Int, id == awaitingId {
+            return .matchingResponse
+        }
+        if let id = obj["id"] as? String, id == String(awaitingId) {
+            return .matchingResponse
+        }
+        return .unrelated
+    }
+
     // MARK: - Private helpers
 
     private static func jsonRPC(id: Int? = nil, method: String, params: [String: Any]? = nil) -> String {

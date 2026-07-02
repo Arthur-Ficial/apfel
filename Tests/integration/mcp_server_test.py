@@ -451,6 +451,46 @@ def test_mcp_timed_out_connection_is_deregistered():
             f"Second call routed to the deregistered dead connection: {second.text[:200]}"
 
 
+def test_mcp_noisy_server_handshake_survives_notifications():
+    """Server->client noise before responses must not desync the handshake (#217).
+
+    noisy_mcp_server.py emits notifications/message lines and a ping request
+    before every response (what FastMCP's ctx.info() does). Before the id
+    correlation fix, apfel parsed the first notification as the initialize
+    response, MCP startup failed, and the server never became healthy. This
+    test is model-free: it only exercises initialize + tools/list.
+    """
+    with running_custom_mcp_server(FIXTURES / "noisy_mcp_server.py") as api_url:
+        base_url = api_url.rsplit("/", 1)[0]
+        health = httpx.get(f"{base_url}/health", timeout=5)
+        assert health.status_code == 200, \
+            "apfel did not come up with a noisy MCP server - id correlation broken?"
+
+
+def test_mcp_noisy_server_tool_call_succeeds():
+    """Tool calls through a notification-noisy MCP server return the real result (#217).
+
+    Before the fix, the notification line was parsed as the tools/call
+    response ("Missing content" error) and the real response stayed buffered,
+    desyncing every later call.
+    """
+    with running_custom_mcp_server(FIXTURES / "noisy_mcp_server.py") as api_url:
+        resp = httpx.post(f"{api_url}/chat/completions", json={
+            "model": MODEL,
+            "messages": [
+                {"role": "user", "content": "Use the multiply tool to compute 247 times 83. Reply with just the number."}
+            ],
+            "seed": 42,
+            "max_tokens": 128,
+        }, timeout=30)
+        assert resp.status_code == 200, f"{resp.status_code}: {resp.text[:200]}"
+        data = resp.json()
+        assert data["choices"][0]["finish_reason"] == "stop"
+        content = data["choices"][0]["message"]["content"] or ""
+        assert "20501" in content or "20,501" in content, \
+            f"Expected 20501 through the noisy server, got: {content}"
+
+
 # ============================================================================
 # MCP tool routing (different calculator tools)
 # ============================================================================

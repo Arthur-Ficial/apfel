@@ -57,8 +57,10 @@ final class MCPConnection: @unchecked Sendable {
 
         do {
             // Initialize handshake
+            let initId = allocId()
             let initResp = try sendAndReceive(
-                MCPProtocol.initializeRequest(id: allocId()),
+                MCPProtocol.initializeRequest(id: initId),
+                id: initId,
                 timeoutMilliseconds: timeoutMilliseconds,
                 operationDescription: "initialize"
             )
@@ -66,8 +68,10 @@ final class MCPConnection: @unchecked Sendable {
             try send(MCPProtocol.initializedNotification())
 
             // Discover tools
+            let listId = allocId()
             let toolsResp = try sendAndReceive(
-                MCPProtocol.toolsListRequest(id: allocId()),
+                MCPProtocol.toolsListRequest(id: listId),
+                id: listId,
                 timeoutMilliseconds: timeoutMilliseconds,
                 operationDescription: "tools/list"
             )
@@ -86,8 +90,10 @@ final class MCPConnection: @unchecked Sendable {
         try MCPProtocol.validateToolArguments(name: name, arguments: arguments)
         // On timeout the manager deregisters and reaps this connection (#216);
         // callTool just surfaces the error.
+        let requestId = allocId()
         let resp = try sendAndReceive(
-            MCPProtocol.toolsCallRequest(id: allocId(), name: name, arguments: arguments),
+            MCPProtocol.toolsCallRequest(id: requestId, name: name, arguments: arguments),
+            id: requestId,
             timeoutMilliseconds: timeoutMilliseconds,
             operationDescription: "tool '\(name)'"
         )
@@ -150,16 +156,38 @@ final class MCPConnection: @unchecked Sendable {
         }
     }
 
+    /// Sends `message` and reads until the response whose JSON-RPC `"id"`
+    /// matches `id` arrives, under one shared deadline (#217). Notifications
+    /// and responses to other ids are skipped; server `ping` requests are
+    /// answered inline. Without this, a single server log notification
+    /// (FastMCP `ctx.info()` emits `notifications/message` on stdout) was
+    /// returned as the tool response and every later call was off-by-one.
     private func sendAndReceive(
         _ message: String,
+        id: Int,
         timeoutMilliseconds: Int,
         operationDescription: String
     ) throws -> String {
         try send(message)
-        return try lineReader.readLine(
-            timeoutMilliseconds: timeoutMilliseconds,
-            operationDescription: operationDescription
-        )
+        let deadline = Date().timeIntervalSinceReferenceDate + Double(timeoutMilliseconds) / 1000.0
+        while true {
+            let remainingMilliseconds = Int((deadline - Date().timeIntervalSinceReferenceDate) * 1000.0)
+            guard remainingMilliseconds > 0 else {
+                throw MCPError.timedOut("\(operationDescription.capitalized) timed out after \(timeoutMilliseconds / 1000)s")
+            }
+            let line = try lineReader.readLine(
+                timeoutMilliseconds: remainingMilliseconds,
+                operationDescription: operationDescription
+            )
+            switch MCPProtocol.classifyIncoming(line, awaitingId: id) {
+            case .matchingResponse:
+                return line
+            case .pingRequest(let reply):
+                try send(reply)
+            case .unrelated:
+                continue
+            }
+        }
     }
 }
 
