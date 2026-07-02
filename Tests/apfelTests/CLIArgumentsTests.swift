@@ -907,6 +907,84 @@ func runCLIArgumentsTests() {
         try assertTrue(args.debug)
     }
 
+    // ========================================================================
+    // MARK: - Invalid env value warnings (#254)
+    // ========================================================================
+
+    test("valid env values produce no warnings (#254)") {
+        let args = try CLIArguments.parse(
+            ["hi"],
+            env: ["APFEL_PORT": "8080", "APFEL_TEMPERATURE": "0.5",
+                  "APFEL_MAX_TOKENS": "200", "APFEL_CONTEXT_STRATEGY": "strict"]
+        )
+        try assertTrue(args.warnings.isEmpty)
+    }
+
+    test("APFEL_PORT out of range warns and falls back to default (#254)") {
+        let args = try CLIArguments.parse(["--serve"], env: ["APFEL_PORT": "99999"])
+        try assertEqual(args.serverPort, 11434)
+        try assertEqual(args.warnings.count, 1)
+        try assertTrue(args.warnings[0].contains("APFEL_PORT"))
+        try assertTrue(args.warnings[0].contains("99999"))
+    }
+
+    test("APFEL_TEMPERATURE non-numeric warns (#254)") {
+        let args = try CLIArguments.parse(["hi"], env: ["APFEL_TEMPERATURE": "abc"])
+        try assertNil(args.temperature)
+        try assertTrue(args.warnings.contains { $0.contains("APFEL_TEMPERATURE") && $0.contains("abc") })
+    }
+
+    test("APFEL_TEMPERATURE negative warns (#254)") {
+        let args = try CLIArguments.parse(["hi"], env: ["APFEL_TEMPERATURE": "-1"])
+        try assertNil(args.temperature)
+        try assertTrue(args.warnings.contains { $0.contains("APFEL_TEMPERATURE") })
+    }
+
+    test("APFEL_MAX_TOKENS non-positive warns (#254)") {
+        let args = try CLIArguments.parse(["hi"], env: ["APFEL_MAX_TOKENS": "0"])
+        try assertNil(args.maxTokens)
+        try assertTrue(args.warnings.contains { $0.contains("APFEL_MAX_TOKENS") && $0.contains("0") })
+    }
+
+    test("APFEL_MCP_TIMEOUT invalid warns (#254)") {
+        let args = try CLIArguments.parse(["hi"], env: ["APFEL_MCP_TIMEOUT": "-5"])
+        try assertEqual(args.mcpTimeoutSeconds, 5)
+        try assertTrue(args.warnings.contains { $0.contains("APFEL_MCP_TIMEOUT") })
+    }
+
+    test("APFEL_CONTEXT_STRATEGY unknown warns (#254)") {
+        let args = try CLIArguments.parse(["--chat"], env: ["APFEL_CONTEXT_STRATEGY": "newest_first"])
+        try assertNil(args.contextStrategy)
+        try assertTrue(args.warnings.contains { $0.contains("APFEL_CONTEXT_STRATEGY") && $0.contains("newest_first") })
+    }
+
+    test("APFEL_CONTEXT_MAX_TURNS invalid warns (#254)") {
+        let args = try CLIArguments.parse(["--chat"], env: ["APFEL_CONTEXT_MAX_TURNS": "abc"])
+        try assertNil(args.contextMaxTurns)
+        try assertTrue(args.warnings.contains { $0.contains("APFEL_CONTEXT_MAX_TURNS") })
+    }
+
+    test("APFEL_CONTEXT_OUTPUT_RESERVE invalid warns (#254)") {
+        let args = try CLIArguments.parse(["--chat"], env: ["APFEL_CONTEXT_OUTPUT_RESERVE": "0"])
+        try assertNil(args.contextOutputReserve)
+        try assertTrue(args.warnings.contains { $0.contains("APFEL_CONTEXT_OUTPUT_RESERVE") })
+    }
+
+    test("multiple invalid env values each produce a warning (#254)") {
+        let args = try CLIArguments.parse(
+            ["hi"],
+            env: ["APFEL_PORT": "99999", "APFEL_TEMPERATURE": "abc",
+                  "APFEL_CONTEXT_STRATEGY": "bogus"]
+        )
+        try assertEqual(args.warnings.count, 3)
+    }
+
+    test("empty env value is ignored without warning (#254)") {
+        // An unset/empty var is not a misconfiguration, just absence.
+        let args = try CLIArguments.parse(["hi"], env: ["APFEL_PORT": "", "APFEL_TEMPERATURE": ""])
+        try assertTrue(args.warnings.isEmpty)
+    }
+
     test("APFEL_MCP env splits on colon separator") {
         let args = try CLIArguments.parse(["hi"], env: ["APFEL_MCP": "a.py:b.py"])
         try assertEqual(args.mcpServerPaths, ["a.py", "b.py"])

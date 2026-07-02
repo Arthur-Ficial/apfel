@@ -111,6 +111,13 @@ public struct CLIArguments: Sendable, Equatable {
     public var contextOutputReserve: Int? = nil
     public var contextStatus: Bool = false
 
+    // MARK: - Warnings
+
+    /// Non-fatal parse warnings (e.g. an invalid `APFEL_*` env value that was
+    /// ignored in favor of the default). Collected here so `parse()` stays pure
+    /// and testable; the executable prints them to stderr unless `--quiet` (#254).
+    public var warnings: [String] = []
+
     public init() {}
 }
 
@@ -204,22 +211,79 @@ extension CLIArguments {
     ) throws -> CLIArguments {
         var result = CLIArguments()
 
-        // Environment variable defaults (CLI flags override these).
+        // Environment variable defaults (CLI flags override these). Invalid
+        // values are ignored in favor of the default AND recorded as a warning
+        // so the executable can surface them on stderr, rather than silently
+        // dropping to the default while the equivalent flag hard-errors (#254).
+        // A set-but-empty var is treated as absence, not a misconfiguration.
+        func envValue(_ name: String) -> String? {
+            guard let raw = env[name], !raw.isEmpty else { return nil }
+            return raw
+        }
+
         result.systemPrompt = env["APFEL_SYSTEM_PROMPT"]
-        result.serverPort = Int(env["APFEL_PORT"] ?? "")
-            .flatMap { (1...65535).contains($0) ? $0 : nil } ?? 11434
+
+        if let raw = envValue("APFEL_PORT") {
+            if let p = Int(raw), (1...65535).contains(p) {
+                result.serverPort = p
+            } else {
+                result.warnings.append("ignoring APFEL_PORT=\(raw) (not in 1-65535)")
+            }
+        }
+
         result.serverHost = env["APFEL_HOST"] ?? "127.0.0.1"
         result.serverToken = env["APFEL_TOKEN"]
         result.mcpServerPaths = env["APFEL_MCP"].map { parseMCPServerPaths($0) } ?? []
-        result.mcpTimeoutSeconds = Int(env["APFEL_MCP_TIMEOUT"] ?? "")
-            .flatMap { $0 > 0 ? min($0, 300) : nil } ?? 5
+
+        if let raw = envValue("APFEL_MCP_TIMEOUT") {
+            if let t = Int(raw), t > 0 {
+                result.mcpTimeoutSeconds = min(t, 300)
+            } else {
+                result.warnings.append("ignoring APFEL_MCP_TIMEOUT=\(raw) (not a positive integer)")
+            }
+        }
+
         result.mcpBearerToken = env["APFEL_MCP_TOKEN"].flatMap { $0.isEmpty ? nil : $0 }
-        result.temperature = Double(env["APFEL_TEMPERATURE"] ?? "").flatMap { $0 >= 0 ? $0 : nil }
-        result.maxTokens = Int(env["APFEL_MAX_TOKENS"] ?? "").flatMap { $0 > 0 ? $0 : nil }
-        result.contextStrategy = env["APFEL_CONTEXT_STRATEGY"].flatMap { ContextStrategy(rawValue: $0) }
-        result.contextMaxTurns = env["APFEL_CONTEXT_MAX_TURNS"].flatMap { Int($0) }.flatMap { $0 > 0 ? $0 : nil }
-        result.contextOutputReserve = env["APFEL_CONTEXT_OUTPUT_RESERVE"]
-            .flatMap { Int($0) }.flatMap { $0 > 0 ? $0 : nil }
+
+        if let raw = envValue("APFEL_TEMPERATURE") {
+            if let t = Double(raw), t >= 0 {
+                result.temperature = t
+            } else {
+                result.warnings.append("ignoring APFEL_TEMPERATURE=\(raw) (not a non-negative number)")
+            }
+        }
+
+        if let raw = envValue("APFEL_MAX_TOKENS") {
+            if let n = Int(raw), n > 0 {
+                result.maxTokens = n
+            } else {
+                result.warnings.append("ignoring APFEL_MAX_TOKENS=\(raw) (not a positive integer)")
+            }
+        }
+
+        if let raw = envValue("APFEL_CONTEXT_STRATEGY") {
+            if let s = ContextStrategy(rawValue: raw) {
+                result.contextStrategy = s
+            } else {
+                result.warnings.append("ignoring APFEL_CONTEXT_STRATEGY=\(raw) (unknown strategy)")
+            }
+        }
+
+        if let raw = envValue("APFEL_CONTEXT_MAX_TURNS") {
+            if let n = Int(raw), n > 0 {
+                result.contextMaxTurns = n
+            } else {
+                result.warnings.append("ignoring APFEL_CONTEXT_MAX_TURNS=\(raw) (not a positive integer)")
+            }
+        }
+
+        if let raw = envValue("APFEL_CONTEXT_OUTPUT_RESERVE") {
+            if let n = Int(raw), n > 0 {
+                result.contextOutputReserve = n
+            } else {
+                result.warnings.append("ignoring APFEL_CONTEXT_OUTPUT_RESERVE=\(raw) (not a positive integer)")
+            }
+        }
         // APFEL_DEBUG=<any non-empty value> enables debug logging, same as --debug (#164).
         if let debugVal = env["APFEL_DEBUG"], !debugVal.isEmpty {
             result.debug = true

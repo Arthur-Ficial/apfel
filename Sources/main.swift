@@ -144,6 +144,15 @@ if parsed.quiet { quietMode = true }
 if parsed.noColor { noColorFlag = true }
 if parsed.debug { ApfelDebugConfiguration.isEnabled = true }
 
+// Surface non-fatal parse warnings (invalid APFEL_* env values ignored in
+// favor of defaults) on stderr unless --quiet. Collected by parse() so it
+// stays pure; printed here (#254).
+if !quietMode {
+    for warning in parsed.warnings {
+        printStderr("\(styled("apfel:", .yellow)) \(warning)")
+    }
+}
+
 // Build the prompt: positional args + piped stdin + attached files.
 var prompt = parsed.prompt
 var fileContents = parsed.fileContents
