@@ -84,6 +84,43 @@ func runInstallMethodTests() {
         let result = detectInstallMethod(binaryPath: tmp.appendingPathComponent("bin/apfel").path)
         try assertEqual(result, .source)
     }
+
+    // MARK: - brewPrefix(from:) tests
+
+    test("brewPrefix: Apple Silicon Cellar path") {
+        let path = "/opt/homebrew/Cellar/apfel/1.3.5/bin/apfel"
+        try assertEqual(brewPrefix(from: path), "/opt/homebrew")
+    }
+
+    test("brewPrefix: Intel Cellar path") {
+        let path = "/usr/local/homebrew/Cellar/apfel/1.3.5/bin/apfel"
+        try assertEqual(brewPrefix(from: path), "/usr/local/homebrew")
+    }
+
+    test("brewPrefix: custom prefix Cellar path") {
+        let path = "/Users/me/homebrew/Cellar/apfel/1.6.1/bin/apfel"
+        try assertEqual(brewPrefix(from: path), "/Users/me/homebrew")
+    }
+
+    test("brewPrefix: Apple Silicon opt symlink path") {
+        let path = "/opt/homebrew/opt/apfel/bin/apfel"
+        try assertEqual(brewPrefix(from: path), "/opt/homebrew")
+    }
+
+    test("brewPrefix: Intel opt symlink path") {
+        let path = "/usr/local/homebrew/opt/apfel/bin/apfel"
+        try assertEqual(brewPrefix(from: path), "/usr/local/homebrew")
+    }
+
+    test("brewPrefix: custom prefix opt symlink path") {
+        let path = "/Users/me/homebrew/opt/apfel/bin/apfel"
+        try assertEqual(brewPrefix(from: path), "/Users/me/homebrew")
+    }
+
+    test("brewPrefix: non-homebrew path returns default fallback") {
+        let path = "/usr/local/bin/apfel"
+        try assertEqual(brewPrefix(from: path), "/opt/homebrew")
+    }
 }
 
 private func makeTempPrefix() -> URL {
