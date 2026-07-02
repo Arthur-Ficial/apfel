@@ -117,6 +117,15 @@ def get_nums(args):
     return nums
 
 
+def _to_number(v):
+    """Coerce a value to int or float. Raises ValueError on failure."""
+    if isinstance(v, (int, float)):
+        return v
+    if isinstance(v, str):
+        return float(v) if "." in v else int(v)
+    raise ValueError(f"not a valid number: {v!r}")
+
+
 def execute(name, args):
     """Execute a tool by name. Tolerates improvised argument keys."""
     nums = get_nums(args)
@@ -124,6 +133,8 @@ def execute(name, args):
     b = args.get("b", nums[1] if len(nums) > 1 else 0)
 
     try:
+        a = _to_number(a)
+        b = _to_number(b)
         if name == "add":
             r = a + b
         elif name == "subtract":
