@@ -12,8 +12,8 @@ import ApfelCLI
 // Marked `nonisolated(unsafe)` because Swift 6 strict concurrency treats global
 // mutable state as @MainActor-isolated. Safe here: single-threaded CLI, write-once.
 
-/// True if the NO_COLOR environment variable is set (https://no-color.org)
-let noColorEnv = ProcessInfo.processInfo.environment["NO_COLOR"] != nil
+/// True if the NO_COLOR environment variable is set to a non-empty value (https://no-color.org)
+let noColorEnv = ProcessInfo.processInfo.environment["NO_COLOR"].map { !$0.isEmpty } ?? false
 
 /// True if --no-color flag was passed
 nonisolated(unsafe) var noColorFlag = false

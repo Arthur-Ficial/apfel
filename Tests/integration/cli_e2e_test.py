@@ -360,6 +360,13 @@ def test_no_color_disables_ansi_under_tty():
     assert not ANSI_RE.search(output), output
 
 
+def test_empty_no_color_preserves_ansi_under_tty():
+    """NO_COLOR="" (empty string) must NOT disable color per no-color.org and the man page (#258)."""
+    returncode, output = run_cli_tty(["--help"], env={"NO_COLOR": ""})
+    assert returncode == 0
+    assert ANSI_RE.search(output), f"Expected ANSI codes with NO_COLOR='', got: {output[:200]}"
+
+
 def test_quiet_json_prompt_output_is_machine_readable():
     require_model()
     result = run_cli(
