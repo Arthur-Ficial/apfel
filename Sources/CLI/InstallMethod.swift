@@ -41,3 +41,17 @@ public func detectInstallMethod(
 
     return .source
 }
+
+/// Extract the Homebrew prefix from a resolved binary path.
+///
+/// Works for both Cellar paths (`<prefix>/Cellar/apfel/…`) and opt symlink
+/// paths (`<prefix>/opt/apfel/…`). Returns `nil` for non-Homebrew paths.
+public func brewPrefix(fromBinaryPath path: String) -> String? {
+    if let range = path.range(of: "/Cellar/apfel/") {
+        return String(path[path.startIndex..<range.lowerBound])
+    }
+    if let range = path.range(of: "/opt/apfel/") {
+        return String(path[path.startIndex..<range.lowerBound])
+    }
+    return nil
+}
