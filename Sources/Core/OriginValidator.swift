@@ -56,10 +56,26 @@ public enum OriginValidator {
         } else {
             token = provided
         }
-        return !token.isEmpty && token == expected
+        return !token.isEmpty && constantTimeEqual(token, expected)
     }
 
     // MARK: - Private
+
+    /// Constant-time string comparison to prevent timing side-channel attacks.
+    /// XOR-accumulates over the longer of the two byte arrays; the loop length
+    /// and the length-mismatch flag are folded into the result without early return.
+    private static func constantTimeEqual(_ a: String, _ b: String) -> Bool {
+        let aBytes = Array(a.utf8)
+        let bBytes = Array(b.utf8)
+        var result: UInt8 = aBytes.count == bBytes.count ? 0 : 1
+        let count = max(aBytes.count, bBytes.count)
+        for i in 0..<count {
+            let aByte: UInt8 = i < aBytes.count ? aBytes[i] : 0
+            let bByte: UInt8 = i < bBytes.count ? bBytes[i] : 0
+            result |= aByte ^ bByte
+        }
+        return result == 0
+    }
 
     /// Match origin against pattern. Allows exact match or port variants.
     /// Guards against subdomain attacks: "http://localhost.evil.com" must NOT match "http://localhost".
