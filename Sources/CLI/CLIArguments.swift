@@ -237,8 +237,17 @@ extension CLIArguments {
         // works as a normal prompt because it is not the literal first arg here.
         if args.first == "demos" {
             result.mode = .demos
-            if args.count > 1, !args[1].hasPrefix("-") {
-                result.demosTarget = args[1]
+            for j in 1..<args.count {
+                switch args[j] {
+                case "-h", "--help":
+                    result.mode = .help
+                    return result
+                default:
+                    if args[j].hasPrefix("-") {
+                        throw CLIErrors.unknownOption(args[j])
+                    }
+                    result.demosTarget = args[j]
+                }
             }
             return result
         }
