@@ -285,16 +285,24 @@ def normal_streaming_response():
 
 @pytest.fixture(scope="module")
 def add_tool_response():
-    """Non-streaming add 100+200 -- shared by stop-not-tool_calls and usage tests."""
-    resp = httpx.post(f"{API_URL}/chat/completions", json={
-        "model": MODEL,
-        "messages": [
-            {"role": "user", "content": "Use the add function to add 100 and 200. Reply with just the number."}
-        ],
-        "seed": 42,
-    }, timeout=TIMEOUT)
-    assert resp.status_code == 200
-    return resp.json()
+    """Non-streaming add 100+200 -- shared by stop-not-tool_calls, usage, and
+    result tests. Rotates seeds on guardrail refusal (#323)."""
+    for seed in (42, 7, 123, 0, 99):
+        resp = httpx.post(f"{API_URL}/chat/completions", json={
+            "model": MODEL,
+            "messages": [
+                {"role": "user", "content": "Use the add function to add 100 and 200. Reply with just the number."}
+            ],
+            "seed": seed,
+        }, timeout=TIMEOUT)
+        assert resp.status_code == 200
+        data = resp.json()
+        content = data["choices"][0]["message"]["content"] or ""
+        if not _is_guardrail_refusal(content):
+            return data
+    pytest.fail(
+        f"model guardrail-refused add(100,200) on every seed; last content: {content}"
+    )
 
 
 # ============================================================================
@@ -765,6 +773,16 @@ def test_mcp_sqrt_returns_correct_result():
     else:
         pytest.fail(f"model guardrail-refused every seed; last: {content}")
     assert "12" in content, f"Expected 12, got: {content}"
+
+
+def test_mcp_add_returns_correct_result(add_tool_response):
+    """Add tool: 100 + 200 = 300. Seed rotation in fixture guards against
+    guardrail refusals that silently pass content asserts (#323)."""
+    data = add_tool_response
+    content = data["choices"][0]["message"]["content"] or ""
+    assert data["choices"][0]["finish_reason"] == "stop"
+    assert_no_raw_tool_calls(content)
+    assert "300" in content, f"Expected 300, got: {content}"
 
 
 def test_mcp_tool_returns_stop_not_tool_calls(add_tool_response):
