@@ -183,16 +183,29 @@ def normal_streaming_response():
 
 @pytest.fixture(scope="module")
 def add_tool_response():
-    """Non-streaming add 100+200 -- shared by stop-not-tool_calls and usage tests."""
-    resp = httpx.post(f"{API_URL}/chat/completions", json={
-        "model": MODEL,
-        "messages": [
-            {"role": "user", "content": "Use the add function to add 100 and 200. Reply with just the number."}
-        ],
-        "seed": 42,
-    }, timeout=TIMEOUT)
-    assert resp.status_code == 200
-    return resp.json()
+    """Non-streaming add 100+200 -- shared by stop-not-tool_calls and usage tests.
+
+    Rotates seeds on guardrail refusal: the macOS 26.5.2 model refuses this
+    prompt on some sampling trajectories (#323). The property under test is
+    that the tool result round-trips, not that a particular seed avoids the
+    guardrail.
+    """
+    from conftest import is_guardrail_refusal
+    content = ""
+    for seed in (42, 7, 123):
+        resp = httpx.post(f"{API_URL}/chat/completions", json={
+            "model": MODEL,
+            "messages": [
+                {"role": "user", "content": "Use the add function to add 100 and 200. Reply with just the number."}
+            ],
+            "seed": seed,
+        }, timeout=TIMEOUT)
+        assert resp.status_code == 200
+        data = resp.json()
+        content = data["choices"][0]["message"]["content"] or ""
+        if not is_guardrail_refusal(content):
+            return data
+    pytest.fail(f"model guardrail-refused every seed; last: {content}")
 
 
 # ============================================================================
@@ -378,6 +391,29 @@ def test_mcp_tool_timeout_returns_structured_error():
 
 
 # ============================================================================
+# Guardrail refusal detection helper (#323, #324)
+# ============================================================================
+
+@pytest.mark.parametrize("text,expected", [
+    ("I'm sorry, but I cannot comply with your request.", True),
+    ("I’m sorry, but as a language model I cannot comply.", True),
+    ("  I'm sorry, but I cannot provide that.\n", True),
+    ("Sorry, I cannot do that.", True),
+    ("I can't help with that request as it violates guidelines.", True),
+    ("I cannot provide an answer that promotes harm.", True),
+    ("300", False),
+    ("The answer is 42.", False),
+    ("12", False),
+    ("", False),
+    (None, False),
+])
+def test_is_guardrail_refusal(text, expected):
+    """The shared helper must catch all known on-device model refusal variants."""
+    from conftest import is_guardrail_refusal
+    assert is_guardrail_refusal(text) is expected
+
+
+# ============================================================================
 # MCP tool routing (different calculator tools)
 # ============================================================================
 
@@ -391,18 +427,28 @@ def test_mcp_multiply_returns_correct_result(multiply_247x83_response):
 
 
 def test_mcp_sqrt_returns_correct_result():
-    """Sqrt tool: sqrt(144) = 12."""
-    resp = httpx.post(f"{API_URL}/chat/completions", json={
-        "model": MODEL,
-        "messages": [
-            {"role": "user", "content": "Use the sqrt tool to compute the square root of 144. Reply with just the number."}
-        ],
-        "seed": 42,
-    }, timeout=TIMEOUT)
-    data = resp.json()
-    content = data["choices"][0]["message"]["content"] or ""
-    assert data["choices"][0]["finish_reason"] == "stop"
-    assert_no_raw_tool_calls(content)
+    """Sqrt tool: sqrt(144) = 12.
+
+    Rotates seeds on guardrail refusal: the macOS 26.5.2 model refuses this
+    prompt on some sampling trajectories (#320, #323)."""
+    from conftest import is_guardrail_refusal
+    content = ""
+    for seed in (42, 7, 123):
+        resp = httpx.post(f"{API_URL}/chat/completions", json={
+            "model": MODEL,
+            "messages": [
+                {"role": "user", "content": "Use the sqrt tool to compute the square root of 144. Reply with just the number."}
+            ],
+            "seed": seed,
+        }, timeout=TIMEOUT)
+        data = resp.json()
+        content = data["choices"][0]["message"]["content"] or ""
+        assert data["choices"][0]["finish_reason"] == "stop"
+        assert_no_raw_tool_calls(content)
+        if not is_guardrail_refusal(content):
+            break
+    else:
+        pytest.fail(f"model guardrail-refused every seed; last: {content}")
     assert "12" in content, f"Expected 12, got: {content}"
 
 

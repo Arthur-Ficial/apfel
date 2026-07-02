@@ -8,6 +8,25 @@ import time
 import httpx
 import pytest
 
+
+def is_guardrail_refusal(text):
+    """Detect the on-device model's guardrail refusals.
+
+    The macOS 26.5.2 model refuses prompts more aggressively than earlier
+    versions. Known refusal shapes include ASCII apostrophe ("I'm sorry"),
+    curly apostrophe (U+2019), "I can't", "I cannot provide", "Sorry, ..."
+    with no lead-in, and variants with leading whitespace (#323, #324).
+    """
+    if not text:
+        return False
+    normalized = text.strip().replace("’", "'").lower()
+    starts = ("i'm sorry", "sorry,", "sorry ", "i can't", "i cannot")
+    if not any(normalized.startswith(s) for s in starts):
+        return False
+    keywords = ("cannot", "can't", "violates", "unable to", "not able to",
+                "programming rules", "guidelines")
+    return any(k in normalized for k in keywords)
+
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 BINARY = ROOT / ".build" / "release" / "apfel"
 MCP_SERVER = ROOT / "mcp" / "calculator" / "server.py"
