@@ -360,6 +360,35 @@ def test_no_color_disables_ansi_under_tty():
     assert not ANSI_RE.search(output), output
 
 
+def test_stderr_no_ansi_when_stderr_not_tty():
+    """stderr must not contain ANSI codes when redirected, even if stdout is a TTY. (#249)"""
+    merged_env = os.environ.copy()
+    merged_env.pop("NO_COLOR", None)
+    merged_env.pop("APFEL_SYSTEM_PROMPT", None)
+
+    master_fd, slave_fd = pty.openpty()
+    try:
+        proc = subprocess.Popen(
+            [str(BINARY), "--definitely-not-a-real-flag"],
+            stdin=subprocess.PIPE,
+            stdout=slave_fd,
+            stderr=subprocess.PIPE,
+            env=merged_env,
+        )
+    finally:
+        os.close(slave_fd)
+
+    _, stderr_bytes = proc.communicate(timeout=10)
+    os.close(master_fd)
+
+    assert proc.returncode == 2
+    stderr_text = stderr_bytes.decode("utf-8", errors="replace")
+    assert "unknown option" in stderr_text
+    assert not ANSI_RE.search(stderr_text), (
+        f"ANSI escape codes leaked into redirected stderr: {stderr_text!r}"
+    )
+
+
 def test_quiet_json_prompt_output_is_machine_readable():
     require_model()
     result = run_cli(

@@ -301,9 +301,9 @@ func printToolLog(_ toolLog: [ToolLogEntry]) {
     guard !quietMode else { return }
     for log in toolLog {
         if log.isError {
-            printStderr("\(styled("tool:", .red)) \(log.name) failed: \(log.result)")
+            printStderr("\(styledErr("tool:", .red)) \(log.name) failed: \(log.result)")
         } else {
-            printStderr("\(styled("tool:", .cyan)) \(log.name)(\(log.args)) = \(log.result)")
+            printStderr("\(styledErr("tool:", .cyan)) \(log.name)(\(log.args)) = \(log.result)")
         }
     }
 }
