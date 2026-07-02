@@ -1088,6 +1088,42 @@ def test_chat_history_persists_with_histfile(tmp_path):
     assert (histfile.stat().st_mode & 0o777) == 0o600, oct(histfile.stat().st_mode)
 
 
+def test_chat_multibyte_backspace_buffer_is_clean_end_to_end(tmp_path):
+    """#339: prove the EDIT BUFFER (not just the redisplay) is character-wise.
+
+    The echo-level test above infers character-wise deletion from the erase
+    ops libedit paints, but a byte-wise regression that repaints with one
+    destructive erase would slip past it - the dangling 0xC3 lives in the
+    buffer, not necessarily after the last backspace in the echo stream.
+    Here the edited line is submitted and persisted via APFEL_HISTFILE, so
+    the assertion runs against the exact bytes libedit kept: typing
+    caf<e-acute><backspace>Xsentinel must persist "cafXsentinel" - one
+    backspace removed the WHOLE 2-byte character. A byte-wise buffer would
+    persist caf\\xc3Xsentinel (raw or \\303-escaped) and fail both asserts.
+    """
+    require_model()
+    histfile = tmp_path / "apfel_history"
+    returncode, output = run_chat_tty(
+        ["--chat"],
+        steps=[
+            (b"you", b"caf\xc3\xa9\x7fXsentinel\n"),
+            (None, b"quit\n"),
+        ],
+        env={
+            "APFEL_HISTFILE": str(histfile),
+            "LANG": "en_US.UTF-8",
+            "LC_CTYPE": "en_US.UTF-8",
+        },
+        timeout=90,
+    )
+    assert histfile.exists(), f"history file not written; output: {output[:300]!r}"
+    data = histfile.read_bytes()
+    assert b"cafXsentinel" in data, f"edited line not persisted verbatim: {data!r}"
+    # Byte-wise-deletion signatures: a dangling lead byte, raw or history-escaped.
+    assert b"caf\xc3" not in data and b"caf\\303" not in data, \
+        f"dangling UTF-8 lead byte survived into the buffer: {data!r}"
+
+
 def test_chat_history_off_by_default(tmp_path):
     """Without APFEL_HISTFILE, a pre-seeded file is neither read nor rewritten.
 
