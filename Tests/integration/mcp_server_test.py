@@ -17,6 +17,7 @@ tests that check different aspects of the same response share a single call.
 import json
 import contextlib
 import pathlib
+import sys
 import pytest
 import httpx
 import socket
@@ -980,3 +981,103 @@ def test_temperature_zero_with_mcp():
     assert data["choices"][0]["finish_reason"] == "stop"
     content = data["choices"][0]["message"]["content"]
     assert content is not None
+
+
+# ============================================================================
+# MCP calculator: numeric coercion (model-free, no Apple Intelligence needed)
+# ============================================================================
+
+def _mcp_call_raw(tool_name, arguments):
+    """Call the MCP calculator server via stdio, return (text, isError)."""
+    init_msg = json.dumps({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": {"protocolVersion": "2025-06-18", "capabilities": {},
+                   "clientInfo": {"name": "apfel-test", "version": "1.0"}}
+    })
+    call_msg = json.dumps({
+        "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+        "params": {"name": tool_name, "arguments": arguments}
+    })
+    mcp_script = ROOT / "mcp" / "calculator" / "server.py"
+    proc = subprocess.run(
+        [sys.executable, str(mcp_script)],
+        input=f"{init_msg}\n{call_msg}\n",
+        capture_output=True, text=True, timeout=5,
+    )
+    for line in proc.stdout.strip().split("\n"):
+        msg = json.loads(line)
+        if msg.get("id") == 2:
+            result = msg["result"]
+            return result["content"][0]["text"], result.get("isError", False)
+    raise RuntimeError("no tools/call response from MCP server")
+
+
+class TestMcpCalculatorNumericCoercion:
+    """The on-device model routinely sends string arguments to calculator tools.
+    The server must coerce them to numbers, never string-concatenate (#322).
+
+    Model-free: exercises the calculator server.py directly via stdio.
+    """
+
+    def test_add_string_args_returns_sum_not_concatenation(self):
+        """add(a="999", b="1") must return 1000, not "9991"."""
+        text, is_error = _mcp_call_raw("add", {"a": "999", "b": "1"})
+        assert text != "9991", "string concatenation instead of numeric addition"
+        if is_error:
+            assert "number" in text.lower(), f"unexpected error: {text}"
+        else:
+            assert text == "1000", f"expected 1000, got {text}"
+
+    def test_multiply_string_args(self):
+        """multiply(a="7", b="6") must return 42."""
+        text, is_error = _mcp_call_raw("multiply", {"a": "7", "b": "6"})
+        assert not is_error, f"unexpected error: {text}"
+        assert text == "42", f"expected 42, got {text}"
+
+    def test_subtract_string_args(self):
+        """subtract(a="10", b="3") must return 7."""
+        text, is_error = _mcp_call_raw("subtract", {"a": "10", "b": "3"})
+        assert not is_error, f"unexpected error: {text}"
+        assert text == "7", f"expected 7, got {text}"
+
+    def test_divide_string_args(self):
+        """divide(a="10", b="2") must return 5."""
+        text, is_error = _mcp_call_raw("divide", {"a": "10", "b": "2"})
+        assert not is_error, f"unexpected error: {text}"
+        assert text == "5", f"expected 5, got {text}"
+
+    def test_sqrt_string_arg(self):
+        """sqrt(a="144") must return 12."""
+        text, is_error = _mcp_call_raw("sqrt", {"a": "144"})
+        assert not is_error, f"unexpected error: {text}"
+        assert text == "12", f"expected 12, got {text}"
+
+    def test_power_string_args(self):
+        """power(a="2", b="10") must return 1024."""
+        text, is_error = _mcp_call_raw("power", {"a": "2", "b": "10"})
+        assert not is_error, f"unexpected error: {text}"
+        assert text == "1024", f"expected 1024, got {text}"
+
+    def test_round_number_string_args(self):
+        """round_number(a="3.14159", decimals="2") must return 3.14."""
+        text, is_error = _mcp_call_raw("round_number", {"a": "3.14159", "decimals": "2"})
+        assert not is_error, f"unexpected error: {text}"
+        assert text == "3.14", f"expected 3.14, got {text}"
+
+    def test_non_numeric_string_returns_error(self):
+        """add(a="hello", b="1") must return an isError result."""
+        text, is_error = _mcp_call_raw("add", {"a": "hello", "b": "1"})
+        assert is_error, f"non-numeric input should return isError, got: {text}"
+        assert "number" in text.lower(), f"error message should mention 'number': {text}"
+
+    def test_numeric_args_still_work(self):
+        """add(a=999, b=1) with proper numeric types still returns 1000."""
+        text, is_error = _mcp_call_raw("add", {"a": 999, "b": 1})
+        assert not is_error, f"unexpected error: {text}"
+        assert text == "1000", f"expected 1000, got {text}"
+
+    def test_float_string_args(self):
+        """add(a="1.5", b="2.5") must return 4."""
+        text, is_error = _mcp_call_raw("add", {"a": "1.5", "b": "2.5"})
+        assert not is_error, f"unexpected error: {text}"
+        assert text == "4", f"expected 4, got {text}"

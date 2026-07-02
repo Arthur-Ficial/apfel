@@ -117,11 +117,34 @@ def get_nums(args):
     return nums
 
 
+def _coerce_num(value):
+    """Coerce a value to a number, or return None if not numeric."""
+    if isinstance(value, (int, float)):
+        return value
+    if isinstance(value, str):
+        try:
+            return float(value) if "." in value else int(value)
+        except ValueError:
+            return None
+    return None
+
+
 def execute(name, args):
     """Execute a tool by name. Tolerates improvised argument keys."""
     nums = get_nums(args)
-    a = args.get("a", nums[0] if nums else 0)
-    b = args.get("b", nums[1] if len(nums) > 1 else 0)
+    raw_a = args.get("a", nums[0] if nums else None)
+    raw_b = args.get("b", nums[1] if len(nums) > 1 else None)
+
+    a = _coerce_num(raw_a)
+    b = _coerce_num(raw_b)
+
+    needs_a = name in ("add", "subtract", "multiply", "divide", "sqrt", "power", "round_number")
+    needs_b = name in ("add", "subtract", "multiply", "divide", "power")
+
+    if needs_a and a is None:
+        return f"Error: argument 'a' must be a number, got {raw_a!r}"
+    if needs_b and b is None:
+        return f"Error: argument 'b' must be a number, got {raw_b!r}"
 
     try:
         if name == "add":
@@ -139,8 +162,11 @@ def execute(name, args):
         elif name == "power":
             r = a ** b
         elif name == "round_number":
-            decimals = int(args.get("decimals", args.get("n", nums[1] if len(nums) > 1 else 0)))
-            r = round(a, decimals)
+            raw_dec = args.get("decimals", args.get("n", nums[1] if len(nums) > 1 else 0))
+            dec = _coerce_num(raw_dec)
+            if dec is None:
+                return f"Error: argument 'decimals' must be a number, got {raw_dec!r}"
+            r = round(a, int(dec))
         else:
             return f"Error: unknown tool '{name}'"
 
