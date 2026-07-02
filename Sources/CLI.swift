@@ -95,8 +95,9 @@ func countTokens(
 
     let inputEntries: [Transcript.Entry]
     let noToolEntries: [Transcript.Entry]?
+    let skipSession = tokenCountFallback?.skipSessionConstruction ?? false
 
-    if approximate {
+    if skipSession {
         // Avoid LanguageModelSession construction when the model is unavailable.
         inputEntries = []
         noToolEntries = nil
@@ -120,7 +121,7 @@ func countTokens(
     }
 
     let total: Int
-    if approximate {
+    if skipSession {
         var approxTotal = await TokenCounter.shared.count(mergedPrompt)
         if let sys = systemPrompt, !sys.isEmpty {
             approxTotal += await TokenCounter.shared.count(sys)
@@ -150,7 +151,7 @@ func countTokens(
     }
 
     let mcpToolTokens: Int
-    if approximate {
+    if skipSession {
         mcpToolTokens = 0
     } else if let baseline = noToolEntries {
         let baselineCount = await TokenCounter.shared.count(entries: baseline)

@@ -44,4 +44,26 @@ func runTokenCountFallbackTests() {
         try assertTrue(msg.contains("Apple Intelligence unavailable"))
         try assertTrue(msg.contains("chars/4"))
     }
+
+    // #326: osTooOld must not skip session construction (model is available,
+    // only the tokenizer API is missing). Skipping drops MCP tool schemas
+    // from the count, making --strict false-pass.
+
+    test("osTooOld does not skip session construction (#326)") {
+        let fallback = TokenCountFallback.osTooOld(currentOS: "26.3.1")
+        try assertFalse(fallback.skipSessionConstruction,
+            "osTooOld must not skip session construction - model is available")
+    }
+
+    test("modelUnavailable skips session construction") {
+        let fallback = TokenCountFallback.modelUnavailable
+        try assertTrue(fallback.skipSessionConstruction,
+            "modelUnavailable must skip session construction")
+    }
+
+    test("nil fallback means no skip (real API usable)") {
+        let fallback = TokenCountFallback.reason(
+            modelAvailable: true, osSupportsTokenCounting: true, currentOS: "26.4.0")
+        try assertTrue(fallback == nil)
+    }
 }

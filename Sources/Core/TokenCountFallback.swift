@@ -30,6 +30,19 @@ public enum TokenCountFallback: Sendable, Equatable {
         return nil
     }
 
+    /// Whether this fallback reason means session construction is unsafe.
+    /// `.modelUnavailable` means the model cannot be used at all, so
+    /// `LanguageModelSession` construction must be skipped. `.osTooOld` means
+    /// the tokenizer API is missing but the model itself is available -
+    /// session construction is safe and yields real transcript entries that
+    /// the chars/4 fallback can count, including tool schemas (#326).
+    public var skipSessionConstruction: Bool {
+        switch self {
+        case .modelUnavailable: return true
+        case .osTooOld: return false
+        }
+    }
+
     /// Human-readable explanation for the stderr warning.
     public var message: String {
         switch self {
