@@ -128,9 +128,13 @@ actor TokenCounter {
     /// repeated mid-flight access on Hummingbird's dispatch queue can destabilize
     /// the process in some macOS 26.4 environments.
     var supportedLanguages: [String] {
+        // The SDK reports locale variants (en_US, en_GB, en_AU...) whose
+        // languageCode all collapse to the same bare code - dedupe while
+        // preserving the SDK's order, or /health lists "en" three times (#329).
         var ids: [String] = []
+        var seen = Set<String>()
         for language in model.supportedLanguages {
-            if let id = language.languageCode?.identifier {
+            if let id = language.languageCode?.identifier, seen.insert(id).inserted {
                 ids.append(id)
             }
         }

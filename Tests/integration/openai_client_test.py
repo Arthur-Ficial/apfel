@@ -73,6 +73,10 @@ def test_health_supported_languages_populated():
         "disabled or SystemLanguageModel.supportedLanguages changed."
     )
     assert "en" in langs, f"expected 'en' in supported_languages, got {langs}"
+    # #329: the SDK reports locale variants (en_US, en_GB, en_AU...) that all
+    # collapse to the same bare code; the list must be deduplicated.
+    dupes = {l for l in langs if langs.count(l) > 1}
+    assert not dupes, f"duplicate entries in supported_languages: {sorted(dupes)} in {langs}"
 
 
 # MARK: - Basic Completions
