@@ -360,6 +360,40 @@ def test_no_color_disables_ansi_under_tty():
     assert not ANSI_RE.search(output), output
 
 
+def test_stderr_no_ansi_when_only_stdout_is_tty():
+    """Bug #249: styled() checked stdout's TTY status for stderr-destined output.
+    With stdout on a TTY and stderr piped, error messages should NOT have ANSI."""
+    merged_env = os.environ.copy()
+    for key in ["NO_COLOR", "APFEL_SYSTEM_PROMPT", "APFEL_HOST", "APFEL_PORT",
+                "APFEL_TEMPERATURE", "APFEL_MAX_TOKENS"]:
+        merged_env.pop(key, None)
+    master_fd, slave_fd = pty.openpty()
+    try:
+        proc = subprocess.Popen(
+            [str(BINARY), "--bogus-flag-that-does-not-exist"],
+            stdin=subprocess.PIPE,
+            stdout=slave_fd,
+            stderr=subprocess.PIPE,
+            env=merged_env,
+            close_fds=True,
+        )
+        os.close(slave_fd)
+        slave_fd = -1
+        _, stderr_bytes = proc.communicate(timeout=10)
+        stderr_text = stderr_bytes.decode("utf-8", errors="replace")
+        assert proc.returncode != 0, "bad flag should fail"
+        assert "error:" in stderr_text.lower() or "unknown" in stderr_text.lower(), (
+            f"expected error message on stderr, got: {stderr_text!r}"
+        )
+        assert not ANSI_RE.search(stderr_text), (
+            f"stderr should not contain ANSI when stderr is a pipe (stdout is TTY): {stderr_text!r}"
+        )
+    finally:
+        if slave_fd != -1:
+            os.close(slave_fd)
+        os.close(master_fd)
+
+
 def test_quiet_json_prompt_output_is_machine_readable():
     require_model()
     result = run_cli(
