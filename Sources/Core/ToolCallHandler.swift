@@ -86,6 +86,14 @@ public enum ToolCallHandler {
                 return calls
             }
         }
+        // Salvage: the text clearly contains a tool-call attempt but all
+        // candidates failed JSON parsing (e.g. unescaped inner quotes).
+        // Extract the function name via regex so the existing
+        // invalid-arguments recovery path (#241) can feed a tool error
+        // back to the model instead of leaking raw JSON (#358).
+        if response.contains("{\"tool_calls\"") {
+            return salvageUnparseableToolCall(from: response)
+        }
         return nil
     }
 
@@ -221,6 +229,34 @@ public enum ToolCallHandler {
         var repaired = trimmed
         repaired.insert(contentsOf: String(repeating: "]", count: bracketDepth), at: insertPos)
         return repaired
+    }
+
+    /// Last-resort extraction when all JSON candidates are unparseable (#358).
+    /// Uses regex to pull the function name from the garbled text so the
+    /// downstream MCP executor can report an invalid-arguments error back to
+    /// the model instead of the raw protocol JSON leaking as content.
+    private static func salvageUnparseableToolCall(from text: String) -> [ParsedToolCall]? {
+        // "function": {"name": "X"} shape (most common on-device output)
+        let dictPattern = #""function"\s*:\s*\{\s*"name"\s*:\s*"([^"]+)""#
+        // "function": "X" flat shape (sibling-arguments variant)
+        let flatPattern = #""function"\s*:\s*"([^"{]+)""#
+        for pattern in [dictPattern, flatPattern] {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            let matches = regex.matches(in: text, range: NSRange(text.startIndex..., in: text))
+            var calls: [ParsedToolCall] = []
+            for match in matches {
+                guard let nameRange = Range(match.range(at: 1), in: text) else { continue }
+                let name = String(text[nameRange]).trimmingCharacters(in: .whitespaces)
+                guard !name.isEmpty else { continue }
+                calls.append(ParsedToolCall(
+                    id: "call_\(UUID().uuidString.prefix(8))",
+                    name: name,
+                    argumentsString: "{}"
+                ))
+            }
+            if !calls.isEmpty { return calls }
+        }
+        return nil
     }
 
     private static func parseToolCallJSON(_ json: String) -> [ParsedToolCall]? {

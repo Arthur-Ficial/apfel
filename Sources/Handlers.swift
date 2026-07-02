@@ -453,7 +453,13 @@ private func nonStreamingResponse(
         responseMessage = OpenAIMessage(role: "assistant", content: nil, tool_calls: openAIToolCalls)
         deliveredContent = rawContent
     } else {
-        deliveredContent = jsonMode ? JSONFenceStripper.strip(rawContent) : rawContent
+        var cleaned = jsonMode ? JSONFenceStripper.strip(rawContent) : rawContent
+        // Backstop: strip unparseable tool-call JSON that detectToolCall
+        // could not salvage, so raw protocol text never leaks (#358).
+        if cleaned.contains("{\"tool_calls\"") {
+            cleaned = stripToolCallJSON(from: cleaned)
+        }
+        deliveredContent = cleaned
         responseMessage = OpenAIMessage(role: "assistant", content: .text(deliveredContent))
     }
 
@@ -592,9 +598,14 @@ private func streamingResponse(
                 // by the tool_calls branch below).
                 let deliveredContent: String
                 if toolCalls == nil, jsonMode || emittedContentCount < prev.count {
-                    deliveredContent = jsonMode
+                    var flushed = jsonMode
                         ? JSONFenceStripper.strip(prev)
                         : String(prev[prev.index(prev.startIndex, offsetBy: emittedContentCount)...])
+                    // Backstop: strip unparseable tool-call JSON (#358).
+                    if flushed.contains("{\"tool_calls\"") {
+                        flushed = stripToolCallJSON(from: flushed)
+                    }
+                    deliveredContent = flushed
                     if !deliveredContent.isEmpty {
                         let contentLine = sseDataLine(sseContentChunk(id: id, created: created, content: deliveredContent, includeUsage: includeUsage))
                         responseLines?.append(contentLine.trimmingCharacters(in: .whitespacesAndNewlines))

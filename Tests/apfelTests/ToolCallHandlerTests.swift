@@ -306,6 +306,41 @@ func runToolCallHandlerTests() {
         try assertEqual(parsed!["value"] as? String, "ls -l")
     }
 
+    // MARK: - Salvage unparseable tool-call JSON (#358)
+
+    test("salvages function name from unparseable tool-call JSON (#358)") {
+        // The model emits tool-call JSON with unescaped inner quotes that
+        // JSONSerialization cannot parse. detectToolCall must still return
+        // a ParsedToolCall so the invalid-arguments recovery path (#241)
+        // feeds a tool error back to the model instead of leaking raw JSON.
+        let response = #"{"tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "add", "arguments": {"": "{"name": "100", "arguments": {"": "200"}}}}}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.count, 1)
+        try assertEqual(result!.first?.name, "add")
+        try assertTrue(result!.first!.id.hasPrefix("call_"), "salvaged call must have a synthesized id")
+    }
+
+    test("salvages function name with preamble text before unparseable JSON (#358)") {
+        let response = "I'll calculate that for you.\n" + #"{"tool_calls": [{"type": "function", "function": {"name": "multiply", "arguments": {"broken JSON}}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "multiply")
+    }
+
+    test("salvage returns nil when no function name is extractable") {
+        // Contains {"tool_calls" but no recognisable function name pattern
+        let response = #"{"tool_calls": [{"garbled": true}]}"#
+        try assertNil(ToolCallHandler.detectToolCall(in: response))
+    }
+
+    test("salvage uses empty arguments so MCP server can report the error (#358)") {
+        let response = #"{"tool_calls": [{"function": {"name": "sqrt", "arguments": {INVALID}}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.argumentsString, "{}")
+    }
+
     // MARK: - Split prompt methods
 
     test("buildOutputFormatInstructions contains tool names") {

@@ -428,9 +428,11 @@ func executeMCPToolCallsForCLI(
         ).content
     }
 
-    // Cap exhausted but the model is still emitting a tool call: strip the raw
-    // JSON so it never reaches the user as text.
-    if ToolCallHandler.detectToolCall(in: finalContent) != nil {
+    // Strip any raw tool-call JSON so it never reaches the user as text.
+    // Covers both parseable calls (cap exhausted) and unparseable ones
+    // that the salvage regex could not recover (#358).
+    if ToolCallHandler.detectToolCall(in: finalContent) != nil
+        || finalContent.contains("{\"tool_calls\"") {
         finalContent = stripToolCallJSON(from: finalContent)
     }
 
@@ -555,9 +557,11 @@ func executeMCPToolCallsForServer(
         currentExecuted = next
     }
 
-    // Cap exhausted but the model is still emitting a tool call: strip the raw
-    // JSON so it never reaches the client as content with finish_reason stop.
-    if ToolCallHandler.detectToolCall(in: finalContent) != nil {
+    // Strip any raw tool-call JSON so it never reaches the client as
+    // content with finish_reason stop. Covers both parseable calls (cap
+    // exhausted) and unparseable ones that salvage could not recover (#358).
+    if ToolCallHandler.detectToolCall(in: finalContent) != nil
+        || finalContent.contains("{\"tool_calls\"") {
         finalContent = stripToolCallJSON(from: finalContent)
     }
 
