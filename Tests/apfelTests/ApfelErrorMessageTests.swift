@@ -31,9 +31,12 @@ func runApfelErrorMessageTests() {
         )
     }
     test("ApfelError.contextOverflow.openAIMessage") {
+        // No hardcoded window size (#330): the size is dynamic everywhere
+        // else (TokenCounter.contextSize), and a pinned "4096" here becomes
+        // a lie the day the OS reports a different window (OS 27 / #192).
         try assertEqual(
             ApfelError.contextOverflow.openAIMessage,
-            "Input exceeds the 4096-token context window. Shorten the conversation history."
+            "Input exceeds the model's context window. Shorten the conversation history."
         )
     }
     test("ApfelError.rateLimited.openAIMessage") {
