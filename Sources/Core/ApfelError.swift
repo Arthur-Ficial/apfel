@@ -138,7 +138,7 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
         case .refusal(let explanation):
             return "The on-device model refused the request: \(explanation)"
         case .contextOverflow:
-            return "Input exceeds the 4096-token context window. Shorten the conversation history."
+            return "Input exceeds the model's context window. Shorten the conversation history."
         case .rateLimited:
             return "Apple Intelligence is rate limited. Retry after a few seconds."
         case .concurrentRequest:
