@@ -117,11 +117,29 @@ def get_nums(args):
     return nums
 
 
+def _coerce_num(v):
+    """Coerce a value to a number. Raises ValueError on failure."""
+    if isinstance(v, (int, float)):
+        return v
+    if isinstance(v, str):
+        return float(v) if "." in v else int(v)
+    raise ValueError(f"not a number: {v!r}")
+
+
 def execute(name, args):
     """Execute a tool by name. Tolerates improvised argument keys."""
     nums = get_nums(args)
-    a = args.get("a", nums[0] if nums else 0)
-    b = args.get("b", nums[1] if len(nums) > 1 else 0)
+    raw_a = args.get("a", nums[0] if nums else 0)
+    raw_b = args.get("b", nums[1] if len(nums) > 1 else 0)
+
+    try:
+        a = _coerce_num(raw_a)
+    except (ValueError, TypeError):
+        return f"Error: argument 'a' is not a valid number: {raw_a!r}"
+    try:
+        b = _coerce_num(raw_b)
+    except (ValueError, TypeError):
+        return f"Error: argument 'b' is not a valid number: {raw_b!r}"
 
     try:
         if name == "add":
