@@ -873,3 +873,25 @@ def test_chat_hint_message_shown():
     clean = strip_ansi(output)
     assert "quit" in clean.lower() and "exit" in clean.lower(), \
         f"Quit hint not shown: {clean[:300]}"
+
+
+def test_chat_utf8_input_echoed_correctly():
+    """Non-ASCII UTF-8 input must be echoed intact by libedit (#256).
+
+    Without setlocale(LC_CTYPE, ""), libedit treats input as single-byte,
+    so multibyte characters get garbled on echo. This test types a non-ASCII
+    word, waits for libedit to echo it back in the PTY, then quits.
+    """
+    require_model()
+    returncode, output = run_chat_tty(
+        ["--chat"],
+        steps=[
+            (b"quit", "café\n".encode("utf-8")),
+            (b"caf", b"quit\n"),
+        ],
+        stop_when=lambda out: b"Goodbye" in out,
+        timeout=30,
+    )
+    clean = strip_ansi(output)
+    assert "café" in clean, \
+        f"UTF-8 input not echoed correctly (setlocale missing?): {clean[:400]}"
