@@ -873,3 +873,29 @@ def test_chat_hint_message_shown():
     clean = strip_ansi(output)
     assert "quit" in clean.lower() and "exit" in clean.lower(), \
         f"Quit hint not shown: {clean[:300]}"
+
+
+# ---------------------------------------------------------------------------
+# Category 9: Locale / Multibyte Input (#256)
+# ---------------------------------------------------------------------------
+
+def test_chat_utf8_input_echoed_correctly():
+    """Non-ASCII UTF-8 input must be echoed without byte-level garbling (#256).
+
+    Without setlocale(LC_CTYPE, ""), libedit operates byte-wise and the pty
+    echo of multibyte characters can produce dangling bytes or mojibake.
+    """
+    require_model()
+    returncode, output = run_chat_tty(
+        ["--chat"],
+        steps=[
+            (b"quit", "hello café\n".encode("utf-8")),
+            (b"quit", b"quit\n", 3),
+        ],
+        stop_when=lambda out: b"Goodbye" in out,
+        timeout=30,
+        env={"LANG": "en_US.UTF-8", "LC_CTYPE": "en_US.UTF-8"},
+    )
+    clean = strip_ansi(output)
+    assert "café" in clean, \
+        f"UTF-8 input garbled in echo: {clean[:400]}"
