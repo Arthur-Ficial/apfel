@@ -277,6 +277,39 @@ func runCLIArgumentsTests() {
         try assertEqual(args.prompt, "")
     }
 
+    test("known flag after the prompt is swallowed but warns (#255)") {
+        let args = try CLIArguments.parse(["summarize", "this", "--output", "json"])
+        // Non-breaking: the tail is still the prompt verbatim.
+        try assertEqual(args.prompt, "summarize this --output json")
+        try assertTrue(args.warnings.contains { $0.contains("--output") })
+        try assertTrue(args.warnings.contains { $0.contains("--") })
+    }
+
+    test("short flag after the prompt warns (#255)") {
+        let args = try CLIArguments.parse(["hello", "-q"])
+        try assertEqual(args.prompt, "hello -q")
+        try assertTrue(args.warnings.contains { $0.contains("-q") })
+    }
+
+    test("plain prompt tail with no known flags produces no warning (#255)") {
+        let args = try CLIArguments.parse(["what", "is", "-2", "minus", "3"])
+        try assertEqual(args.prompt, "what is -2 minus 3")
+        try assertTrue(args.warnings.isEmpty)
+    }
+
+    test("non-flag dash tokens in the prompt tail do not warn (#255)") {
+        // Genuinely-textual dash tokens that are not known flags are fine.
+        let args = try CLIArguments.parse(["diff", "--foobar", "please"])
+        try assertEqual(args.prompt, "diff --foobar please")
+        try assertTrue(args.warnings.isEmpty)
+    }
+
+    test("-- before a flag-like prompt suppresses the #255 warning") {
+        let args = try CLIArguments.parse(["--", "summarize", "--output", "json"])
+        try assertEqual(args.prompt, "summarize --output json")
+        try assertTrue(args.warnings.isEmpty)
+    }
+
     // ========================================================================
     // MARK: - System prompt
     // ========================================================================

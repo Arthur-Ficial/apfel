@@ -119,6 +119,38 @@ public struct CLIArguments: Sendable, Equatable {
     public var warnings: [String] = []
 
     public init() {}
+
+    /// Every flag spelling the parser recognizes. Single source of truth for
+    /// "is this token a known flag" checks (currently the #255 warning that a
+    /// flag placed after the prompt is swallowed into the prompt text). Keep in
+    /// sync with the `switch` in `parse()`. `--` is a separator, not a flag, so
+    /// it is intentionally absent.
+    public static let knownFlags: Set<String> = [
+        "-h", "--help", "-v", "--version", "--release",
+        "-s", "--system", "--system-file", "-o", "--output",
+        "-q", "--quiet", "--no-color",
+        "--chat", "--stream", "--serve", "--benchmark", "--count-tokens",
+        "--strict", "--model-info", "--update", "--demos",
+        "--port", "--host", "--cors", "--max-concurrent", "--debug",
+        "--allowed-origins", "--no-origin-check", "--token", "--token-auto",
+        "--public-health", "--footgun",
+        "--mcp", "--mcp-timeout", "--mcp-token",
+        "--temperature", "--top-p", "--seed", "--max-tokens", "--permissive",
+        "--retry",
+        "--context-strategy", "--context-max-turns", "--context-output-reserve",
+        "--context-status",
+        "-f", "--file",
+    ]
+
+    /// Whether `token` is a flag the parser knows, ignoring any attached
+    /// `=value` (so `--retry=5` counts as the known flag `--retry`).
+    public static func isKnownFlag(_ token: String) -> Bool {
+        if knownFlags.contains(token) { return true }
+        if let eq = token.firstIndex(of: "=") {
+            return knownFlags.contains(String(token[..<eq]))
+        }
+        return false
+    }
 }
 
 /// Errors thrown during argument parsing. Contains a user-facing message.
@@ -622,7 +654,21 @@ extension CLIArguments {
                 if args[i].hasPrefix("-") {
                     throw CLIErrors.unknownOption(args[i])
                 }
-                result.prompt = args[i...].joined(separator: " ")
+                let tail = Array(args[i...])
+                result.prompt = tail.joined(separator: " ")
+                // Non-breaking: everything from the first positional onward is
+                // the prompt verbatim. But a known flag sitting in that tail is
+                // almost always a mistake (the user expected it to be parsed),
+                // so warn and point at flag placement / `--` (#255). Uses the
+                // parser's own knownFlags table - no second hardcoded list.
+                let swallowed = tail.dropFirst().filter { CLIArguments.isKnownFlag($0) }
+                if !swallowed.isEmpty {
+                    result.warnings.append(
+                        "treating \(swallowed.joined(separator: ", ")) as prompt text; "
+                        + "flags after the prompt are not parsed - put options before the "
+                        + "prompt, or use -- to mark the rest as the prompt"
+                    )
+                }
                 i = args.count
                 continue
             }
