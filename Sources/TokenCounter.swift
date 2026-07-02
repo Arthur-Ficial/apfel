@@ -95,9 +95,10 @@ actor TokenCounter {
     /// repeated mid-flight access on Hummingbird's dispatch queue can destabilize
     /// the process in some macOS 26.4 environments.
     var supportedLanguages: [String] {
+        var seen = Set<String>()
         var ids: [String] = []
         for language in model.supportedLanguages {
-            if let id = language.languageCode?.identifier {
+            if let id = language.languageCode?.identifier, seen.insert(id).inserted {
                 ids.append(id)
             }
         }
