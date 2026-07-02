@@ -360,6 +360,121 @@ def test_no_color_disables_ansi_under_tty():
     assert not ANSI_RE.search(output), output
 
 
+def _run_cli_split_fds(args, stdout_tty=False, stderr_tty=False, env=None, timeout=10):
+    """Run the CLI with independent TTY control for stdout and stderr."""
+    merged_env = os.environ.copy()
+    for key in ["NO_COLOR", "APFEL_SYSTEM_PROMPT", "APFEL_HOST", "APFEL_PORT",
+                "APFEL_TEMPERATURE", "APFEL_MAX_TOKENS"]:
+        merged_env.pop(key, None)
+    if env:
+        merged_env.update(env)
+
+    tty_fds = []
+    if stdout_tty:
+        out_master, out_slave = pty.openpty()
+        tty_fds.extend([out_master, out_slave])
+        stdout_arg = out_slave
+    else:
+        stdout_arg = subprocess.PIPE
+
+    if stderr_tty:
+        err_master, err_slave = pty.openpty()
+        tty_fds.extend([err_master, err_slave])
+        stderr_arg = err_slave
+    else:
+        stderr_arg = subprocess.PIPE
+
+    try:
+        proc = subprocess.Popen(
+            [str(BINARY), *args],
+            stdin=subprocess.PIPE,
+            stdout=stdout_arg,
+            stderr=stderr_arg,
+            env=merged_env,
+            close_fds=True,
+        )
+        if stdout_tty:
+            os.close(out_slave)
+        if stderr_tty:
+            os.close(err_slave)
+
+        stdout_data = bytearray()
+        stderr_data = bytearray()
+        deadline = time.time() + timeout
+
+        read_fds = []
+        if stdout_tty:
+            read_fds.append(out_master)
+        if stderr_tty:
+            read_fds.append(err_master)
+
+        while read_fds and time.time() < deadline:
+            ready, _, _ = select.select(read_fds, [], [], 0.1)
+            for fd in ready:
+                try:
+                    chunk = os.read(fd, 4096)
+                except OSError:
+                    read_fds.remove(fd)
+                    continue
+                if not chunk:
+                    read_fds.remove(fd)
+                    continue
+                if stdout_tty and fd == out_master:
+                    stdout_data.extend(chunk)
+                elif stderr_tty and fd == err_master:
+                    stderr_data.extend(chunk)
+            if proc.poll() is not None and not ready:
+                break
+
+        if not stdout_tty:
+            pipe_out, pipe_err = proc.communicate(timeout=max(1, int(deadline - time.time())))
+            stdout_data = pipe_out.encode() if pipe_out else b""
+            if not stderr_tty:
+                stderr_data = pipe_err.encode() if pipe_err else b""
+        elif not stderr_tty:
+            _, pipe_err = proc.communicate(timeout=max(1, int(deadline - time.time())))
+            stderr_data = pipe_err.encode() if pipe_err else b""
+        else:
+            proc.wait(timeout=max(1, int(deadline - time.time())))
+
+    finally:
+        for fd in tty_fds:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+
+    return (proc.returncode,
+            stdout_data.decode("utf-8", errors="replace"),
+            stderr_data.decode("utf-8", errors="replace"))
+
+
+def test_stderr_error_no_ansi_when_stderr_piped():
+    """Error text on stderr must not contain ANSI when stderr is a pipe,
+    even if stdout is a TTY (#249)."""
+    rc, _stdout, stderr_out = _run_cli_split_fds(
+        ["--definitely-not-a-real-flag"], stdout_tty=True, stderr_tty=False
+    )
+    assert rc == 2
+    assert "unknown option" in stderr_out
+    assert not ANSI_RE.search(stderr_out), (
+        f"ANSI codes leaked into piped stderr: {stderr_out!r}"
+    )
+
+
+def test_stderr_error_has_ansi_when_stderr_is_tty():
+    """Error text on stderr must contain ANSI when stderr IS a TTY,
+    even if stdout is a pipe (#249)."""
+    rc, _stdout, stderr_out = _run_cli_split_fds(
+        ["--definitely-not-a-real-flag"], stdout_tty=False, stderr_tty=True
+    )
+    assert rc == 2
+    assert "unknown option" in stderr_out
+    assert ANSI_RE.search(stderr_out), (
+        f"Expected ANSI codes on TTY stderr but got plain: {stderr_out!r}"
+    )
+
+
 def test_quiet_json_prompt_output_is_machine_readable():
     require_model()
     result = run_cli(
