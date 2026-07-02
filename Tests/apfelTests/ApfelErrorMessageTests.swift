@@ -33,7 +33,7 @@ func runApfelErrorMessageTests() {
     test("ApfelError.contextOverflow.openAIMessage") {
         try assertEqual(
             ApfelError.contextOverflow.openAIMessage,
-            "Input exceeds the 4096-token context window. Shorten the conversation history."
+            "Input exceeds the model's context window. Shorten the conversation history."
         )
     }
     test("ApfelError.rateLimited.openAIMessage") {
