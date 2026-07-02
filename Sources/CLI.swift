@@ -601,7 +601,7 @@ func printUsage() {
           --mcp-token <token>    Bearer token for remote MCP servers (prefer APFEL_MCP_TOKEN env)
           --mcp-timeout <n>      MCP server timeout in seconds [default: 5]
           --permissive           Use permissive content guardrails
-          --retry [n]            Enable retry with exponential backoff [default: 3 retries]
+          --retry[=n]            Enable retry with exponential backoff [default: 3 retries]
           --model-info           Print model capabilities and exit
           --benchmark            Run internal performance benchmarks
           --count-tokens         Count tokens without calling the model

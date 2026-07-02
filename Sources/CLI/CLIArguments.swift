@@ -459,16 +459,21 @@ extension CLIArguments {
 
             case "--retry":
                 result.retryEnabled = true
-                // Optional argument: --retry or --retry N (positive).
-                // A next token that parses as an integer is treated as the
-                // count; if it is non-positive, reject it like other numeric
-                // flags rather than silently ignoring it.
+                // Only consume the next token as the count when it parses
+                // as Int AND no non-flag token follows it — otherwise the
+                // number is likely part of the prompt (#253). Use --retry=N
+                // for unambiguous attached-value syntax.
                 if i + 1 < args.count, let n = Int(args[i + 1]) {
-                    guard n > 0 else {
-                        throw CLIErrors.requires("--retry", "a positive number")
+                    let nextAfterCount = i + 2
+                    let hasPromptWordAfter = nextAfterCount < args.count
+                        && !args[nextAfterCount].hasPrefix("-")
+                    if !hasPromptWordAfter {
+                        guard n > 0 else {
+                            throw CLIErrors.requires("--retry", "a positive number")
+                        }
+                        result.retryCount = n
+                        i += 1
                     }
-                    result.retryCount = n
-                    i += 1
                 }
 
             // -- Context --
@@ -529,12 +534,20 @@ extension CLIArguments {
             // -- Fallthrough: prompt or unknown flag --
 
             default:
-                if args[i].hasPrefix("-") {
+                if args[i].hasPrefix("--retry=") {
+                    result.retryEnabled = true
+                    let valueStr = String(args[i].dropFirst("--retry=".count))
+                    guard let n = Int(valueStr), n > 0 else {
+                        throw CLIErrors.requires("--retry", "a positive number")
+                    }
+                    result.retryCount = n
+                } else if args[i].hasPrefix("-") {
                     throw CLIErrors.unknownOption(args[i])
+                } else {
+                    result.prompt = args[i...].joined(separator: " ")
+                    i = args.count
+                    continue
                 }
-                result.prompt = args[i...].joined(separator: " ")
-                i = args.count
-                continue
             }
             i += 1
         }
