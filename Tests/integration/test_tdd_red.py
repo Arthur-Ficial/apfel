@@ -1,27 +1,22 @@
 """
-apfel Integration Tests — TDD RED batch (branch tdd/red-tests-167-183)
+apfel Integration Tests - regression guards for tickets #167-#183, #219, #243.
 
-DELIBERATELY FAILING tests, one per ticket that cannot be reached from the
-pure-Swift unit target (see Package.swift: apfel-tests depends only on
-ApfelCore + ApfelCLI, so executable-target bugs and server/CLI features are
-red-tested here at the wire/CLI boundary).
+Originally written as TDD RED tests (branch tdd/red-tests-167-183). All tickets
+are now closed and fixed. These tests are REGRESSION GUARDS that lock the fixes
+in place - they should stay green.
 
-These assert the CORRECT behaviour described in each GitHub issue. The fix that
-makes them green is a SEPARATE follow-up task — do not implement here.
-
-Covered (real assertions, red now):
+Wire/CLI-boundary tests (things the pure-Swift unit target cannot reach):
   #167 json_schema, #169 prewarm (model-free),
-  #171 streamed structured output, #176 tool-def token undercount
+  #171 streamed structured output, #176 tool-def token undercount,
+  #219 anyOf/oneOf unions, #243 number allows fractional
 
-Covered (Tier-3 loud placeholders — failure condition not externally
-observable/triggerable, so a deterministic test needs a fix-phase testability
-seam in the executable target; these pytest.fail rather than risk a false green):
+Source-level wiring guards (failure condition not externally triggerable, so the
+test asserts the fix's structural presence in source code):
   #168 top_p/greedy mapping, #175 summarize budget, #179 refusal accounting,
   #182 streaming-retry stdout
 
-Model-dependent tests are FAILING, not skipped — consistent with the project's
-"never skip" rule. They run under local `make test` where Apple Intelligence is
-present. #169 is model-free and runs anywhere.
+Model-dependent tests run under local `make test` where Apple Intelligence is
+present. #169 and the source-level guards are model-free and run anywhere.
 
 Run: python3 -m pytest Tests/integration/test_tdd_red.py -v
 """
@@ -224,27 +219,19 @@ def test_176_tool_definitions_count_toward_prompt_tokens():
 # ---------------------------------------------------------------------------
 
 def test_175_summarize_keeps_prompt_within_budget():
-    """#175: the summarize strategy must verify the final assembly fits the
-    budget (unbounded summary + no final check can overflow).
-
-    Verified NOT reliably triggerable at the wire boundary: whether the model
-    emits a summary long enough to overflow the precise (budget - output
-    reserve) window is non-deterministic, so a coarse prompt_tokens assertion is
-    a false green. trimWithSummary lives in the executable target, which the
-    pure-Swift apfel-tests target cannot import — so the deterministic test
-    cannot run there either.
-
-    FIXED (#175): generateSummary now passes a computed maximumResponseTokens
-    (budget/4) so the summary cannot grow unbounded, and trimWithSummary verifies
-    the assembled [summary]+recent transcript against the budget via
-    fitsTranscriptBudget, falling back to trimNewestFirst when it does not fit.
-    The testing seam — an injectable `summarize` closure on trimWithSummary
-    (default = the real generateSummary) — is in place so a stubbed huge summary
-    proves the budget check; that assertion lives next to the code in the
-    executable target. This wire-level placeholder stays GREEN; it can never
-    deterministically reach the overflow path.
+    """#175: the summarize strategy must cap summary size and verify the final
+    assembly fits the budget. Source-level guard: assert the structural wiring
+    that prevents unbounded summary overflow is present in the executable target.
     """
-    pass
+    summarizer = (ROOT / "Sources" / "Summarizer.swift").read_text()
+    assert "budget / summaryBudgetFraction" in summarizer, (
+        "generateSummary must cap summary tokens to a fraction of the budget (#175)")
+    assert "fitsTranscriptBudget(" in summarizer, (
+        "trimWithSummary must verify assembled transcript fits the budget (#175)")
+    assert "trimNewestFirst(" in summarizer, (
+        "trimWithSummary must fall back to trimNewestFirst when budget is exceeded (#175)")
+    assert "summarize: Summarizer" in summarizer, (
+        "trimWithSummary must accept an injectable summarizer for deterministic testing (#175)")
 
 
 # ---------------------------------------------------------------------------
@@ -285,23 +272,20 @@ def test_179_streaming_refusal_counts_pre_refusal_tokens():
 
 def test_182_streaming_retry_prints_output_once():
     """#182: a retryable error mid-stream must not reprint already-streamed output.
-
-    GREEN. The fix added the injectable seam this placeholder asked for:
-    `StreamPrintSink` (Sources/Core/Chat/StreamRetryPolicy.swift) decouples the
-    stdout side-effect from the retried streaming operation. One sink instance is
-    shared across all `withRetry` attempts in `processPrompt`; it tracks a
-    high-water mark of emitted characters and prints only the suffix beyond it,
-    so a retry that re-streams the already-printed prefix emits nothing.
-
-    The deterministic coverage lives in the pure-Swift unit suite, which can feed
-    the sink a scripted failed-then-retried cumulative-snapshot sequence without
-    the live model — see Tests/apfelTests/StreamPrintSinkTests.swift
-    (runStreamPrintSinkTests), in particular
-    "feed: a retry that re-streams the printed prefix does NOT reprint it (#182)".
-    A mid-stream .rateLimited/.concurrentRequest error still cannot be forced from
-    a client, so there is nothing left to assert at the wire boundary here.
+    Source-level guard: assert StreamPrintSink exists with its high-water mark
+    seam, and that the streaming loop in Session.swift uses it.
     """
-    pass
+    policy = (ROOT / "Sources" / "Core" / "Chat" / "StreamRetryPolicy.swift").read_text()
+    assert "public actor StreamPrintSink" in policy, (
+        "StreamPrintSink must exist as the retry-safe print seam (#182)")
+    assert "emittedCount" in policy, (
+        "StreamPrintSink must track a high-water mark of emitted characters (#182)")
+    assert "func feed(cumulative content: String)" in policy, (
+        "StreamPrintSink must expose a cumulative-snapshot feed method (#182)")
+
+    session = (ROOT / "Sources" / "Session.swift").read_text()
+    assert "StreamPrintSink()" in session, (
+        "the streaming loop must create a StreamPrintSink instance (#182)")
 
 
 # ---------------------------------------------------------------------------

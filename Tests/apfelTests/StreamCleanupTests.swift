@@ -61,9 +61,7 @@ func runStreamCleanupTests() {
     }
 
     testAsync("a StreamCleanup that was never invoked performs no work") {
-        _ = StreamCleanup()  // constructed and dropped
-        // Nothing observable should happen. Assertion is the absence of a crash.
-        try assertTrue(true)
+        _ = StreamCleanup()  // constructed and dropped; passes by not crashing
     }
 
     // Compile-time: StreamCleanup must remain Sendable so it can cross
