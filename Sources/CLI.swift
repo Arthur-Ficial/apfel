@@ -494,7 +494,8 @@ func performUpdate() {
     }
 
     // Check for updates via brew
-    let outdatedJSON = shellOutput("/opt/homebrew/bin/brew", args: ["info", "--json=v2", "apfel"])
+    let prefix = brewPrefix(from: resolved)
+    let outdatedJSON = shellOutput("\(prefix)/bin/brew", args: ["info", "--json=v2", "apfel"])
     guard let data = outdatedJSON.data(using: .utf8),
           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
           let formulae = json["formulae"] as? [[String: Any]],
@@ -528,9 +529,9 @@ func performUpdate() {
     }
 
     print(styled("Running: brew upgrade apfel", .dim))
-    let result = shellPassthrough("/opt/homebrew/bin/brew", args: ["upgrade", "apfel"])
+    let result = shellPassthrough("\(prefix)/bin/brew", args: ["upgrade", "apfel"])
     if result == 0 {
-        let newVersion = shellOutput("/opt/homebrew/bin/apfel", args: ["--version"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let newVersion = shellOutput("\(prefix)/bin/apfel", args: ["--version"]).trimmingCharacters(in: .whitespacesAndNewlines)
         print(styled("Updated to \(newVersion)", .green))
     } else {
         printError("brew upgrade failed (exit \(result)). Try manually: brew upgrade apfel")
