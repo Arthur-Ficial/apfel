@@ -605,6 +605,20 @@ def test_count_tokens_json_trailing_newline():
 
 
 @pytest.mark.model
+def test_count_tokens_real_not_approximate():
+    """When the model is available, --count-tokens uses the real tokenCount API,
+    not the chars/4 fallback (#315)."""
+    require_model()
+    result = run_cli(["--count-tokens", "-o", "json", "hello world"], timeout=30)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    data = json.loads(result.stdout.strip())
+    assert data["approximate"] is False, (
+        f"expected approximate=false with model available, "
+        f"got approximate={data['approximate']!r} (#315)"
+    )
+
+
+@pytest.mark.model
 def test_stream_returns_content():
     require_model()
     result = run_cli(["--stream", "Reply with the single word OK."], timeout=90)
