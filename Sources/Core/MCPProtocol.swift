@@ -141,6 +141,12 @@ public enum MCPProtocol {
     }
 
     /// Parses an MCP `tools/call` response.
+    ///
+    /// Spec-legal results (#242): every `type == "text"` content block is kept
+    /// and joined with newlines (not just block 0); an empty `content` array is
+    /// a valid empty result; when no text blocks exist, `structuredContent`
+    /// (2025-06-18 spec) is serialized as the result text. Only a result with
+    /// neither `content` nor `structuredContent` is rejected.
     public static func parseToolCallResponse(_ json: String) throws -> ToolCallResult {
         let obj = try parseJSON(json)
 
@@ -150,15 +156,35 @@ public enum MCPProtocol {
             return ToolCallResult(text: message, isError: true)
         }
 
-        guard let result = obj["result"] as? [String: Any],
-              let content = result["content"] as? [[String: Any]],
-              let first = content.first,
-              let text = first["text"] as? String else {
-            throw MCPError.invalidResponse("Missing content in tools/call response")
+        guard let result = obj["result"] as? [String: Any] else {
+            throw MCPError.invalidResponse("Missing result in tools/call response")
+        }
+        let isError = result["isError"] as? Bool ?? false
+        let content = result["content"] as? [[String: Any]]
+
+        if let content {
+            let textBlocks = content.compactMap { block -> String? in
+                guard block["type"] as? String == "text" else { return nil }
+                return block["text"] as? String
+            }
+            if !textBlocks.isEmpty {
+                return ToolCallResult(text: textBlocks.joined(separator: "\n"), isError: isError)
+            }
         }
 
-        let isError = result["isError"] as? Bool ?? false
-        return ToolCallResult(text: text, isError: isError)
+        if let structured = result["structuredContent"],
+           JSONSerialization.isValidJSONObject(structured),
+           let data = try? JSONSerialization.data(withJSONObject: structured, options: [.sortedKeys]),
+           let text = String(data: data, encoding: .utf8) {
+            return ToolCallResult(text: text, isError: isError)
+        }
+
+        // Empty or non-text-only content (e.g. a side-effect tool) is valid.
+        if content != nil {
+            return ToolCallResult(text: "", isError: isError)
+        }
+
+        throw MCPError.invalidResponse("Missing content in tools/call response")
     }
 
     // MARK: - Private helpers

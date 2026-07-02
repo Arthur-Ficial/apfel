@@ -125,13 +125,90 @@ func runMCPClientTests() {
         try assertTrue(!result.isError)
     }
 
-    test("parseToolCallResponse returns the first content item when multiple are present") {
+    test("parseToolCallResponse joins all text content blocks with newline (#242)") {
         let json = """
         {"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"first"},{"type":"text","text":"second"}],"isError":false}}
         """
         let result = try MCPProtocol.parseToolCallResponse(json)
-        try assertEqual(result.text, "first")
+        try assertEqual(result.text, "first\nsecond")
         try assertTrue(!result.isError)
+    }
+
+    test("parseToolCallResponse extracts text blocks around non-text blocks (#242)") {
+        let json = """
+        {"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"image","data":"aGk=","mimeType":"image/png"},{"type":"text","text":"caption"}],"isError":false}}
+        """
+        let result = try MCPProtocol.parseToolCallResponse(json)
+        try assertEqual(result.text, "caption")
+        try assertTrue(!result.isError)
+    }
+
+    test("parseToolCallResponse accepts an empty content array as an empty result (#242)") {
+        let json = """
+        {"jsonrpc":"2.0","id":3,"result":{"content":[],"isError":false}}
+        """
+        let result = try MCPProtocol.parseToolCallResponse(json)
+        try assertEqual(result.text, "")
+        try assertTrue(!result.isError)
+    }
+
+    test("parseToolCallResponse accepts non-text-only content as an empty result (#242)") {
+        let json = """
+        {"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"image","data":"aGk=","mimeType":"image/png"}]}}
+        """
+        let result = try MCPProtocol.parseToolCallResponse(json)
+        try assertEqual(result.text, "")
+        try assertTrue(!result.isError)
+    }
+
+    test("parseToolCallResponse falls back to structuredContent when no text blocks exist (#242)") {
+        let json = """
+        {"jsonrpc":"2.0","id":3,"result":{"content":[],"structuredContent":{"temperature":22.5,"unit":"C"}}}
+        """
+        let result = try MCPProtocol.parseToolCallResponse(json)
+        try assertTrue(result.text.contains("\"temperature\""), "must serialize structuredContent: \(result.text)")
+        try assertTrue(result.text.contains("22.5"), "must serialize structuredContent values: \(result.text)")
+        try assertTrue(!result.isError)
+    }
+
+    test("parseToolCallResponse handles structuredContent-only results with no content key (#242)") {
+        let json = """
+        {"jsonrpc":"2.0","id":3,"result":{"structuredContent":{"ok":true}}}
+        """
+        let result = try MCPProtocol.parseToolCallResponse(json)
+        try assertTrue(result.text.contains("\"ok\""), "must serialize structuredContent: \(result.text)")
+    }
+
+    test("parseToolCallResponse prefers text blocks over structuredContent (#242)") {
+        let json = """
+        {"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"22.5C"}],"structuredContent":{"temperature":22.5}}}
+        """
+        let result = try MCPProtocol.parseToolCallResponse(json)
+        try assertEqual(result.text, "22.5C")
+    }
+
+    test("parseToolCallResponse preserves isError on empty content (#242)") {
+        let json = """
+        {"jsonrpc":"2.0","id":3,"result":{"content":[],"isError":true}}
+        """
+        let result = try MCPProtocol.parseToolCallResponse(json)
+        try assertTrue(result.isError)
+    }
+
+    test("parseToolCallResponse throws only when content and structuredContent are both missing (#242)") {
+        let json = """
+        {"jsonrpc":"2.0","id":3,"result":{}}
+        """
+        var thrown: MCPError?
+        do {
+            _ = try MCPProtocol.parseToolCallResponse(json)
+        } catch let e as MCPError {
+            thrown = e
+        }
+        guard case .invalidResponse(let message)? = thrown else {
+            throw TestFailure("expected MCPError.invalidResponse, got \(String(describing: thrown))")
+        }
+        try assertTrue(message.contains("content"), "message must name the missing field: \(message)")
     }
 
     test("parseToolCallResponse detects errors") {
