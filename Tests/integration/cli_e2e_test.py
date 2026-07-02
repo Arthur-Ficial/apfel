@@ -405,6 +405,16 @@ def test_count_tokens_strict_exit_over_budget():
     assert result.returncode == 4, f"expected exit 4, got {result.returncode}: {result.stderr}"
 
 
+@pytest.mark.model
+def test_count_tokens_no_false_approximate_warning():
+    """#315: --count-tokens must not warn 'approximate' when the model is available."""
+    result = run_cli(["--count-tokens", "Hello world"], timeout=30)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    assert "approximate" not in result.stderr, (
+        f"--count-tokens falsely warned about approximation: {result.stderr}"
+    )
+
+
 def test_invalid_flag_exit_code():
     result = run_cli(["--definitely-not-a-real-flag"])
     assert result.returncode == 2

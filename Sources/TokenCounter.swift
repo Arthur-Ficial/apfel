@@ -16,18 +16,14 @@ actor TokenCounter {
     /// Falls back to chars/4 approximation on error or when the model is unavailable.
     func count(_ text: String) async -> Int {
         guard !text.isEmpty else { return 0 }
-        guard isAvailable else {
-            return max(1, text.count / 4)
-        }
         if #available(macOS 26.4, *) {
             do {
                 return try await model.tokenCount(for: text)
             } catch {
                 return max(1, text.count / 4)
             }
-        } else {
-            return max(1, text.count / 4)
         }
+        return max(1, text.count / 4)
     }
 
     /// Real context window size from the model.
@@ -45,10 +41,11 @@ actor TokenCounter {
         model.isAvailable
     }
 
-    /// Whether the real tokenCount API is usable (model available AND macOS 26.4+).
-    /// When false, token counts fall back to chars/4 approximation.
+    /// Whether the real tokenCount API is usable (macOS 26.4+).
+    /// Does not gate on isAvailable: model.tokenCount(for:) is wrapped in
+    /// try/catch in count(), so a transiently-unavailable model falls back
+    /// gracefully rather than producing a false "approximate" warning (#315).
     var isTokenCountingAvailable: Bool {
-        guard isAvailable else { return false }
         if #available(macOS 26.4, *) { return true }
         return false
     }
@@ -108,18 +105,14 @@ actor TokenCounter {
     /// More accurate than counting individual text strings.
     func count(entries: [Transcript.Entry]) async -> Int {
         guard !entries.isEmpty else { return 0 }
-        guard isAvailable else {
-            return fallbackCount(entries: entries)
-        }
         if #available(macOS 26.4, *) {
             do {
                 return try await model.tokenCount(for: entries)
             } catch {
                 return fallbackCount(entries: entries)
             }
-        } else {
-            return fallbackCount(entries: entries)
         }
+        return fallbackCount(entries: entries)
     }
 
     private func fallbackCount(entries: [Transcript.Entry]) -> Int {
