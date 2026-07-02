@@ -70,6 +70,35 @@ def assert_no_raw_tool_calls(content):
             f"Response leaked raw tool_calls JSON: {content[:200]}"
 
 
+GUARDRAIL_RETRY_SEEDS = [42, 7, 123, 0, 99]
+
+
+def _is_guardrail_refusal(data):
+    """True when the on-device model guardrail-refused instead of answering."""
+    choice = data.get("choices", [{}])[0]
+    return choice.get("finish_reason") == "content_filter"
+
+
+def _post_with_seed_rotation(url, body, *, timeout=TIMEOUT):
+    """POST body with each seed in GUARDRAIL_RETRY_SEEDS until one is not refused.
+
+    Returns (data, seed) on the first non-refusal.  Raises AssertionError if
+    every seed triggers a guardrail refusal.
+    """
+    refusals = []
+    for seed in GUARDRAIL_RETRY_SEEDS:
+        payload = {**body, "seed": seed}
+        resp = httpx.post(url, json=payload, timeout=timeout)
+        data = resp.json()
+        if not _is_guardrail_refusal(data):
+            return data, seed
+        refusals.append(seed)
+    pytest.fail(
+        f"All seeds {refusals} triggered a guardrail refusal for: "
+        f"{body['messages'][-1]['content']!r}"
+    )
+
+
 def find_free_port():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
@@ -730,15 +759,20 @@ def test_mcp_multiply_returns_correct_result(multiply_247x83_response):
 
 
 def test_mcp_sqrt_returns_correct_result():
-    """Sqrt tool: sqrt(144) = 12."""
-    resp = httpx.post(f"{API_URL}/chat/completions", json={
-        "model": MODEL,
-        "messages": [
-            {"role": "user", "content": "Use the sqrt tool to compute the square root of 144. Reply with just the number."}
-        ],
-        "seed": 42,
-    }, timeout=TIMEOUT)
-    data = resp.json()
+    """Sqrt tool: sqrt(144) = 12.
+
+    Some seeds trigger a guardrail refusal on macOS 26.5.2 even for benign
+    math prompts (#320).  Rotate through seeds until one is not refused.
+    """
+    data, _seed = _post_with_seed_rotation(
+        f"{API_URL}/chat/completions",
+        {
+            "model": MODEL,
+            "messages": [
+                {"role": "user", "content": "Use the sqrt tool to compute the square root of 144. Reply with just the number."}
+            ],
+        },
+    )
     content = data["choices"][0]["message"]["content"] or ""
     assert data["choices"][0]["finish_reason"] == "stop"
     assert_no_raw_tool_calls(content)
@@ -958,3 +992,25 @@ def test_temperature_zero_with_mcp():
     assert data["choices"][0]["finish_reason"] == "stop"
     content = data["choices"][0]["message"]["content"]
     assert content is not None
+
+
+# ============================================================================
+# Guardrail seed-rotation helpers (pure logic, no model needed) (#320)
+# ============================================================================
+
+def test_is_guardrail_refusal_detects_content_filter():
+    """_is_guardrail_refusal returns True for content_filter finish_reason."""
+    data = {"choices": [{"finish_reason": "content_filter", "message": {"refusal": "no"}}]}
+    assert _is_guardrail_refusal(data) is True
+
+
+def test_is_guardrail_refusal_false_for_stop():
+    """_is_guardrail_refusal returns False for normal stop."""
+    data = {"choices": [{"finish_reason": "stop", "message": {"content": "12"}}]}
+    assert _is_guardrail_refusal(data) is False
+
+
+def test_is_guardrail_refusal_false_for_empty():
+    """_is_guardrail_refusal returns False for empty/malformed data."""
+    assert _is_guardrail_refusal({}) is False
+    assert _is_guardrail_refusal({"choices": []}) is False
