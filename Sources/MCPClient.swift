@@ -427,7 +427,10 @@ actor MCPManager {
                 conn = .local(local)
             }
             connections.append(conn)
-            for tool in conn.tools {
+            // First registration wins: a tool name already owned by an earlier
+            // server is NOT rebound here, so routing stays predictable and the
+            // shadowed variant is unreachable (warned below) (#239).
+            for tool in conn.tools where toolMap[tool.function.name] == nil {
                 toolMap[tool.function.name] = conn
             }
             if !quietMode {
@@ -437,10 +440,26 @@ actor MCPManager {
                 printStderr("\(styled("mcp:", .cyan)) \(conn.identifier) - \(conn.tools.map(\.function.name).joined(separator: ", "))")
             }
         }
+
+        // Loudly warn about tool-name collisions across servers. The shadowed
+        // duplicate is unreachable and would otherwise silently waste context
+        // tokens (both identical schemas were injected into the prompt) (#239).
+        if !quietMode {
+            let collisions = MCPToolRegistry.collisions(
+                servers: connections.map { (id: $0.identifier, toolNames: $0.tools.map(\.function.name)) }
+            )
+            for collision in collisions {
+                printStderr(
+                    "\(styled("warning:", .yellow)) tool name '\(collision.toolName)' is exposed by both \(collision.keptServer) and \(collision.ignoredServer); using \(collision.keptServer), ignoring the one from \(collision.ignoredServer)"
+                )
+            }
+        }
     }
 
     func allTools() -> [OpenAITool] {
-        connections.flatMap(\.tools)
+        // Deduplicate by name (first registration wins) so a shadowed
+        // duplicate is not injected into the prompt twice (#239).
+        MCPToolRegistry.deduplicate(connections.flatMap(\.tools))
     }
 
     func execute(name: String, arguments: String) async throws -> String {

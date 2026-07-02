@@ -81,6 +81,7 @@ suite("JSONFenceStripperTests") { runJSONFenceStripperTests() }
 suite("ChatRequestValidatorTests") { runChatRequestValidatorTests() }
 suite("OriginValidatorTests") { runOriginValidatorTests() }
 suite("MCPClientTests") { runMCPClientTests() }
+suite("MCPToolRegistryTests") { runMCPToolRegistryTests() }
 suite("AsyncHarnessTests") { runAsyncHarnessTests() }
 suite("RetryTests") { runRetryTests() }
 suite("DebugLoggerTests") { runDebugLoggerTests() }

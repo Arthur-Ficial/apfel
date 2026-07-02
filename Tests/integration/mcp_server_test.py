@@ -119,6 +119,38 @@ def running_custom_mcp_server(mcp_script):
                 proc.wait(timeout=5)
 
 
+@contextlib.contextmanager
+def running_mcp_servers(mcp_scripts):
+    """Start apfel --serve with several --mcp servers; yield (api_url, read_log).
+
+    read_log() returns the captured stdout+stderr so a test can assert on
+    startup diagnostics (e.g. the tool-name collision warning, #239).
+    """
+    port = find_free_port()
+    with tempfile.NamedTemporaryFile(mode="w+", encoding="utf-8") as log_file:
+        args = [str(BINARY), "--serve", "--port", str(port)]
+        for script in mcp_scripts:
+            args += ["--mcp", str(script)]
+        proc = subprocess.Popen(args, stdout=log_file, stderr=log_file, text=True)
+        base_url = f"http://127.0.0.1:{port}"
+
+        def read_log():
+            log_file.flush()
+            with open(log_file.name, "r", encoding="utf-8") as fh:
+                return fh.read()
+
+        try:
+            wait_for_server(base_url)
+            yield f"{base_url}/v1", read_log
+        finally:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5)
+
+
 # ============================================================================
 # Module-scoped fixtures -- each makes ONE LLM call, shared across tests
 # ============================================================================
@@ -407,6 +439,30 @@ def test_mcp_crashed_server_does_not_kill_apfel():
         health = httpx.get(f"{base_url}/health", timeout=5)
         assert health.status_code == 200, "apfel server died after writing to a crashed MCP server (SIGPIPE)"
         assert health.json()["model_available"] is True
+
+
+def test_mcp_duplicate_tool_names_warn_and_dedupe():
+    """Two --mcp servers exposing the same tool name must warn loudly and keep
+    the first registration; the shadowed duplicate is dropped (#239).
+
+    Model-free: only inspects the startup diagnostics and /health, so it runs on
+    CI too (no Apple Intelligence needed).
+    """
+    scripts = [FIXTURES / "dup_tool_server_a.py", FIXTURES / "dup_tool_server_b.py"]
+    with running_mcp_servers(scripts) as (api_url, read_log):
+        base_url = api_url.rsplit("/", 1)[0]
+        health = httpx.get(f"{base_url}/health", timeout=5)
+        assert health.status_code == 200
+        log = read_log()
+
+    # Loud collision warning naming the tool and both servers, first-wins.
+    assert "shared_tool" in log, f"no collision warning for shared_tool in log:\n{log}"
+    assert "dup_tool_server_a.py" in log
+    assert "dup_tool_server_b.py" in log
+    assert "ignoring" in log.lower(), f"warning must state the duplicate is ignored:\n{log}"
+    # Both servers still registered their unique tools.
+    assert "only_a" in log
+    assert "only_b" in log
 
 
 def test_mcp_timed_out_connection_is_deregistered():
