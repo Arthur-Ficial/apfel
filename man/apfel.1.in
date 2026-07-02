@@ -158,7 +158,15 @@ guardrail profile enforces Apple's standard safety policies.
 Enable retry with exponential backoff on transient errors. Defaults
 to
 .B 3
-retries when the flag is given without a value.
+retries when the flag is given without a value. The optional count is
+ambiguous with a numeric prompt: when a number is the only token left
+.RB ( "apfel \-\-retry 7" )
+it is kept as the prompt with the default count, and the number is
+consumed as the count only when a further token follows it
+.RB ( "apfel \-\-retry 3 \[dq]prompt\[dq]" ).
+Use
+.BI \-\-retry= n
+for the unambiguous spelling.
 .TP
 .B \-\-model-info
 Print the active model's capabilities and exit.

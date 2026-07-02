@@ -472,17 +472,30 @@ extension CLIArguments {
 
             case "--retry":
                 result.retryEnabled = true
-                // Optional argument: --retry or --retry N (positive).
-                // A next token that parses as an integer is treated as the
-                // count; if it is non-positive, reject it like other numeric
-                // flags rather than silently ignoring it.
-                if i + 1 < args.count, let n = Int(args[i + 1]) {
+                // Ambiguous optional argument. The next token is treated as the
+                // count only when it parses as a positive integer AND at least
+                // one more token follows it, so a bare numeric prompt is not
+                // swallowed: `apfel --retry 7` keeps "7" as the prompt with the
+                // default count, while `apfel --retry 3 "prompt"` still consumes
+                // 3 as the count. Use `--retry=N` for the unambiguous spelling.
+                // A non-positive value is rejected like other numeric flags (#253).
+                if i + 2 < args.count, let n = Int(args[i + 1]) {
                     guard n > 0 else {
                         throw CLIErrors.requires("--retry", "a positive number")
                     }
                     result.retryCount = n
                     i += 1
                 }
+
+            case let flag where flag.hasPrefix("--retry="):
+                // Unambiguous spelling: the count is attached, never confused
+                // with a prompt (#253).
+                result.retryEnabled = true
+                let value = String(flag.dropFirst("--retry=".count))
+                guard let n = Int(value), n > 0 else {
+                    throw CLIErrors.requires("--retry", "a positive number")
+                }
+                result.retryCount = n
 
             // -- Context --
 

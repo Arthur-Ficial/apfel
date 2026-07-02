@@ -733,6 +733,54 @@ func runCLIArgumentsTests() {
         }
     }
 
+    test("--retry N as the only remaining token keeps N as the prompt (#253)") {
+        // No token follows the number, so it is the prompt, not the count.
+        let args = try CLIArguments.parse(["--retry", "7"])
+        try assertTrue(args.retryEnabled)
+        try assertEqual(args.retryCount, 3)
+        try assertEqual(args.prompt, "7")
+    }
+
+    test("--retry N with a following token still consumes N as the count (#253)") {
+        // Backward compatibility: `apfel --retry 3 \"prompt here\"`.
+        let args = try CLIArguments.parse(["--retry", "3", "prompt here"])
+        try assertTrue(args.retryEnabled)
+        try assertEqual(args.retryCount, 3)
+        try assertEqual(args.prompt, "prompt here")
+    }
+
+    test("--retry=N sets the count unambiguously (#253)") {
+        let args = try CLIArguments.parse(["--retry=5", "hi"])
+        try assertTrue(args.retryEnabled)
+        try assertEqual(args.retryCount, 5)
+        try assertEqual(args.prompt, "hi")
+    }
+
+    test("--retry=N with no prompt keeps the count and leaves the prompt empty (#253)") {
+        let args = try CLIArguments.parse(["--retry=8"])
+        try assertTrue(args.retryEnabled)
+        try assertEqual(args.retryCount, 8)
+        try assertEqual(args.prompt, "")
+    }
+
+    test("--retry=0 throws (non-positive count rejected) (#253)") {
+        do {
+            _ = try CLIArguments.parse(["--retry=0"])
+            throw TestFailure("expected CLIParseError for --retry=0")
+        } catch let e as CLIParseError {
+            try assertTrue(e.message.contains("--retry"))
+        }
+    }
+
+    test("--retry=abc throws (non-numeric count rejected) (#253)") {
+        do {
+            _ = try CLIArguments.parse(["--retry=abc"])
+            throw TestFailure("expected CLIParseError for --retry=abc")
+        } catch let e as CLIParseError {
+            try assertTrue(e.message.contains("--retry"))
+        }
+    }
+
     // ========================================================================
     // MARK: - Context flags
     // ========================================================================

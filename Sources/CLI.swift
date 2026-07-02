@@ -602,6 +602,8 @@ func printUsage() {
           --mcp-timeout <n>      MCP server timeout in seconds [default: 5]
           --permissive           Use permissive content guardrails
           --retry [n]            Enable retry with exponential backoff [default: 3 retries]
+                                 Ambiguous with a numeric prompt: `--retry 7` alone keeps
+                                 "7" as the prompt; use --retry=N to set the count unambiguously
           --model-info           Print model capabilities and exit
           --benchmark            Run internal performance benchmarks
           --count-tokens         Count tokens without calling the model
