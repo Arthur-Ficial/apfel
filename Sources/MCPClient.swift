@@ -440,7 +440,7 @@ actor MCPManager {
                 if case .remote = conn {
                     printStderr("warning: remote MCP server attached (\(conn.identifier)) - tool arguments will be sent to this server")
                 }
-                printStderr("\(styled("mcp:", .cyan)) \(conn.identifier) - \(conn.tools.map(\.function.name).joined(separator: ", "))")
+                printStderr("\(styledErr("mcp:", .cyan)) \(conn.identifier) - \(conn.tools.map(\.function.name).joined(separator: ", "))")
             }
         }
 
@@ -453,7 +453,7 @@ actor MCPManager {
             )
             for collision in collisions {
                 printStderr(
-                    "\(styled("warning:", .yellow)) tool name '\(collision.toolName)' is exposed by both \(collision.keptServer) and \(collision.ignoredServer); using \(collision.keptServer), ignoring the one from \(collision.ignoredServer)"
+                    "\(styledErr("warning:", .yellow)) tool name '\(collision.toolName)' is exposed by both \(collision.keptServer) and \(collision.ignoredServer); using \(collision.keptServer), ignoring the one from \(collision.ignoredServer)"
                 )
             }
         }
