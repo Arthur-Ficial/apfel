@@ -239,6 +239,7 @@ func chat(systemPrompt: String?, options: SessionOptions = .defaults, mcpManager
     let genOpts = makeGenerationOptions(options)
     let lineEditor = ChatLineEditor(outputFormat: outputFormat)
     var turn = 0
+    var chatFatalError: Error? = nil
 
     printHeader()
     if !quietMode {
@@ -318,8 +319,7 @@ func chat(systemPrompt: String?, options: SessionOptions = .defaults, mcpManager
                         print(styled("  [context rotated — \(options.contextConfig.strategy.rawValue)]", .dim))
                     }
                 } catch {
-                    let classified = ApfelError.classify(error)
-                    printError("\(classified.cliLabel) \(classified.openAIMessage)")
+                    chatFatalError = error
                     break
                 }
             }
@@ -327,6 +327,10 @@ func chat(systemPrompt: String?, options: SessionOptions = .defaults, mcpManager
             let classified = ApfelError.classify(error)
             printError("\(classified.cliLabel) \(classified.openAIMessage)")
         }
+    }
+
+    if let fatal = chatFatalError {
+        throw fatal
     }
 
     if !quietMode {
