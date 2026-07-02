@@ -103,6 +103,7 @@ This file was generated automatically by \`scripts/generate-examples.sh\`.
 11. [MCP Tool Calling](#11-mcp-tool-calling)
 12. [Edge Cases](#12-edge-cases)
 13. [Formatting & Structure](#13-formatting--structure)
+14. [File Extraction (PDF, image OCR + understanding)](#14-file-extraction-pdf-image-ocr--understanding)
 
 ---
 

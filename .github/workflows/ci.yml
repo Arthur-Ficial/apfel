@@ -64,6 +64,10 @@ jobs:
           # guards #322 - string args are coerced, non-numeric args error.
           python3 -m pytest Tests/integration/test_calculator_server.py -v --tb=short
 
+          # docs/EXAMPLES.md consistency (model-free): TOC must match the
+          # emitted sections; guards the generator's hardcoded TOC (#331).
+          python3 -m pytest Tests/integration/test_examples_doc.py -v --tb=short
+
           # Note: performance_test.py requires Apple Intelligence (benchmark runs inference).
           # It runs locally via make preflight / make release.
 
