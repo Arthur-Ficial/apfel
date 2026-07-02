@@ -285,16 +285,24 @@ def normal_streaming_response():
 
 @pytest.fixture(scope="module")
 def add_tool_response():
-    """Non-streaming add 100+200 -- shared by stop-not-tool_calls and usage tests."""
-    resp = httpx.post(f"{API_URL}/chat/completions", json={
-        "model": MODEL,
-        "messages": [
-            {"role": "user", "content": "Use the add function to add 100 and 200. Reply with just the number."}
-        ],
-        "seed": 42,
-    }, timeout=TIMEOUT)
-    assert resp.status_code == 200
-    return resp.json()
+    """Non-streaming add 100+200 -- shared by stop-not-tool_calls and usage tests.
+
+    Rotates seeds on guardrail refusal (#323, same pattern as #320)."""
+    content = ""
+    for seed in (42, 7, 123):
+        resp = httpx.post(f"{API_URL}/chat/completions", json={
+            "model": MODEL,
+            "messages": [
+                {"role": "user", "content": "Use the add function to add 100 and 200. Reply with just the number."}
+            ],
+            "seed": seed,
+        }, timeout=TIMEOUT)
+        assert resp.status_code == 200
+        data = resp.json()
+        content = data["choices"][0]["message"]["content"] or ""
+        if not _is_guardrail_refusal(content):
+            return data
+    pytest.fail(f"model guardrail-refused every seed; last: {content}")
 
 
 # ============================================================================
@@ -730,12 +738,18 @@ def test_mcp_multiply_returns_correct_result(multiply_247x83_response):
 
 
 def _is_guardrail_refusal(text):
-    """The on-device model's guardrail refusals ("I'm sorry, but I cannot
-    respond ... violates our guidelines" / "... cannot provide an answer that
-    promotes or supports harm"). Incidental model behavior, not a property
-    any test here asserts on."""
-    lowered = text.lower()
-    return lowered.startswith("i'm sorry") and "cannot" in lowered
+    """Detect the on-device model's guardrail refusals.
+
+    Covers known Apple model variants: ASCII and curly apostrophes,
+    "I can't ...", "Sorry, ...", "I cannot provide ..." (no lead-in),
+    and leading whitespace (#323, #324)."""
+    lowered = text.strip().lower().replace("’", "'")
+    if not lowered:
+        return False
+    starts_sorry = lowered.startswith("i'm sorry") or lowered.startswith("sorry")
+    starts_cannot = lowered.startswith("i cannot") or lowered.startswith("i can't")
+    has_refusal = "cannot" in lowered or "can't" in lowered or "violates" in lowered
+    return (starts_sorry or starts_cannot) and has_refusal
 
 
 def test_mcp_sqrt_returns_correct_result():
