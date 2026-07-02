@@ -873,3 +873,22 @@ def test_chat_hint_message_shown():
     clean = strip_ansi(output)
     assert "quit" in clean.lower() and "exit" in clean.lower(), \
         f"Quit hint not shown: {clean[:300]}"
+
+
+def test_chat_context_overflow_strict_exits_nonzero():
+    """#252: context-rotation failure in chat mode must exit with code 4
+    (contextOverflow), not 0. With --context-strategy strict and a huge
+    output reserve the input budget is tiny, so even one turn overflows."""
+    require_model()
+    returncode, output = run_chat_tty(
+        ["--chat", "--context-strategy", "strict",
+         "--context-output-reserve", "4090"],
+        steps=[
+            (b"quit", b"Say hello.\n", 0.5),
+        ],
+        timeout=30,
+    )
+    assert returncode == 4, (
+        f"Expected exit code 4 (contextOverflow), got {returncode}. "
+        f"Output: {strip_ansi(output)[:500]}"
+    )
