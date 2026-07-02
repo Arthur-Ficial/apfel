@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The `--count-tokens` chars/4 fallback warning now names the actual reason instead of always blaming Apple Intelligence. On a Mac running macOS older than 26.4 the `tokenCount(for:)` API does not exist at runtime even though generation works fine, so the old message ("Apple Intelligence unavailable") was false and misleading - it made real doc output look like a broken machine. The reason decision is a pure, unit-tested `TokenCountFallback` in ApfelCore: `osTooOld` (names the required 26.4 and the actual OS version) wins over `modelUnavailable`. Covered by unit tests and a model-free cli_e2e test that asserts the warning against the host OS version (#315).
+
 ## [1.7.0] - 2026-07-02
 
 ### Added

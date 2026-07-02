@@ -395,6 +395,38 @@ def test_count_tokens_json_shape():
     assert isinstance(data["fits"], bool)
 
 
+def test_count_tokens_fallback_warning_names_real_reason():
+    """#315: when --count-tokens falls back to chars/4, the stderr warning
+    must name the actual cause. On macOS < 26.4 the tokenizer API does not
+    exist at runtime, so the warning must say so - not falsely claim
+    "Apple Intelligence unavailable" while generation works fine.
+    Model-free: asserts against the host OS version, not model output."""
+    import platform
+    result = run_cli(["--count-tokens", "-o", "json", "hello"], timeout=30)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    data = json.loads(result.stdout.strip())
+    mac_ver = tuple(int(x) for x in platform.mac_ver()[0].split(".")[:2])
+    if mac_ver < (26, 4):
+        assert data["approximate"] is True
+        assert "token count is approximate" in result.stderr
+        assert "macOS 26.4" in result.stderr, (
+            f"warning must name the OS requirement (#315): {result.stderr!r}"
+        )
+        assert "Apple Intelligence unavailable" not in result.stderr, (
+            f"warning must not blame Apple Intelligence for a missing OS API "
+            f"(#315): {result.stderr!r}"
+        )
+    elif "token count is approximate" in result.stderr:
+        # OS supports the API: the only truthful fallback reason left is
+        # genuine model unavailability.
+        assert data["approximate"] is True
+        assert "Apple Intelligence unavailable" in result.stderr, (
+            f"unexpected fallback reason on macOS >= 26.4: {result.stderr!r}"
+        )
+    else:
+        assert data["approximate"] is False
+
+
 def test_count_tokens_strict_exit_over_budget():
     """--strict exits 4 when input exceeds the token budget.
     50 000 x's ≈ 6 200 real tokens (measured: 20 000 x's → 2 508 tokens),
