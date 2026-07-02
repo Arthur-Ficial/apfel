@@ -24,6 +24,8 @@ import subprocess
 import tempfile
 import time
 
+from conftest import is_guardrail_refusal, post_with_seed_rotation, SEED_ROTATION
+
 BASE_URL = "http://localhost:11435"
 API_URL = f"{BASE_URL}/v1"
 MODEL = "apple-foundationmodel"
@@ -235,29 +237,31 @@ def health_response():
 @pytest.fixture(scope="module")
 def multiply_247x83_response():
     """Non-streaming multiply 247*83 -- shared by auto-execute and result tests."""
-    resp = httpx.post(f"{API_URL}/chat/completions", json={
+    return post_with_seed_rotation(f"{API_URL}/chat/completions", {
         "model": MODEL,
         "messages": [
             {"role": "user", "content": "Use the multiply tool to compute 247 times 83. Reply with just the number."}
         ],
-        "seed": 42,
     }, timeout=TIMEOUT)
-    return resp.json()
 
 
 @pytest.fixture(scope="module")
 def multiply_streaming_response():
     """Streaming multiply 13*7 -- tests streaming MCP auto-execute."""
-    resp = httpx.post(f"{API_URL}/chat/completions", json={
-        "model": MODEL,
-        "messages": [
-            {"role": "user", "content": "Use the multiply tool to compute 13 times 7. Reply with just the number."}
-        ],
-        "stream": True,
-        "seed": 42,
-    }, timeout=TIMEOUT)
-    assert resp.status_code == 200
-    return collect_sse(resp)
+    for seed in SEED_ROTATION:
+        resp = httpx.post(f"{API_URL}/chat/completions", json={
+            "model": MODEL,
+            "messages": [
+                {"role": "user", "content": "Use the multiply tool to compute 13 times 7. Reply with just the number."}
+            ],
+            "stream": True,
+            "seed": seed,
+        }, timeout=TIMEOUT)
+        assert resp.status_code == 200
+        result = collect_sse(resp)
+        if not is_guardrail_refusal(result[0]):
+            return result
+    pytest.fail(f"model guardrail-refused every seed; last: {result[0]}")
 
 
 @pytest.fixture(scope="module")
@@ -286,15 +290,12 @@ def normal_streaming_response():
 @pytest.fixture(scope="module")
 def add_tool_response():
     """Non-streaming add 100+200 -- shared by stop-not-tool_calls and usage tests."""
-    resp = httpx.post(f"{API_URL}/chat/completions", json={
+    return post_with_seed_rotation(f"{API_URL}/chat/completions", {
         "model": MODEL,
         "messages": [
             {"role": "user", "content": "Use the add function to add 100 and 200. Reply with just the number."}
         ],
-        "seed": 42,
     }, timeout=TIMEOUT)
-    assert resp.status_code == 200
-    return resp.json()
 
 
 # ============================================================================
@@ -408,30 +409,36 @@ def test_client_tools_not_auto_executed():
     Auto-execution only applies to MCP-injected tools. Client tools are the
     client's responsibility to execute.
     """
-    resp = httpx.post(f"{API_URL}/chat/completions", json={
-        "model": MODEL,
-        "messages": [
-            {"role": "user", "content": "Use the get_weather function for Vienna."}
-        ],
-        "tools": [{
-            "type": "function",
-            "function": {
-                "name": "get_weather",
-                "description": "Get weather for a city",
-                "parameters": {
-                    "type": "object",
-                    "properties": {"city": {"type": "string"}},
-                    "required": ["city"]
+    for seed in SEED_ROTATION:
+        resp = httpx.post(f"{API_URL}/chat/completions", json={
+            "model": MODEL,
+            "messages": [
+                {"role": "user", "content": "Use the get_weather function for Vienna."}
+            ],
+            "tools": [{
+                "type": "function",
+                "function": {
+                    "name": "get_weather",
+                    "description": "Get weather for a city",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"city": {"type": "string"}},
+                        "required": ["city"]
+                    }
                 }
-            }
-        }],
-        "tool_choice": {"type": "function", "function": {"name": "get_weather"}},
-        "seed": 42,
-    }, timeout=TIMEOUT)
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["choices"][0]["finish_reason"] == "tool_calls", \
-        f"Expected 'tool_calls' for client tools but got '{data['choices'][0]['finish_reason']}'"
+            }],
+            "tool_choice": {"type": "function", "function": {"name": "get_weather"}},
+            "seed": seed,
+        }, timeout=TIMEOUT)
+        assert resp.status_code == 200
+        data = resp.json()
+        if data["choices"][0]["finish_reason"] == "tool_calls":
+            break
+        content = data["choices"][0]["message"].get("content") or ""
+        if not is_guardrail_refusal(content):
+            pytest.fail(f"Expected 'tool_calls' but got '{data['choices'][0]['finish_reason']}': {content}")
+    else:
+        pytest.fail("model guardrail-refused every seed; never produced a tool call")
 
 
 def test_mcp_tool_iserror_is_fed_back_to_model_not_500():
@@ -445,20 +452,16 @@ def test_mcp_tool_iserror_is_fed_back_to_model_not_500():
     failures (timeout, dead pipe) still surface as 500 (covered by the timeout
     and crashed-server tests below).
     """
-    resp = httpx.post(f"{API_URL}/chat/completions", json={
+    data = post_with_seed_rotation(f"{API_URL}/chat/completions", {
         "model": MODEL,
         "messages": [
             {"role": "user", "content": "Use the divide tool to divide 10 by 0, then tell me what happened."}
         ],
-        "seed": 42,
     }, timeout=TIMEOUT)
-    assert resp.status_code == 200, f"isError must no longer 500: {resp.status_code} {resp.text[:200]}"
-    data = resp.json()
     choice = data["choices"][0]
     assert choice["finish_reason"] == "stop"
     content = choice["message"]["content"]
     assert content and content.strip(), "model must produce a recovery answer, not empty content"
-    # The raw tool-call JSON must not leak to the client as the answer.
     assert '"tool_calls"' not in content
 
 
@@ -553,20 +556,15 @@ def test_mcp_server_chained_tool_calls_do_not_leak_json():
     on cap exhaustion - never returned as message.content with finish_reason
     stop (#240).
     """
-    resp = httpx.post(f"{API_URL}/chat/completions", json={
+    data = post_with_seed_rotation(f"{API_URL}/chat/completions", {
         "model": MODEL,
         "messages": [
             {"role": "user", "content": "First use the multiply tool to compute 6 times 7, then use the add tool to add 100 to that result. Give me the final number."}
         ],
-        "seed": 42,
         "max_tokens": 300,
     }, timeout=TIMEOUT)
-    assert resp.status_code == 200
-    data = resp.json()
     choice = data["choices"][0]
     content = choice["message"]["content"]
-    # Whether or not the model chains, raw tool-call protocol JSON must never
-    # reach the client as the answer.
     assert '"tool_calls"' not in content, f"raw tool-call JSON leaked to client: {content[:300]}"
     assert content and content.strip(), "must produce a natural-language answer"
 
@@ -581,16 +579,13 @@ def test_mcp_huge_tool_output_is_truncated_not_fatal():
     completes with a real answer instead of a context-overflow 500.
     """
     with running_custom_mcp_server(FIXTURES / "huge_output_mcp_server.py") as api_url:
-        resp = httpx.post(f"{api_url}/chat/completions", json={
+        data = post_with_seed_rotation(f"{api_url}/chat/completions", {
             "model": MODEL,
             "messages": [
                 {"role": "user", "content": "Call the fetch_document tool, then summarize the document in one sentence."}
             ],
-            "seed": 42,
             "max_tokens": 200,
         }, timeout=TIMEOUT)
-    assert resp.status_code == 200, f"huge tool output must not overflow: {resp.status_code} {resp.text[:300]}"
-    data = resp.json()
     choice = data["choices"][0]
     content = choice["message"]["content"]
     assert content and content.strip(), "must produce an answer from the truncated result"
@@ -664,16 +659,13 @@ def test_mcp_noisy_server_tool_call_succeeds():
     desyncing every later call.
     """
     with running_custom_mcp_server(FIXTURES / "noisy_mcp_server.py") as api_url:
-        resp = httpx.post(f"{api_url}/chat/completions", json={
+        data = post_with_seed_rotation(f"{api_url}/chat/completions", {
             "model": MODEL,
             "messages": [
                 {"role": "user", "content": "Use the multiply tool to compute 247 times 83. Reply with just the number."}
             ],
-            "seed": 42,
             "max_tokens": 128,
         }, timeout=30)
-        assert resp.status_code == 200, f"{resp.status_code}: {resp.text[:200]}"
-        data = resp.json()
         assert data["choices"][0]["finish_reason"] == "stop"
         content = data["choices"][0]["message"]["content"] or ""
         assert "20501" in content or "20,501" in content, \
@@ -690,26 +682,32 @@ def test_mcp_concurrent_tool_calls_do_not_cross_deliver():
     """
     import concurrent.futures
 
-    def ask(prompt):
+    def ask(prompt, seed):
         return httpx.post(f"{API_URL}/chat/completions", json={
             "model": MODEL,
             "messages": [{"role": "user", "content": prompt}],
-            "seed": 42,
+            "seed": seed,
             "max_tokens": 128,
         }, timeout=TIMEOUT)
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-        fut_multiply = pool.submit(
-            ask, "Use the multiply tool to compute 247 times 83. Reply with just the number.")
-        fut_add = pool.submit(
-            ask, "Use the add function to add 111 and 222. Reply with just the number.")
-        resp_multiply = fut_multiply.result()
-        resp_add = fut_add.result()
+    multiply_content = add_content = ""
+    for seed in SEED_ROTATION:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            fut_multiply = pool.submit(
+                ask, "Use the multiply tool to compute 247 times 83. Reply with just the number.", seed)
+            fut_add = pool.submit(
+                ask, "Use the add function to add 111 and 222. Reply with just the number.", seed)
+            resp_multiply = fut_multiply.result()
+            resp_add = fut_add.result()
 
-    assert resp_multiply.status_code == 200, f"{resp_multiply.status_code}: {resp_multiply.text[:200]}"
-    assert resp_add.status_code == 200, f"{resp_add.status_code}: {resp_add.text[:200]}"
-    multiply_content = resp_multiply.json()["choices"][0]["message"]["content"] or ""
-    add_content = resp_add.json()["choices"][0]["message"]["content"] or ""
+        assert resp_multiply.status_code == 200, f"{resp_multiply.status_code}: {resp_multiply.text[:200]}"
+        assert resp_add.status_code == 200, f"{resp_add.status_code}: {resp_add.text[:200]}"
+        multiply_content = resp_multiply.json()["choices"][0]["message"]["content"] or ""
+        add_content = resp_add.json()["choices"][0]["message"]["content"] or ""
+        if not is_guardrail_refusal(multiply_content) and not is_guardrail_refusal(add_content):
+            break
+    else:
+        pytest.fail(f"model guardrail-refused every seed; multiply: {multiply_content}, add: {add_content}")
     assert "20501" in multiply_content or "20,501" in multiply_content, \
         f"multiply got the wrong result (cross-delivered?): {multiply_content}"
     assert "333" in add_content, \
@@ -729,15 +727,6 @@ def test_mcp_multiply_returns_correct_result(multiply_247x83_response):
     assert "20501" in content or "20,501" in content, f"Expected 20501, got: {content}"
 
 
-def _is_guardrail_refusal(text):
-    """The on-device model's guardrail refusals ("I'm sorry, but I cannot
-    respond ... violates our guidelines" / "... cannot provide an answer that
-    promotes or supports harm"). Incidental model behavior, not a property
-    any test here asserts on."""
-    lowered = text.lower()
-    return lowered.startswith("i'm sorry") and "cannot" in lowered
-
-
 def test_mcp_sqrt_returns_correct_result():
     """Sqrt tool: sqrt(144) = 12.
 
@@ -747,23 +736,15 @@ def test_mcp_sqrt_returns_correct_result():
     round-trips into the final answer, not that a particular seed avoids the
     guardrail, so rotate seeds on refusal and assert on the first real
     answer (#320)."""
-    content = ""
-    for seed in (42, 7, 123):
-        resp = httpx.post(f"{API_URL}/chat/completions", json={
-            "model": MODEL,
-            "messages": [
-                {"role": "user", "content": "Use the sqrt tool to compute the square root of 144. Reply with just the number."}
-            ],
-            "seed": seed,
-        }, timeout=TIMEOUT)
-        data = resp.json()
-        content = data["choices"][0]["message"]["content"] or ""
-        assert data["choices"][0]["finish_reason"] == "stop"
-        assert_no_raw_tool_calls(content)
-        if not _is_guardrail_refusal(content):
-            break
-    else:
-        pytest.fail(f"model guardrail-refused every seed; last: {content}")
+    data = post_with_seed_rotation(f"{API_URL}/chat/completions", {
+        "model": MODEL,
+        "messages": [
+            {"role": "user", "content": "Use the sqrt tool to compute the square root of 144. Reply with just the number."}
+        ],
+    }, timeout=TIMEOUT)
+    content = data["choices"][0]["message"]["content"] or ""
+    assert data["choices"][0]["finish_reason"] == "stop"
+    assert_no_raw_tool_calls(content)
     assert "12" in content, f"Expected 12, got: {content}"
 
 
@@ -779,17 +760,14 @@ def test_mcp_tool_returns_stop_not_tool_calls(add_tool_response):
 
 def test_mcp_auto_execute_preserves_conversation_context():
     """Final MCP answer must retain prior conversation context, not just the last prompt."""
-    resp = httpx.post(f"{API_URL}/chat/completions", json={
+    data = post_with_seed_rotation(f"{API_URL}/chat/completions", {
         "model": MODEL,
         "messages": [
             {"role": "user", "content": "Remember this exact code word for later replies: MANGO."},
             {"role": "assistant", "content": "I will remember MANGO."},
             {"role": "user", "content": "Use the multiply tool to compute 6 times 7. Reply with exactly the remembered code word, one space, and the number."}
         ],
-        "seed": 42,
     }, timeout=TIMEOUT)
-    assert resp.status_code == 200
-    data = resp.json()
     assert data["choices"][0]["finish_reason"] == "stop"
     content = (data["choices"][0]["message"]["content"] or "").strip()
     assert "42" in content, content

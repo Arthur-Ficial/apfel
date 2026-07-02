@@ -13,6 +13,8 @@ import pytest
 import openai
 import httpx
 
+from conftest import is_guardrail_refusal, SEED_ROTATION
+
 BASE_URL = "http://localhost:11434/v1"
 MODEL = "apple-foundationmodel"
 
@@ -168,15 +170,21 @@ def test_tool_calling():
             }
         }
     }]
-    resp = client.chat.completions.create(
-        model=MODEL,
-        messages=[{"role": "user", "content": "Use the provided weather function for Vienna. Do not answer directly."}],
-        tools=tools,
-        tool_choice={"type": "function", "function": {"name": "get_weather"}},
-        seed=1,
-    )
-    assert resp.choices[0].finish_reason == "tool_calls"
-    assert len(resp.choices[0].message.tool_calls) > 0
+    for seed in SEED_ROTATION:
+        resp = client.chat.completions.create(
+            model=MODEL,
+            messages=[{"role": "user", "content": "Use the provided weather function for Vienna. Do not answer directly."}],
+            tools=tools,
+            tool_choice={"type": "function", "function": {"name": "get_weather"}},
+            seed=seed,
+        )
+        if resp.choices[0].finish_reason == "tool_calls" and resp.choices[0].message.tool_calls:
+            break
+        content = resp.choices[0].message.content or ""
+        if not is_guardrail_refusal(content):
+            pytest.fail(f"Expected tool_calls but got finish_reason='{resp.choices[0].finish_reason}': {content}")
+    else:
+        pytest.fail(f"model guardrail-refused every seed; never produced a tool call")
     assert resp.choices[0].message.tool_calls[0].function.name == "get_weather"
 
 
@@ -222,50 +230,54 @@ def test_streaming_tool_call_no_content_leak():
             },
         },
     }]
-    content = ""
-    tool_call_chunks = []           # chunks whose delta carries tool_calls
-    finish_reasons = []             # (has_tool_calls, finish_reason) per chunk
-    with httpx.stream(
-        "POST",
-        "http://localhost:11434/v1/chat/completions",
-        json={
-            "model": MODEL,
-            "messages": [{"role": "user", "content": "Use the provided weather function for Vienna. Do not answer directly."}],
-            "tools": tools,
-            "tool_choice": {"type": "function", "function": {"name": "get_weather"}},
-            "seed": 1,
-            "stream": True,
-        },
-        timeout=60,
-    ) as resp:
-        for line in resp.iter_lines():
-            if not line.startswith("data: "):
-                continue
-            data = line[6:]
-            if data.strip() == "[DONE]":
-                break
-            chunk = json.loads(data)
-            if not chunk["choices"]:
-                continue
-            delta = chunk["choices"][0]["delta"]
-            fr = chunk["choices"][0]["finish_reason"]
-            if delta.get("content"):
-                content += delta["content"]
-            if delta.get("tool_calls"):
-                tool_call_chunks.append(chunk)
-                # The tool_calls delta chunk itself must NOT carry finish_reason.
-                assert fr is None, \
-                    f"tool_calls delta chunk must not bundle finish_reason; got {fr!r}"
-            finish_reasons.append((bool(delta.get("tool_calls")), fr))
+    for seed in SEED_ROTATION:
+        content = ""
+        tool_call_chunks = []
+        finish_reasons = []
+        with httpx.stream(
+            "POST",
+            "http://localhost:11434/v1/chat/completions",
+            json={
+                "model": MODEL,
+                "messages": [{"role": "user", "content": "Use the provided weather function for Vienna. Do not answer directly."}],
+                "tools": tools,
+                "tool_choice": {"type": "function", "function": {"name": "get_weather"}},
+                "seed": seed,
+                "stream": True,
+            },
+            timeout=60,
+        ) as resp:
+            for line in resp.iter_lines():
+                if not line.startswith("data: "):
+                    continue
+                data = line[6:]
+                if data.strip() == "[DONE]":
+                    break
+                chunk = json.loads(data)
+                if not chunk["choices"]:
+                    continue
+                delta = chunk["choices"][0]["delta"]
+                fr = chunk["choices"][0]["finish_reason"]
+                if delta.get("content"):
+                    content += delta["content"]
+                if delta.get("tool_calls"):
+                    tool_call_chunks.append(chunk)
+                    assert fr is None, \
+                        f"tool_calls delta chunk must not bundle finish_reason; got {fr!r}"
+                finish_reasons.append((bool(delta.get("tool_calls")), fr))
 
-    # No raw tool-call JSON must have been streamed as content.
+        if tool_call_chunks:
+            break
+        if not is_guardrail_refusal(content):
+            pytest.fail(f"Expected tool_calls chunks but got none; content: {content!r}")
+    else:
+        pytest.fail(f"model guardrail-refused every seed; never produced a streaming tool call")
+
     assert "tool_calls" not in content, \
         f"raw tool_calls JSON leaked as content deltas: {content!r}"
-    # A proper tool_calls delta must have been emitted.
     assert tool_call_chunks, "no tool_calls delta chunk was emitted"
     tc = tool_call_chunks[0]["choices"][0]["delta"]["tool_calls"][0]
     assert tc["function"]["name"] == "get_weather"
-    # finish_reason=tool_calls must arrive in a SEPARATE chunk with no tool_calls.
     tool_calls_finish = [fr for has_tc, fr in finish_reasons if fr == "tool_calls" and not has_tc]
     assert tool_calls_finish, \
         "finish_reason=tool_calls must arrive in its own empty-delta chunk"

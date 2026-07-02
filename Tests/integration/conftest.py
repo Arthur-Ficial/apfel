@@ -1,6 +1,7 @@
 """Shared fixtures for integration tests -- server lifecycle management."""
 import os
 import pathlib
+import re
 import signal
 import subprocess
 import time
@@ -12,6 +13,52 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 BINARY = ROOT / ".build" / "release" / "apfel"
 MCP_SERVER = ROOT / "mcp" / "calculator" / "server.py"
 OPENAI_SPEC = pathlib.Path(__file__).parent / "openai_spec" / "openapi.yaml"
+
+SEED_ROTATION = (42, 7, 123, 99, 256)
+
+_APOSTROPHE_RE = re.compile(r"[‘’`´]")
+
+
+def _normalize_apostrophes(text):
+    return _APOSTROPHE_RE.sub("'", text)
+
+
+def is_guardrail_refusal(text):
+    """Detect the on-device model's guardrail refusals.
+
+    Handles: ASCII and curly apostrophes, leading whitespace, multiple
+    refusal phrasings ("I'm sorry", "Sorry,", "I cannot", "I can't",
+    "violates"). Returns True when the text looks like a refusal rather
+    than a genuine tool-use or content answer.
+    """
+    normalized = _normalize_apostrophes(text.strip()).lower()
+    if not normalized:
+        return False
+    refusal_starts = ("i'm sorry", "i am sorry", "sorry,", "sorry.")
+    refusal_contains = ("cannot", "can't", "violates", "unable to", "not able to")
+    starts = any(normalized.startswith(s) for s in refusal_starts)
+    has_refusal_keyword = any(k in normalized for k in refusal_contains)
+    return starts and has_refusal_keyword
+
+
+def post_with_seed_rotation(url, json_body, seeds=SEED_ROTATION, timeout=60):
+    """POST with automatic seed rotation on guardrail refusal.
+
+    Tries each seed in order; returns the parsed JSON response for the
+    first non-refusal. Calls pytest.fail if every seed is refused.
+    """
+    content = ""
+    for seed in seeds:
+        body = {**json_body, "seed": seed}
+        resp = httpx.post(url, json=body, timeout=timeout)
+        assert resp.status_code == 200, f"HTTP {resp.status_code}: {resp.text[:200]}"
+        data = resp.json()
+        content = (data.get("choices", [{}])[0].get("message", {}).get("content") or "")
+        if not is_guardrail_refusal(content):
+            return data
+    pytest.fail(
+        f"model guardrail-refused every seed {seeds}; last content: {content}"
+    )
 
 
 def pytest_sessionfinish(session, exitstatus):
