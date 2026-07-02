@@ -194,3 +194,15 @@ def test_bidirectional_exit_code_coverage():
         assert f".B {code}\n" in man_text, (
             f"Exit code {code} declared in ApfelExitCodes but not documented in man page"
         )
+
+
+def test_count_tokens_documents_approximate_field():
+    """Man page must mention the approximate field alongside --count-tokens (#335)."""
+    text = MAN_SOURCE.read_text()
+    ct_idx = text.find("count-tokens")
+    assert ct_idx >= 0, "--count-tokens not found in man page source"
+    after_ct = text[ct_idx:ct_idx + 800]
+    assert "approximate" in after_ct, (
+        "Man page documents --count-tokens but does not mention the "
+        "'approximate' JSON field. See #335."
+    )

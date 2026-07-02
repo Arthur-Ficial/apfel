@@ -35,6 +35,11 @@ MODEL
   --retry [n]                             Retry transient errors with backoff (default: 3)
   --debug                                 Enable debug logging to stderr (all modes)
   --count-tokens                          Count tokens without calling the model
+                                          Falls back to chars/4 approximation with a
+                                          stderr warning when the real tokenizer API is
+                                          unavailable (macOS < 26.4 or Apple Intelligence
+                                          disabled). JSON output includes an "approximate"
+                                          boolean field.
   --strict                                With --count-tokens: exit 4 if over budget
 
 CONTEXT (--chat)
