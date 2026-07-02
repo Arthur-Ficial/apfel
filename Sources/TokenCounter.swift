@@ -48,9 +48,25 @@ actor TokenCounter {
     /// Whether the real tokenCount API is usable (model available AND macOS 26.4+).
     /// When false, token counts fall back to chars/4 approximation.
     var isTokenCountingAvailable: Bool {
-        guard isAvailable else { return false }
-        if #available(macOS 26.4, *) { return true }
-        return false
+        tokenCountFallback == nil
+    }
+
+    /// Why token counting falls back to chars/4, or nil when the real API is
+    /// usable. Distinguishes "this macOS predates the tokenizer API" from
+    /// "Apple Intelligence is unavailable" so the warning names the actual
+    /// cause (#315: generation can work fine while the OS lacks tokenCount).
+    var tokenCountFallback: TokenCountFallback? {
+        let osSupportsTokenCounting: Bool
+        if #available(macOS 26.4, *) {
+            osSupportsTokenCounting = true
+        } else {
+            osSupportsTokenCounting = false
+        }
+        let v = ProcessInfo.processInfo.operatingSystemVersion
+        return TokenCountFallback.reason(
+            modelAvailable: isAvailable,
+            osSupportsTokenCounting: osSupportsTokenCounting,
+            currentOS: "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)")
     }
 
     /// Warm up the model so the first real request does not pay the

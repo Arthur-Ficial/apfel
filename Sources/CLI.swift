@@ -90,7 +90,8 @@ func countTokens(
     let mcpTools = await mcpManager?.allTools() ?? []
     let outputReserve = options.contextConfig.outputReserve
     let contextSize = await TokenCounter.shared.contextSize
-    let approximate = !(await TokenCounter.shared.isTokenCountingAvailable)
+    let tokenCountFallback = await TokenCounter.shared.tokenCountFallback
+    let approximate = tokenCountFallback != nil
 
     let inputEntries: [Transcript.Entry]
     let noToolEntries: [Transcript.Entry]?
@@ -169,8 +170,8 @@ func countTokens(
         approximate: approximate
     )
 
-    if approximate && !quietMode {
-        printStderr("\(styledErr("apfel:", .yellow)) token count is approximate (Apple Intelligence unavailable; using chars/4 fallback)")
+    if let tokenCountFallback, !quietMode {
+        printStderr("\(styledErr("apfel:", .yellow)) \(tokenCountFallback.message)")
     }
 
     switch outputFormat {
