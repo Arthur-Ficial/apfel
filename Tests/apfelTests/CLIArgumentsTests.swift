@@ -670,10 +670,26 @@ func runCLIArgumentsTests() {
         try assertEqual(args.retryCount, 3)
     }
 
-    test("--retry with explicit count parses optional argument") {
-        let args = try CLIArguments.parse(["--retry", "5", "hi"])
+    test("--retry=N parses attached count") {
+        let args = try CLIArguments.parse(["--retry=5", "hi"])
         try assertTrue(args.retryEnabled)
         try assertEqual(args.retryCount, 5)
+        try assertEqual(args.prompt, "hi")
+    }
+
+    test("--retry N before flag consumes count (#253 heuristic)") {
+        let args = try CLIArguments.parse(["--retry", "5", "--quiet", "hi"])
+        try assertTrue(args.retryEnabled)
+        try assertEqual(args.retryCount, 5)
+        try assertTrue(args.quiet)
+        try assertEqual(args.prompt, "hi")
+    }
+
+    test("--retry N before prompt word keeps number in prompt (#253)") {
+        let args = try CLIArguments.parse(["--retry", "7", "dwarfs"])
+        try assertTrue(args.retryEnabled)
+        try assertEqual(args.retryCount, 3)
+        try assertEqual(args.prompt, "7 dwarfs")
     }
 
     test("--retry followed by flag keeps default count") {
@@ -683,11 +699,24 @@ func runCLIArgumentsTests() {
         try assertTrue(args.quiet)
     }
 
-    test("--retry 0 throws (non-positive count rejected, like other numeric flags) (#177)") {
-        // Pre-#177 this silently fell back to 3 and folded "0" into the prompt.
-        // #177 makes a non-positive --retry value a hard error, matching --port etc.
+    test("--retry N as last token consumes count") {
+        let args = try CLIArguments.parse(["--retry", "5"])
+        try assertTrue(args.retryEnabled)
+        try assertEqual(args.retryCount, 5)
+    }
+
+    test("--retry=0 throws (non-positive count rejected) (#177)") {
         do {
-            _ = try CLIArguments.parse(["--retry", "0", "hi"])
+            _ = try CLIArguments.parse(["--retry=0", "hi"])
+            throw TestFailure("expected CLIParseError for --retry=0")
+        } catch let e as CLIParseError {
+            try assertTrue(e.message.contains("--retry"))
+        }
+    }
+
+    test("--retry 0 as last token throws") {
+        do {
+            _ = try CLIArguments.parse(["--retry", "0"])
             throw TestFailure("expected CLIParseError for --retry 0")
         } catch let e as CLIParseError {
             try assertTrue(e.message.contains("--retry"))

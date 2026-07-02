@@ -41,10 +41,10 @@ func runRedTDDTests() {
             "non-positive APFEL_CONTEXT_MAX_TURNS must be rejected like the flag")
     }
 
-    test("#177 --retry 0 throws like other numeric flags") {
+    test("#177 --retry=0 throws like other numeric flags") {
         do {
-            _ = try CLIArguments.parse(["--retry", "0", "hi"])
-            throw TestFailure("expected CLIParseError for --retry 0, none thrown")
+            _ = try CLIArguments.parse(["--retry=0", "hi"])
+            throw TestFailure("expected CLIParseError for --retry=0, none thrown")
         } catch let e as CLIParseError {
             try assertTrue(e.message.contains("--retry"),
                 "error should name the --retry flag, got: \(e.message)")
