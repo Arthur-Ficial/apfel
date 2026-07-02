@@ -117,11 +117,29 @@ def get_nums(args):
     return nums
 
 
+def _to_number(val):
+    """Coerce a single value to int or float. Raises ValueError for non-numeric."""
+    if isinstance(val, (int, float)):
+        return val
+    if isinstance(val, str):
+        return float(val) if "." in val else int(val)
+    raise ValueError(f"expected a number, got {type(val).__name__}")
+
+
 def execute(name, args):
     """Execute a tool by name. Tolerates improvised argument keys."""
     nums = get_nums(args)
     a = args.get("a", nums[0] if nums else 0)
     b = args.get("b", nums[1] if len(nums) > 1 else 0)
+
+    try:
+        a = _to_number(a)
+    except (ValueError, TypeError):
+        return f"Error: argument 'a' is not a valid number"
+    try:
+        b = _to_number(b)
+    except (ValueError, TypeError):
+        return f"Error: argument 'b' is not a valid number"
 
     try:
         if name == "add":
