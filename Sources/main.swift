@@ -36,6 +36,12 @@ func exitCode(for error: ApfelError) -> Int32 {
     ApfelExitCodes.code(for: error)
 }
 
+// MARK: - Locale
+
+// Inherit the user's LC_CTYPE so libedit handles multibyte characters
+// (backspace over ü, arrow-left over emoji) correctly (#256).
+setlocale(LC_CTYPE, "")
+
 // MARK: - Signal Handling
 
 apfel_install_sigint_exit_handler(isatty(STDOUT_FILENO) != 0 ? 1 : 0)

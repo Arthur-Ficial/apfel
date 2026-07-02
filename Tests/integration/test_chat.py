@@ -303,6 +303,35 @@ def test_chat_eof_exits_cleanly():
     assert returncode in (0, 1, -9), f"Unexpected exit code: {returncode}"
 
 
+def test_chat_multibyte_backspace_deletes_whole_character():
+    """Backspace over a multibyte character must delete the whole character, not one byte (#256).
+
+    Without setlocale(LC_CTYPE, ""), libedit runs in the "C" locale and treats
+    each byte independently. Backspace over 'u-umlaut' (2 UTF-8 bytes: 0xC3 0xBC)
+    deletes only 0xBC, leaving a dangling 0xC3 in the buffer. The subsequent
+    'quit' then reads as '\\xC3quit' which is not recognized as the exit command.
+
+    With the fix, backspace deletes both bytes, leaving a clean 'quit' that
+    exits normally.
+    """
+    require_model()
+    returncode, output = run_chat_tty(
+        ["--chat"],
+        steps=[
+            # Wait for the prompt, type u-umlaut + DEL (backspace) + "quit"
+            (b"you>", b"\xc3\xbc\x7fquit\n", 0.2),
+        ],
+        env={"LANG": "en_US.UTF-8"},
+        stop_when=lambda out: b"Goodbye" in out,
+        timeout=30,
+    )
+    clean = strip_ansi(output)
+    assert "Goodbye" in clean, (
+        "Backspace did not delete the whole multibyte character - "
+        "setlocale(LC_CTYPE) may be missing"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Category 2: Chat + MCP (5 tests)
 # ---------------------------------------------------------------------------
