@@ -1052,3 +1052,33 @@ def test_mcp_child_reaped_on_exit_path():
     if orphans:
         subprocess.run(["pkill", "-f", "eof_ignoring_mcp_server"], capture_output=True)
     assert not orphans, f"MCP child orphaned after exit (#246): pids {orphans}"
+
+
+def test_stderr_no_ansi_when_piped_but_stdout_is_tty():
+    """Error styling checks stderr TTY, not stdout TTY (#249).
+
+    When stdout is a TTY but stderr is redirected to a pipe, error messages
+    on stderr must not contain ANSI escape codes.
+    """
+    merged_env = os.environ.copy()
+    for key in ["NO_COLOR", "APFEL_SYSTEM_PROMPT", "APFEL_HOST", "APFEL_PORT",
+                "APFEL_TEMPERATURE", "APFEL_MAX_TOKENS"]:
+        merged_env.pop(key, None)
+    master_fd, slave_fd = pty.openpty()
+    proc = subprocess.Popen(
+        [str(BINARY), "--definitely-not-a-real-flag"],
+        stdout=slave_fd,
+        stderr=subprocess.PIPE,
+        env=merged_env,
+        close_fds=True,
+    )
+    os.close(slave_fd)
+    stderr_bytes = proc.stderr.read()
+    proc.wait(timeout=10)
+    os.close(master_fd)
+    stderr_text = stderr_bytes.decode("utf-8", errors="replace")
+    assert proc.returncode == 2
+    assert "error:" in stderr_text
+    assert not ANSI_RE.search(stderr_text), (
+        f"ANSI codes leaked into piped stderr while stdout was a TTY: {stderr_text!r}"
+    )

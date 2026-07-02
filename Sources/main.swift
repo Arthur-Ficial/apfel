@@ -101,7 +101,7 @@ if rawArgs.isEmpty {
             }
         }
         if stdinIsPipe() {
-            printStderr("\(styled("apfel:", .yellow)) piped input was empty - if the command prints to stderr, try: command 2>&1 | apfel")
+            printStderr("\(styledErr("apfel:", .yellow)) piped input was empty - if the command prints to stderr, try: command 2>&1 | apfel")
         }
     }
     printUsage()
@@ -166,7 +166,7 @@ if parsed.mode.acceptsStdinInput && isatty(STDIN_FILENO) == 0 {
             fileContents.append(stdinContent)
         }
     } else if !prompt.isEmpty && !quietMode && stdinIsPipe() {
-        printStderr("\(styled("apfel:", .yellow)) piped input was empty - if the command prints to stderr, try: command 2>&1 | apfel")
+        printStderr("\(styledErr("apfel:", .yellow)) piped input was empty - if the command prints to stderr, try: command 2>&1 | apfel")
     }
 }
 

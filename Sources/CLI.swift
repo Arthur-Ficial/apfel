@@ -15,13 +15,16 @@ import CReadline
 /// Suppressed in --quiet mode. Routed to stderr in JSON mode.
 func printHeader() {
     guard !quietMode else { return }
-    let header = styled("Apple Intelligence", .cyan, .bold)
-        + styled(" · on-device LLM · \(appName) v\(version)", .dim)
-    let line = styled(String(repeating: "─", count: 56), .dim)
     if outputFormat == .json {
+        let header = styledErr("Apple Intelligence", .cyan, .bold)
+            + styledErr(" · on-device LLM · \(appName) v\(version)", .dim)
+        let line = styledErr(String(repeating: "─", count: 56), .dim)
         printStderr(header)
         printStderr(line)
     } else {
+        let header = styled("Apple Intelligence", .cyan, .bold)
+            + styled(" · on-device LLM · \(appName) v\(version)", .dim)
+        let line = styled(String(repeating: "─", count: 56), .dim)
         print(header)
         print(line)
     }
@@ -71,7 +74,7 @@ func singlePrompt(_ prompt: String, systemPrompt: String?, stream: Bool, options
     }
 
     if result.finishReason == .length {
-        printStderr("\(styled("apfel:", .yellow)) response truncated at the context window (finish_reason=length). Pass --max-tokens to control the cap explicitly.")
+        printStderr("\(styledErr("apfel:", .yellow)) response truncated at the context window (finish_reason=length). Pass --max-tokens to control the cap explicitly.")
     }
 }
 
@@ -170,7 +173,7 @@ func countTokens(
     )
 
     if approximate && !quietMode {
-        printStderr("\(styled("apfel:", .yellow)) token count is approximate (Apple Intelligence unavailable; using chars/4 fallback)")
+        printStderr("\(styledErr("apfel:", .yellow)) token count is approximate (Apple Intelligence unavailable; using chars/4 fallback)")
     }
 
     switch outputFormat {
@@ -186,7 +189,7 @@ func countTokens(
             }
             if report.mcpToolTokens > 0 { parts.append("mcp_tools=\(report.mcpToolTokens)") }
             if !parts.isEmpty {
-                printStderr(styled("  " + parts.joined(separator: ", "), .dim))
+                printStderr(styledErr("  " + parts.joined(separator: ", "), .dim))
             }
         }
     case .json:
@@ -243,18 +246,18 @@ func chat(systemPrompt: String?, options: SessionOptions = .defaults, mcpManager
     printHeader()
     if !quietMode {
         if let sys = systemPrompt {
-            let sysLine = styled("system: ", .magenta, .bold) + styled(sys, .dim)
             if outputFormat == .json {
+                let sysLine = styledErr("system: ", .magenta, .bold) + styledErr(sys, .dim)
                 printStderr(sysLine)
             } else {
+                let sysLine = styled("system: ", .magenta, .bold) + styled(sys, .dim)
                 print(sysLine)
             }
         }
-        let hint = styled("Type 'quit' to exit.\n", .dim)
         if outputFormat == .json {
-            printStderr(hint)
+            printStderr(styledErr("Type 'quit' to exit.\n", .dim))
         } else {
-            print(hint)
+            print(styled("Type 'quit' to exit.\n", .dim))
         }
     }
 
