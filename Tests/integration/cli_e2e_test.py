@@ -348,6 +348,23 @@ def test_invalid_flag_exit_code():
     assert "unknown option" in result.stderr
 
 
+def test_usage_error_writes_usage_to_stderr_not_stdout():
+    """Usage text on error exits (exit 2) must go to stderr, not stdout (#250).
+    --help (exit 0) writes to stdout; error paths must not pollute pipes."""
+    result = run_cli([], input_text="", timeout=10)
+    assert result.returncode == 2
+    assert "USAGE:" not in result.stdout, "usage text leaked to stdout on error exit"
+    assert "USAGE:" in result.stderr, "usage text missing from stderr on error exit"
+
+
+def test_help_writes_usage_to_stdout():
+    """--help (exit 0) should write usage to stdout, not stderr."""
+    result = run_cli(["--help"])
+    assert result.returncode == 0
+    assert "USAGE:" in result.stdout
+    assert "USAGE:" not in result.stderr
+
+
 def test_help_uses_ansi_under_tty():
     returncode, output = run_cli_tty(["--help"])
     assert returncode == 0

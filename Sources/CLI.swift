@@ -572,8 +572,10 @@ private func shellPassthrough(_ executable: String, args: [String]) -> Int32 {
 // MARK: - Usage
 
 /// Print the help text. Styled with ANSI colors when on a TTY.
-func printUsage() {
-    print("""
+/// When `toStderr` is true, writes to stderr (for usage-error exits);
+/// otherwise writes to stdout (for --help).
+func printUsage(toStderr: Bool = false) {
+    let text = """
     \(styled(appName, .cyan, .bold)) v\(version) — Apple Intelligence from the command line
 
     \(styled("USAGE:", .yellow, .bold))
@@ -676,5 +678,10 @@ func printUsage() {
       \(appName) --count-tokens -o json "hello" | jq .
       APFEL_SYSTEM_PROMPT="Be brief" \(appName) "Explain TCP"
       \(appName) --serve --port 3000 --host 0.0.0.0 --cors
-    """)
+    """
+    if toStderr {
+        printStderr(text)
+    } else {
+        print(text)
+    }
 }
