@@ -104,7 +104,7 @@ if rawArgs.isEmpty {
             printStderr("\(styled("apfel:", .yellow)) piped input was empty - if the command prints to stderr, try: command 2>&1 | apfel")
         }
     }
-    printUsage()
+    printUsage(toStderr: true)
     exit(exitUsageError)
 }
 
