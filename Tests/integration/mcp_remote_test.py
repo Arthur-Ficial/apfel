@@ -20,6 +20,8 @@ import time
 import httpx
 import pytest
 
+from conftest import post_chat_rotating_seeds
+
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 BINARY = ROOT / ".build" / "release" / "apfel"
 HTTP_MCP_SERVER = ROOT / "mcp" / "http-test-server" / "server.py"
@@ -132,42 +134,28 @@ def apfel_remote_mcp_url(http_mcp_port):
 
 @pytest.fixture(scope="module")
 def remote_multiply_response(apfel_remote_mcp_url):
-    resp = httpx.post(
-        f"{apfel_remote_mcp_url}/chat/completions",
-        json={
-            "model": MODEL,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": "Use the multiply tool to compute 247 times 83. Reply with just the number.",
-                }
-            ],
-            "seed": 42,
-        },
-        timeout=TIMEOUT,
-    )
-    assert resp.status_code == 200, f"HTTP {resp.status_code}: {resp.text}"
-    return resp.json()
+    return post_chat_rotating_seeds(f"{apfel_remote_mcp_url}/chat/completions", {
+        "model": MODEL,
+        "messages": [
+            {
+                "role": "user",
+                "content": "Use the multiply tool to compute 247 times 83. Reply with just the number.",
+            }
+        ],
+    }, TIMEOUT)
 
 
 @pytest.fixture(scope="module")
 def remote_add_response(apfel_remote_mcp_url):
-    resp = httpx.post(
-        f"{apfel_remote_mcp_url}/chat/completions",
-        json={
-            "model": MODEL,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": "Use the add tool to add 100 and 200. Reply with just the number.",
-                }
-            ],
-            "seed": 42,
-        },
-        timeout=TIMEOUT,
-    )
-    assert resp.status_code == 200, f"HTTP {resp.status_code}: {resp.text}"
-    return resp.json()
+    return post_chat_rotating_seeds(f"{apfel_remote_mcp_url}/chat/completions", {
+        "model": MODEL,
+        "messages": [
+            {
+                "role": "user",
+                "content": "Use the add tool to add 100 and 200. Reply with just the number.",
+            }
+        ],
+    }, TIMEOUT)
 
 
 # ============================================================================
@@ -379,22 +367,16 @@ def test_auth_mcp_apfel_healthy(apfel_auth_mcp_url):
 
 def test_auth_mcp_tool_executes_correctly(apfel_auth_mcp_url):
     """With correct bearer token, remote MCP tool executes: 6 * 7 = 42."""
-    resp = httpx.post(
-        f"{apfel_auth_mcp_url}/chat/completions",
-        json={
-            "model": MODEL,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": "Use the multiply tool to compute 6 times 7. Just the number.",
-                }
-            ],
-            "seed": 42,
-        },
-        timeout=TIMEOUT,
-    )
-    assert resp.status_code == 200
-    content = resp.json()["choices"][0]["message"]["content"]
+    data = post_chat_rotating_seeds(f"{apfel_auth_mcp_url}/chat/completions", {
+        "model": MODEL,
+        "messages": [
+            {
+                "role": "user",
+                "content": "Use the multiply tool to compute 6 times 7. Just the number.",
+            }
+        ],
+    }, TIMEOUT)
+    content = data["choices"][0]["message"]["content"]
     assert "42" in content, f"Expected '42' in: {content}"
 
 
@@ -511,22 +493,15 @@ def test_mixed_mcp_apfel_healthy(apfel_mixed_mcp_url):
 
 def test_mixed_mcp_tool_executes(apfel_mixed_mcp_url):
     """With mixed local+remote MCP, a tool call executes successfully."""
-    resp = httpx.post(
-        f"{apfel_mixed_mcp_url}/chat/completions",
-        json={
-            "model": MODEL,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": "Use the multiply tool to compute 12 times 12. Just the number.",
-                }
-            ],
-            "seed": 42,
-        },
-        timeout=TIMEOUT,
-    )
-    assert resp.status_code == 200
-    data = resp.json()
+    data = post_chat_rotating_seeds(f"{apfel_mixed_mcp_url}/chat/completions", {
+        "model": MODEL,
+        "messages": [
+            {
+                "role": "user",
+                "content": "Use the multiply tool to compute 12 times 12. Just the number.",
+            }
+        ],
+    }, TIMEOUT)
     assert data["choices"][0]["finish_reason"] == "stop"
     content = data["choices"][0]["message"]["content"]
     assert "144" in content, f"Expected '144' (12*12) in: {content}"

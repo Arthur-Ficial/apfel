@@ -63,6 +63,69 @@ def openai_spec():
     )
 
 
+# ============================================================================
+# Guardrail-refusal handling (#320, #323, #324)
+#
+# The on-device model's guardrails fire on arbitrary benign prompts along
+# specific sampling trajectories (macOS 26.5.2 made seed 42 a deterministic
+# refusal for several prompts). The refusal arrives IN-BAND: normal content,
+# finish_reason "stop", HTTP 200 - detectable only by its text. Tests that
+# pin a seed and assert on content must rotate seeds past refusals; the
+# property under test is apfel's behavior, not one seed's guardrail luck.
+# Detection stays test-side by design - do NOT add refusal-sniffing to
+# Sources/ (honesty principle: apfel must not editorialize model output).
+# ============================================================================
+
+GUARDRAIL_SEEDS = (42, 7, 123)
+
+
+def is_guardrail_refusal(text):
+    """True when content is an in-band guardrail refusal, not a real answer.
+
+    Matches the observed refusal shapes loosely (curly or ASCII apostrophe,
+    with or without the "I'm sorry" lead-in) because exact phrasing shifts
+    between model releases (#320, #323, #324)."""
+    if not text:
+        return False
+    lowered = text.strip().replace("’", "'").lower()
+    starters = (
+        "i'm sorry", "i am sorry", "sorry,",
+        "i cannot", "i can't", "i won't",
+    )
+    markers = (
+        "violates our guidelines", "against my guidelines",
+        "cannot comply", "can't comply", "cannot respond to your request",
+        "violation of my programming", "promotes or supports harm",
+        "cannot provide an answer", "cannot assist with",
+    )
+    return lowered.startswith(starters) or any(m in lowered for m in markers)
+
+
+def post_chat_rotating_seeds(url, payload, timeout, seeds=GUARDRAIL_SEEDS, accept=None):
+    """POST a non-streaming chat completion, rotating seeds past guardrail
+    refusals. Returns the parsed JSON of the first usable response; fails the
+    test loudly if every seed refuses (that would be a real problem to see).
+
+    `accept`: optional predicate(data) for callers whose notion of "usable"
+    is stricter than non-refusal (e.g. tool_calls must be present)."""
+    last_content = None
+    for seed in seeds:
+        body = dict(payload)
+        body["seed"] = seed
+        resp = httpx.post(url, json=body, timeout=timeout)
+        assert resp.status_code == 200, \
+            f"HTTP {resp.status_code} (seed {seed}): {resp.text[:200]}"
+        data = resp.json()
+        last_content = data["choices"][0]["message"].get("content")
+        if is_guardrail_refusal(last_content or ""):
+            continue
+        if accept is not None and not accept(data):
+            continue
+        return data
+    pytest.fail(
+        f"model gave no usable answer on any seed {seeds}; last content: {last_content!r}")
+
+
 def _server_alive(url: str) -> bool:
     try:
         resp = httpx.get(f"{url}/health", timeout=2)

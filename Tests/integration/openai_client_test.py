@@ -13,6 +13,8 @@ import pytest
 import openai
 import httpx
 
+from conftest import GUARDRAIL_SEEDS
+
 BASE_URL = "http://localhost:11434/v1"
 MODEL = "apple-foundationmodel"
 
@@ -168,13 +170,23 @@ def test_tool_calling():
             }
         }
     }]
-    resp = client.chat.completions.create(
-        model=MODEL,
-        messages=[{"role": "user", "content": "Use the provided weather function for Vienna. Do not answer directly."}],
-        tools=tools,
-        tool_choice={"type": "function", "function": {"name": "get_weather"}},
-        seed=1,
-    )
+    # Seed-rotated (#324): a guardrail refusal arrives as finish_reason "stop"
+    # with tool_calls None, which would crash len(None) instead of failing clean.
+    resp = None
+    for seed in GUARDRAIL_SEEDS:
+        resp = client.chat.completions.create(
+            model=MODEL,
+            messages=[{"role": "user", "content": "Use the provided weather function for Vienna. Do not answer directly."}],
+            tools=tools,
+            tool_choice={"type": "function", "function": {"name": "get_weather"}},
+            seed=seed,
+        )
+        if resp.choices[0].finish_reason == "tool_calls" and resp.choices[0].message.tool_calls:
+            break
+    else:
+        pytest.fail(
+            f"no tool_calls on any seed {GUARDRAIL_SEEDS}; last finish_reason="
+            f"{resp.choices[0].finish_reason!r}, content={resp.choices[0].message.content!r}")
     assert resp.choices[0].finish_reason == "tool_calls"
     assert len(resp.choices[0].message.tool_calls) > 0
     assert resp.choices[0].message.tool_calls[0].function.name == "get_weather"
@@ -222,41 +234,54 @@ def test_streaming_tool_call_no_content_leak():
             },
         },
     }]
-    content = ""
-    tool_call_chunks = []           # chunks whose delta carries tool_calls
-    finish_reasons = []             # (has_tool_calls, finish_reason) per chunk
-    with httpx.stream(
-        "POST",
-        "http://localhost:11434/v1/chat/completions",
-        json={
-            "model": MODEL,
-            "messages": [{"role": "user", "content": "Use the provided weather function for Vienna. Do not answer directly."}],
-            "tools": tools,
-            "tool_choice": {"type": "function", "function": {"name": "get_weather"}},
-            "seed": 1,
-            "stream": True,
-        },
-        timeout=60,
-    ) as resp:
-        for line in resp.iter_lines():
-            if not line.startswith("data: "):
-                continue
-            data = line[6:]
-            if data.strip() == "[DONE]":
-                break
-            chunk = json.loads(data)
-            if not chunk["choices"]:
-                continue
-            delta = chunk["choices"][0]["delta"]
-            fr = chunk["choices"][0]["finish_reason"]
-            if delta.get("content"):
-                content += delta["content"]
-            if delta.get("tool_calls"):
-                tool_call_chunks.append(chunk)
-                # The tool_calls delta chunk itself must NOT carry finish_reason.
-                assert fr is None, \
-                    f"tool_calls delta chunk must not bundle finish_reason; got {fr!r}"
-            finish_reasons.append((bool(delta.get("tool_calls")), fr))
+    def collect(seed):
+        content = ""
+        tool_call_chunks = []       # chunks whose delta carries tool_calls
+        finish_reasons = []         # (has_tool_calls, finish_reason) per chunk
+        with httpx.stream(
+            "POST",
+            "http://localhost:11434/v1/chat/completions",
+            json={
+                "model": MODEL,
+                "messages": [{"role": "user", "content": "Use the provided weather function for Vienna. Do not answer directly."}],
+                "tools": tools,
+                "tool_choice": {"type": "function", "function": {"name": "get_weather"}},
+                "seed": seed,
+                "stream": True,
+            },
+            timeout=60,
+        ) as resp:
+            for line in resp.iter_lines():
+                if not line.startswith("data: "):
+                    continue
+                data = line[6:]
+                if data.strip() == "[DONE]":
+                    break
+                chunk = json.loads(data)
+                if not chunk["choices"]:
+                    continue
+                delta = chunk["choices"][0]["delta"]
+                fr = chunk["choices"][0]["finish_reason"]
+                if delta.get("content"):
+                    content += delta["content"]
+                if delta.get("tool_calls"):
+                    tool_call_chunks.append(chunk)
+                    # The tool_calls delta chunk itself must NOT carry finish_reason.
+                    assert fr is None, \
+                        f"tool_calls delta chunk must not bundle finish_reason; got {fr!r}"
+                finish_reasons.append((bool(delta.get("tool_calls")), fr))
+        return content, tool_call_chunks, finish_reasons
+
+    # Seed-rotated (#324): a guardrail refusal streams plain content with no
+    # tool_calls delta, which is not the property under test.
+    content, tool_call_chunks, finish_reasons = "", [], []
+    for seed in GUARDRAIL_SEEDS:
+        content, tool_call_chunks, finish_reasons = collect(seed)
+        if tool_call_chunks:
+            break
+    else:
+        pytest.fail(
+            f"no tool_calls delta on any seed {GUARDRAIL_SEEDS}; last content: {content!r}")
 
     # No raw tool-call JSON must have been streamed as content.
     assert "tool_calls" not in content, \
