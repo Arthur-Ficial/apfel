@@ -304,6 +304,14 @@ def test_help_exit_success():
     assert "USAGE:" in result.stdout
 
 
+def test_no_args_usage_error_writes_to_stderr():
+    """No-args usage-error (exit 2) must write usage text to stderr, not stdout (#250)."""
+    result = run_cli([], input_text="")
+    assert result.returncode == 2
+    assert "USAGE:" in result.stderr, "usage text should appear on stderr for error exits"
+    assert "USAGE:" not in result.stdout, "usage text must not pollute stdout on error exits"
+
+
 def test_version_exit_success():
     result = run_cli(["--version"])
     assert result.returncode == 0
