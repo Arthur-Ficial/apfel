@@ -63,7 +63,7 @@ actor LogStore {
         printStderr(line)
         if let events = log.events {
             for event in events {
-                printStderr("  \(styled("•", .dim)) \(event)")
+                printStderr("  \(styledErr("•", .dim)) \(event)")
             }
         }
     }

@@ -46,6 +46,15 @@ func styled(_ text: String, _ colors: ANSIColor...) -> String {
     return "\(prefix)\(text)\(ANSIColor.reset.rawValue)"
 }
 
+/// Apply ANSI color codes to text destined for stderr. Returns plain text if
+/// stderr is not a TTY, NO_COLOR is set, or --no-color was passed.
+func styledErr(_ text: String, _ colors: ANSIColor...) -> String {
+    let isTerminal = isatty(STDERR_FILENO) != 0
+    guard isTerminal, !noColorEnv, !noColorFlag else { return text }
+    let prefix = colors.map(\.rawValue).joined()
+    return "\(prefix)\(text)\(ANSIColor.reset.rawValue)"
+}
+
 // MARK: - Output Helpers
 
 let stderr = FileHandle.standardError
@@ -57,7 +66,7 @@ func printStderr(_ message: String) {
 
 /// Print a styled error message to stderr. Format: "error: <message>"
 func printError(_ message: String) {
-    stderr.write(Data("\(styled("error:", .red, .bold)) \(message)\n".utf8))
+    stderr.write(Data("\(styledErr("error:", .red, .bold)) \(message)\n".utf8))
 }
 
 // MARK: - Debug Output
@@ -65,11 +74,11 @@ func printError(_ message: String) {
 /// Print a debug message to stderr. Zero-cost when debug logging is disabled.
 func debugLog(_ message: @autoclosure () -> String) {
     guard ApfelDebugConfiguration.isEnabled else { return }
-    printStderr("\(styled("debug:", .dim)) \(message())")
+    printStderr("\(styledErr("debug:", .dim)) \(message())")
 }
 
 /// Print a categorized debug message to stderr. Zero-cost when debug logging is disabled.
 func debugLog(_ category: String, _ message: @autoclosure () -> String) {
     guard ApfelDebugConfiguration.isEnabled else { return }
-    printStderr("\(styled("debug[\(category)]:", .dim)) \(message())")
+    printStderr("\(styledErr("debug[\(category)]:", .dim)) \(message())")
 }
