@@ -285,16 +285,26 @@ def normal_streaming_response():
 
 @pytest.fixture(scope="module")
 def add_tool_response():
-    """Non-streaming add 100+200 -- shared by stop-not-tool_calls and usage tests."""
-    resp = httpx.post(f"{API_URL}/chat/completions", json={
-        "model": MODEL,
-        "messages": [
-            {"role": "user", "content": "Use the add function to add 100 and 200. Reply with just the number."}
-        ],
-        "seed": 42,
-    }, timeout=TIMEOUT)
-    assert resp.status_code == 200
-    return resp.json()
+    """Non-streaming add 100+200 -- shared by stop-not-tool_calls and usage tests.
+
+    Rotates seeds on guardrail refusal (#323), matching the pattern from #320.
+    The macOS 26.5.2 model guardrail-refuses this prompt on seed 42."""
+    prompt = "Use the add function to add 100 and 200. Reply with just the number."
+    for seed in (42, 7, 123, 0, 99):
+        resp = httpx.post(f"{API_URL}/chat/completions", json={
+            "model": MODEL,
+            "messages": [{"role": "user", "content": prompt}],
+            "seed": seed,
+        }, timeout=TIMEOUT)
+        assert resp.status_code == 200
+        data = resp.json()
+        content = data["choices"][0]["message"]["content"] or ""
+        if not _is_guardrail_refusal(content):
+            return data
+    pytest.fail(
+        f"model guardrail-refused add(100,200) on every seed (42,7,123,0,99); "
+        f"last content: {content}"
+    )
 
 
 # ============================================================================
