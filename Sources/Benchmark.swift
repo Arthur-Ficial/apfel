@@ -157,7 +157,7 @@ private func benchmarkTrimNewestFirst(options: SessionOptions) async -> Benchmar
         budget: fixture.budget
     )
 
-    let iterations = 14
+    let iterations = 50
     let baseline = await measure(iterations: iterations) {
         _ = await legacyTrimNewestFirst(
             base: fixture.baseEntries,
@@ -201,7 +201,7 @@ private func benchmarkTrimOldestFirst(options: SessionOptions) async -> Benchmar
         budget: fixture.budget
     )
 
-    let iterations = 14
+    let iterations = 50
     let baseline = await measure(iterations: iterations) {
         _ = await legacyTrimOldestFirst(
             base: fixture.baseEntries,
