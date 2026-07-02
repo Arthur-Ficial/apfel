@@ -127,6 +127,11 @@ case .release:
     exit(exitSuccess)
 case .demos:
     exit(runDemosInstall(target: parsed.demosTarget))
+case .completions:
+    if let shell = parsed.completionsShell {
+        print(ShellCompletions.generate(for: shell), terminator: "")
+    }
+    exit(exitSuccess)
 default:
     break
 }
@@ -346,7 +351,7 @@ do {
             exit(exitContextOverflow)
         }
 
-    case .help, .version, .release, .demos:
+    case .help, .version, .release, .demos, .completions:
         break   // Already handled above; exhaustive switch.
     }
 } catch {

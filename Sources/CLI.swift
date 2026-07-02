@@ -638,6 +638,7 @@ func printUsage(to handle: FileHandle = .standardOutput) {
       \(appName) --serve                  Start OpenAI-compatible HTTP server
       \(appName) --benchmark              Run internal performance benchmarks
       \(appName) --count-tokens <prompt>  Preflight token count (no inference)
+      \(appName) completions <shell>      Print shell completions (bash, zsh, fish)
 
     \(styled("OPTIONS:", .yellow, .bold))
       -f, --file <path>         Attach file content to prompt (repeatable)

@@ -281,7 +281,12 @@ package-release-asset:
 	fi; \
 	rm -rf .build/release/demo; \
 	cp -R demo .build/release/demo; \
-	tar -C .build/release -czf "$$asset" $(BINARY) $(BINARY).1 demo; \
+	rm -rf .build/release/completions; \
+	mkdir -p .build/release/completions; \
+	.build/release/$(BINARY) completions bash > .build/release/completions/apfel.bash; \
+	.build/release/$(BINARY) completions zsh > .build/release/completions/apfel.zsh; \
+	.build/release/$(BINARY) completions fish > .build/release/completions/apfel.fish; \
+	tar -C .build/release -czf "$$asset" $(BINARY) $(BINARY).1 demo completions; \
 	echo "$$asset"
 
 print-release-asset:

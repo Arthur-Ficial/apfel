@@ -120,6 +120,7 @@ suite("FileFramingTests") { runFileFramingTests() }
 suite("RedTDDTests") { runRedTDDTests() }
 suite("AsyncSemaphoreTests") { runAsyncSemaphoreTests() }
 suite("ChatHistoryTests") { runChatHistoryTests() }
+suite("CompletionsTests") { runCompletionsTests() }
 
 // MARK: - Summary
 

@@ -317,6 +317,57 @@ def test_count_tokens_in_help():
     assert "--strict" in result.stdout
 
 
+# --- Shell completions (#259) ------------------------------------------------
+
+def test_completions_zsh_exit_and_content():
+    """`apfel completions zsh` exits 0 and prints a zsh completion script."""
+    result = run_cli(["completions", "zsh"], timeout=15)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    assert result.stdout.startswith("#compdef apfel"), result.stdout[:80]
+    assert "--context-strategy" in result.stdout
+    assert "newest-first" in result.stdout
+
+
+def test_completions_bash_and_fish_content():
+    bash = run_cli(["completions", "bash"], timeout=15)
+    assert bash.returncode == 0
+    assert "complete -F _apfel apfel" in bash.stdout
+    fish = run_cli(["completions", "fish"], timeout=15)
+    assert fish.returncode == 0
+    assert "complete -c apfel" in fish.stdout
+
+
+def test_completions_missing_shell_is_usage_error():
+    result = run_cli(["completions"], timeout=15)
+    assert result.returncode == 2
+    assert "shell" in result.stderr.lower()
+
+
+def test_completions_bad_shell_is_usage_error():
+    result = run_cli(["completions", "powershell"], timeout=15)
+    assert result.returncode == 2
+
+
+def test_completions_in_help():
+    result = run_cli(["--help"])
+    assert result.returncode == 0
+    assert "completions" in result.stdout
+
+
+def test_committed_completion_files_match_binary():
+    """The checked-in completions/apfel.{bash,zsh,fish} must match the binary.
+
+    Packagers install the committed files; if the generator changes, they must
+    be regenerated (`apfel completions <shell> > completions/apfel.<shell>`).
+    """
+    for shell in ("bash", "zsh", "fish"):
+        committed = (ROOT / "completions" / f"apfel.{shell}").read_text()
+        generated = run_cli(["completions", shell], timeout=15).stdout
+        assert committed == generated, (
+            f"completions/apfel.{shell} is stale; regenerate it from the binary"
+        )
+
+
 def test_count_tokens_json_shape():
     """--count-tokens -o json returns the documented breakdown (model-free)."""
     result = run_cli(["--count-tokens", "-o", "json", "hello"], timeout=30)

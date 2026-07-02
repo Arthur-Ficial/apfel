@@ -47,6 +47,10 @@ apfel \- Apple Intelligence from the command line
 .B apfel
 .B \-\-demos
 .RI [ dir ]
+.br
+.B apfel
+.B completions
+.I shell
 .SH DESCRIPTION
 .B apfel
 is a command-line interface and OpenAI-compatible HTTP server for
@@ -198,6 +202,17 @@ Write the bundled demo scripts to
 (default
 .BR ./apfel-demos ).
 The demos are embedded in the binary, so this works the same regardless of how apfel was installed.
+.TP
+.B completions \fIshell\fR
+Print a shell completion script to standard output.
+.I shell
+is one of
+.BR bash ", " zsh ", or " fish .
+Completion covers all flags, the five context strategies for
+.BR \-\-context-strategy ,
+and file completion for
+.BR \-f .
+This is a subcommand, not an option; it exits after printing.
 .TP
 .B \-\-debug
 Enable verbose debug logging to standard error in every mode.

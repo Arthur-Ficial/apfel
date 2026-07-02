@@ -35,6 +35,7 @@ public struct CLIArguments: Sendable, Equatable {
         case update
         case demos
         case countTokens = "count-tokens"
+        case completions
         case help
         case version
         case release
@@ -54,6 +55,9 @@ public struct CLIArguments: Sendable, Equatable {
 
     /// Target directory for `--demos` / `demos <dir>` (nil => default chosen at run time).
     public var demosTarget: String? = nil
+
+    /// Shell requested by the `completions <shell>` subcommand.
+    public var completionsShell: CompletionShell? = nil
 
     // MARK: - Prompt & Content
 
@@ -349,6 +353,32 @@ extension CLIArguments {
                     result.demosTarget = token
                 }
             }
+            return result
+        }
+
+        // Subcommand form: `apfel completions <shell>`. Prints a shell
+        // completion script to stdout. `-h`/`--help` shows help; a missing or
+        // unknown shell is a usage error.
+        if args.first == "completions" {
+            let rest = Array(args.dropFirst())
+            if rest.contains("-h") || rest.contains("--help") {
+                result.mode = .help
+                return result
+            }
+            guard let shellArg = rest.first else {
+                throw CLIParseError(
+                    "completions requires a shell: one of \(CompletionShell.allCases.map(\.rawValue).joined(separator: ", "))")
+            }
+            guard let shell = CompletionShell(rawValue: shellArg) else {
+                throw CLIErrors.invalidValue(
+                    got: shellArg, kind: "shell",
+                    hint: "use one of \(CompletionShell.allCases.map(\.rawValue).joined(separator: ", "))")
+            }
+            if rest.count > 1 {
+                throw CLIErrors.unknownOption(rest[1])
+            }
+            result.mode = .completions
+            result.completionsShell = shell
             return result
         }
 
