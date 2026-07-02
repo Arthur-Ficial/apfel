@@ -7,6 +7,8 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.7.2] - 2026-07-02
+
 ### Fixed
 
 - A model-emitted tool call whose JSON is unparseable (e.g. a literal `<escaped_json_string>` placeholder with unescaped nested quotes, live-reproduced on the macOS 26.5.2 model at seed 7) no longer leaks the raw `{"tool_calls": ...}` protocol text to the client as `message.content`. `detectToolCall` now salvages the function name from such an attempt and keeps the raw (still invalid) arguments, so the existing invalid-arguments recovery (#241) feeds a tool error back to the model instead. `stripToolCallJSON` moved into ApfelCore (`ToolCallHandler`) with unit coverage, including the strip-to-end fallback for never-balancing garbage (#358).
