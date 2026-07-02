@@ -44,9 +44,15 @@ jobs:
           # We run every test that does NOT need the model. Full integration
           # qualification runs locally via `make preflight` / `make release`.
 
-          # CLI flag/help/version/file tests (no model needed)
-          python3 -m pytest Tests/integration/cli_e2e_test.py \
-            -k "help or version or invalid_flag or no_color or ansi or exit_code or update or release_exits or release_in_help or release_shows_version or mcp_timeout_flag_in_help or mcp_timeout_env_var_in_help or file_flag_missing or file_flag_nonexistent or file_flag_image or file_flag_binary or file_flag_unknown" \
+          # CLI tests: everything NOT marked @pytest.mark.model. A brittle -k
+          # name-substring allowlist used to silently drop tests on rename and
+          # never picked up new model-free tests (#266). The marker + strict
+          # markers make selection self-maintaining. APFEL_MODELFREE_ONLY makes
+          # require_model() FAIL (not skip) if an unmarked model test leaks past
+          # the filter, so a forgotten @pytest.mark.model turns CI red instead
+          # of passing green-by-skip.
+          APFEL_MODELFREE_ONLY=1 python3 -m pytest Tests/integration/cli_e2e_test.py \
+            -m "not model" \
             -v --tb=short
 
           # Man page drift tests (model-free): block any PR that adds/renames

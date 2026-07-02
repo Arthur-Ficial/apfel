@@ -291,8 +291,19 @@ def model_available():
 
 
 def require_model():
-    if not model_available():
-        pytest.skip("Apple Intelligence is not enabled for CLI generation tests.")
+    if model_available():
+        return
+    # Marker discipline (#266): on a deliberately model-free run (CI sets
+    # APFEL_MODELFREE_ONLY=1 and selects `-m "not model"`), a model test should
+    # never reach this point - if it does, its @pytest.mark.model decorator is
+    # missing and it leaked past the filter. Fail loudly instead of skipping so
+    # the forgotten marker turns CI red rather than passing green-by-skip.
+    if os.environ.get("APFEL_MODELFREE_ONLY"):
+        pytest.fail(
+            "model test ran in a model-free selection (-m 'not model'); it is "
+            "missing @pytest.mark.model"
+        )
+    pytest.skip("Apple Intelligence is not enabled for CLI generation tests.")
 
 
 def test_release_binary_exists():
@@ -524,6 +535,7 @@ def test_help_usage_goes_to_stdout():
     assert result.stderr == "", f"--help should not write to stderr, got: {result.stderr!r}"
 
 
+@pytest.mark.model
 def test_quiet_json_prompt_output_is_machine_readable():
     require_model()
     result = run_cli(
@@ -537,6 +549,7 @@ def test_quiet_json_prompt_output_is_machine_readable():
     assert result.stderr == ""
 
 
+@pytest.mark.model
 def test_piped_stdin_json_output_is_machine_readable():
     require_model()
     result = run_cli(
@@ -551,6 +564,7 @@ def test_piped_stdin_json_output_is_machine_readable():
     assert result.stderr == ""
 
 
+@pytest.mark.model
 def test_json_output_trailing_newline():
     """--json piped output ends with exactly one trailing newline (#259).
 
@@ -590,6 +604,7 @@ def test_count_tokens_json_trailing_newline():
     json.loads(result.stdout)
 
 
+@pytest.mark.model
 def test_stream_returns_content():
     require_model()
     result = run_cli(["--stream", "Reply with the single word OK."], timeout=90)
@@ -597,6 +612,7 @@ def test_stream_returns_content():
     assert result.stdout.strip()
 
 
+@pytest.mark.model
 def test_chat_json_left_arrow_edits_input():
     require_model()
     returncode, output = run_cli_chat_tty(
@@ -614,6 +630,7 @@ def test_chat_json_left_arrow_edits_input():
     assert "\x1b[D" not in output
 
 
+@pytest.mark.model
 def test_chat_json_up_arrow_replays_previous_prompt():
     require_model()
     first_prompt = "Reply ALPHA."
@@ -633,6 +650,7 @@ def test_chat_json_up_arrow_replays_previous_prompt():
     ]
 
 
+@pytest.mark.model
 def test_chat_json_keeps_prompt_chrome_off_stdout():
     require_model()
     returncode, stdout, tty = run_cli_chat_json(
@@ -665,14 +683,17 @@ def _assert_system_prompt_honored(args):
     assert "matey" in content or "arrr" in content or "arr" in content, payload["content"]
 
 
+@pytest.mark.model
 def test_system_prompt_controls_non_stream_prompt():
     _assert_system_prompt_honored(["-s", "__SYSTEM_PROMPT__", "What is recursion?"])
 
 
+@pytest.mark.model
 def test_system_prompt_is_honored_with_stream_after_short_flag():
     _assert_system_prompt_honored(["-s", "__SYSTEM_PROMPT__", "--stream", "What is recursion?"])
 
 
+@pytest.mark.model
 def test_system_prompt_is_honored_with_stream_before_short_flag():
     _assert_system_prompt_honored(["--stream", "-s", "__SYSTEM_PROMPT__", "What is recursion?"])
 
@@ -732,6 +753,7 @@ def test_file_flag_unknown_binary_gives_utf8_error():
     tmp.unlink()
 
 
+@pytest.mark.model
 def test_file_flag_with_prompt():
     """apfel -f <file> <prompt> should prepend file content to the prompt."""
     require_model()
@@ -749,6 +771,7 @@ def test_file_flag_with_prompt():
         tmp.unlink(missing_ok=True)
 
 
+@pytest.mark.model
 def test_file_flag_no_prompt():
     """apfel -f <file> with no prompt argument should use file content as the prompt."""
     require_model()
@@ -766,6 +789,7 @@ def test_file_flag_no_prompt():
         tmp.unlink(missing_ok=True)
 
 
+@pytest.mark.model
 def test_multiple_file_flags():
     """apfel -f a.txt -f b.txt <prompt> should include content from both files."""
     require_model()
@@ -789,6 +813,7 @@ def test_multiple_file_flags():
         tmp_b.unlink(missing_ok=True)
 
 
+@pytest.mark.model
 def test_stdin_with_prompt_argument():
     """Piped stdin + prompt argument should combine (stdin prepended to prompt)."""
     require_model()
@@ -802,6 +827,7 @@ def test_stdin_with_prompt_argument():
     assert "paris" in payload["content"].lower()
 
 
+@pytest.mark.model
 def test_file_flag_with_stdin_and_prompt():
     """apfel -f <file> <prompt> with piped stdin should include all three."""
     require_model()
@@ -824,6 +850,7 @@ def test_file_flag_with_stdin_and_prompt():
 # --- Stdin + --stream tests (GH-82) ---
 
 
+@pytest.mark.model
 def test_stdin_with_stream_flag():
     """Piped stdin + --stream + prompt should combine (GH-82)."""
     require_model()
@@ -838,6 +865,7 @@ def test_stdin_with_stream_flag():
     assert "paris" in payload["content"].lower()
 
 
+@pytest.mark.model
 def test_stdin_only_with_stream_flag():
     """Piped stdin as sole prompt with --stream (GH-82)."""
     require_model()
@@ -851,6 +879,7 @@ def test_stdin_only_with_stream_flag():
     assert payload["content"].strip()
 
 
+@pytest.mark.model
 def test_file_flag_with_stdin_and_stream():
     """apfel -f <file> --stream <prompt> with piped stdin should include all three (GH-82)."""
     require_model()
@@ -870,6 +899,7 @@ def test_file_flag_with_stdin_and_stream():
         tmp.unlink(missing_ok=True)
 
 
+@pytest.mark.model
 def test_stdin_stream_with_system_prompt():
     """Piped stdin + --stream + system prompt should all combine (GH-82)."""
     require_model()
@@ -1038,6 +1068,7 @@ def test_release_is_not_async():
 MCP_CALC = str(ROOT / "mcp" / "calculator" / "server.py")
 
 
+@pytest.mark.model
 def test_mcp_tool_info_goes_to_stderr():
     """MCP discovery and tool call info must go to stderr, not stdout."""
     require_model()
@@ -1054,6 +1085,7 @@ def test_mcp_tool_info_goes_to_stderr():
         "mcp: discovery line missing from stderr"
 
 
+@pytest.mark.model
 def test_mcp_stdout_only_has_answer():
     """When piping, stdout must contain only the model's answer."""
     require_model()
@@ -1065,6 +1097,7 @@ def test_mcp_stdout_only_has_answer():
     assert len(stdout_stripped) > 0, "stdout should contain the answer"
 
 
+@pytest.mark.model
 def test_mcp_quiet_suppresses_tool_info():
     """--quiet must suppress both mcp: and tool: lines on stderr."""
     require_model()
@@ -1076,6 +1109,7 @@ def test_mcp_quiet_suppresses_tool_info():
         f"tool: call line not suppressed by -q: {result.stderr[:200]}"
 
 
+@pytest.mark.model
 def test_mcp_json_output_is_clean():
     """JSON output must not contain MCP diagnostic lines."""
     require_model()
@@ -1140,6 +1174,7 @@ def test_readme_cli_reference_complete():
     )
 
 
+@pytest.mark.model
 def test_apfel_mcp_env_var():
     """APFEL_MCP env var should attach MCP servers (same as --mcp flag)."""
     require_model()
@@ -1208,6 +1243,7 @@ def test_mcp_timeout_env_var_works():
     assert elapsed < 5, f"Env var timeout took {elapsed:.1f}s, expected <5s"
 
 
+@pytest.mark.model
 def test_mcp_timeout_default_unchanged():
     """Default MCP timeout (5s) should still work for normal fast servers."""
     require_model()
