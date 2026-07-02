@@ -153,4 +153,30 @@ func runOriginValidatorTests() {
     test("Bearer with empty value rejected") {
         try assertTrue(!OriginValidator.isValidToken(provided: "Bearer ", expected: "secret123"))
     }
+
+    // MARK: - isValidToken: constant-time comparison (#231)
+
+    test("token differing only in last byte rejected (#231)") {
+        try assertTrue(!OriginValidator.isValidToken(provided: "Bearer abcdef0", expected: "abcdef1"))
+    }
+
+    test("token differing only in first byte rejected (#231)") {
+        try assertTrue(!OriginValidator.isValidToken(provided: "Bearer Xbcdefg", expected: "abcdefg"))
+    }
+
+    test("token with different length rejected (#231)") {
+        try assertTrue(!OriginValidator.isValidToken(provided: "Bearer short", expected: "a-longer-token"))
+    }
+
+    test("UUID-format token accepted when matching (#231)") {
+        let uuid = "550e8400-e29b-41d4-a716-446655440000"
+        try assertTrue(OriginValidator.isValidToken(provided: "Bearer \(uuid)", expected: uuid))
+    }
+
+    test("UUID-format token rejected when last digit differs (#231)") {
+        try assertTrue(!OriginValidator.isValidToken(
+            provided: "Bearer 550e8400-e29b-41d4-a716-446655440000",
+            expected: "550e8400-e29b-41d4-a716-446655440001"
+        ))
+    }
 }
