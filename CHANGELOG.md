@@ -7,6 +7,8 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-07-03
+
 ### Changed
 
 - The CLI now prewarms the on-device model concurrently with input I/O (`LanguageModelSession.prewarm`, the mechanism the server has used since #169): single/stream invocations overlap the model cold-start with the piped-stdin read, and `--chat` warms while the user types the first message. No flags, no output changes - pure latency. `--serve` (own prewarm), `--count-tokens` (never calls the model), and `--benchmark` (would skew cold-start measurements) are excluded (#364).
