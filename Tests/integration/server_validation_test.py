@@ -209,3 +209,87 @@ def test_without_include_usage_no_usage_key_on_chunks():
     # No opt-in -> no usage key anywhere (and no separate usage chunk).
     for c in chunks:
         assert "usage" not in c, f"chunk unexpectedly carries usage: {c}"
+
+
+# ============================================================================
+# POST /v1/responses (#365) - model-free validation, honest 501s, error shape
+# ============================================================================
+
+
+def _responses(payload):
+    return httpx.post(f"{BASE_URL}/v1/responses", json=payload, timeout=30)
+
+
+def test_responses_invalid_json_returns_400():
+    r = httpx.post(
+        f"{BASE_URL}/v1/responses",
+        content="{not json",
+        headers={"Content-Type": "application/json"},
+        timeout=30,
+    )
+    assert r.status_code == 400
+    assert r.json()["error"]["type"] == "invalid_request_error"
+
+
+def test_responses_unknown_model_returns_404_model_not_found():
+    r = _responses({"model": "gpt-4o", "input": "hi"})
+    assert r.status_code == 404
+    err = r.json()["error"]
+    assert err["code"] == "model_not_found"
+    assert err["param"] == "model"
+
+
+def test_responses_missing_input_returns_400():
+    r = _responses({"model": "apple-foundationmodel"})
+    assert r.status_code == 400
+    assert "input" in r.json()["error"]["message"]
+
+
+def test_responses_previous_response_id_returns_501_stateless():
+    r = _responses({"model": "apple-foundationmodel", "input": "hi",
+                    "previous_response_id": "resp_123"})
+    assert r.status_code == 501
+    assert "stateless" in r.json()["error"]["message"]
+
+
+def test_responses_background_returns_501():
+    r = _responses({"model": "apple-foundationmodel", "input": "hi", "background": True})
+    assert r.status_code == 501
+
+
+def test_responses_store_true_returns_501():
+    r = _responses({"model": "apple-foundationmodel", "input": "hi", "store": True})
+    assert r.status_code == 501
+    assert "stateless" in r.json()["error"]["message"]
+
+
+def test_responses_reasoning_returns_501():
+    r = _responses({"model": "apple-foundationmodel", "input": "hi",
+                    "reasoning": {"effort": "low"}})
+    assert r.status_code == 501
+
+
+def test_responses_hosted_tool_returns_501():
+    r = _responses({"model": "apple-foundationmodel", "input": "hi",
+                    "tools": [{"type": "web_search"}]})
+    assert r.status_code == 501
+    assert "web_search" in r.json()["error"]["message"]
+
+
+def test_responses_tools_with_stream_returns_501():
+    r = _responses({"model": "apple-foundationmodel", "input": "hi", "stream": True,
+                    "tools": [{"type": "function", "name": "add"}]})
+    assert r.status_code == 501
+
+
+def test_responses_out_of_range_temperature_returns_400():
+    r = _responses({"model": "apple-foundationmodel", "input": "hi", "temperature": 3})
+    assert r.status_code == 400
+    assert "temperature" in r.json()["error"]["message"]
+
+
+def test_responses_error_object_has_null_param_and_code():
+    r = _responses({"model": "apple-foundationmodel", "input": "hi", "background": True})
+    err = r.json()["error"]
+    assert "param" in err and err["param"] is None
+    assert "code" in err and err["code"] is None

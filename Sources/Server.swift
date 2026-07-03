@@ -173,6 +173,61 @@ func startServer(config: ServerConfig, mcpManager: MCPManager? = nil) async thro
         return result.response
     }
 
+    // Responses API (#365) - same logging/concurrency wrapper as chat.
+    router.post("/v1/responses") { request, context -> Response in
+        let start = Date()
+        let requestId = "resp-\(UUID().uuidString.prefix(12).lowercased())"
+
+        do {
+            try await serverState.semaphore.wait(timeout: .seconds(30))
+        } catch {
+            let log = RequestLog(
+                id: requestId, timestamp: ISO8601DateFormatter().string(from: Date()),
+                method: "POST", path: "/v1/responses", status: 429,
+                duration_ms: Int(Date().timeIntervalSince(start) * 1000),
+                stream: false, estimated_tokens: nil,
+                error: "Too many concurrent requests", request_body: nil, response_body: nil, events: ["semaphore timeout"]
+            )
+            await serverState.logStore.append(log)
+            return openAIError(status: .tooManyRequests, message: "Server at max concurrent capacity (\(config.maxConcurrent)). Try again later or increase with --max-concurrent.", type: "rate_limit_error")
+        }
+
+        await serverState.logStore.requestStarted()
+
+        let result: (response: Response, trace: ChatRequestTrace)
+        do {
+            result = try await handleResponses(request, context: context)
+        } catch {
+            await serverState.semaphore.signal()
+            await serverState.logStore.requestFinished()
+            throw error
+        }
+        // Same permit rule as chat completions (#213): only live SSE streams
+        // own their cleanup via onTermination.
+        if !result.trace.ownsCleanup {
+            await serverState.semaphore.signal()
+            await serverState.logStore.requestFinished()
+        }
+
+        let durationMs = Int(Date().timeIntervalSince(start) * 1000)
+        let log = RequestLog(
+            id: requestId,
+            timestamp: ISO8601DateFormatter().string(from: start),
+            method: "POST", path: "/v1/responses",
+            status: result.response.status == .ok ? 200 : result.response.status.code,
+            duration_ms: durationMs,
+            stream: result.trace.stream,
+            estimated_tokens: result.trace.estimatedTokens,
+            error: result.trace.error,
+            request_body: result.trace.requestBody,
+            response_body: result.trace.responseBody,
+            events: result.trace.events
+        )
+        await serverState.logStore.append(log)
+
+        return result.response
+    }
+
     // Logs query
     router.get("/v1/logs") { request, _ -> Response in
         guard serverState.config.debug else {

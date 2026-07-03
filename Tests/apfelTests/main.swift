@@ -125,6 +125,7 @@ suite("CompletionsTests") { runCompletionsTests() }
 suite("SchemaFlagTests") { runSchemaFlagTests() }
 suite("MessagesFlagTests") { runMessagesFlagTests() }
 suite("PrewarmDecisionTests") { runPrewarmDecisionTests() }
+suite("ResponsesModelsTests") { runResponsesModelsTests() }
 
 // MARK: - Summary
 

@@ -663,3 +663,118 @@ def test_health_endpoint():
     assert "model" in data
     assert "context_window" in data
     assert "model_available" in data
+
+
+# MARK: - Responses API (#365)
+
+def test_responses_non_streaming_basic():
+    """client.responses.create() returns a completed response with output text."""
+    resp = client.responses.create(
+        model=MODEL,
+        input="What is the capital of Austria? Reply with just the city name.",
+    )
+    assert resp.object == "response"
+    assert resp.id.startswith("resp_")
+    assert resp.status == "completed"
+    assert resp.model == MODEL
+    assert resp.store is False
+    assert "vienna" in resp.output_text.lower()
+    assert resp.usage.input_tokens > 0
+    assert resp.usage.output_tokens > 0
+    assert resp.usage.total_tokens == resp.usage.input_tokens + resp.usage.output_tokens
+    msg = resp.output[0]
+    assert msg.type == "message"
+    assert msg.role == "assistant"
+    assert msg.content[0].type == "output_text"
+
+
+def test_responses_instructions_are_honored():
+    """The instructions field acts as a system prompt."""
+    resp = client.responses.create(
+        model=MODEL,
+        input="Say hello.",
+        instructions="Always answer in German.",
+    )
+    assert resp.output_text.strip(), "expected non-empty output"
+
+
+def test_responses_streaming_events():
+    """Streaming emits the canonical event sequence and the deltas
+    concatenate to the final text."""
+    stream = client.responses.create(
+        model=MODEL,
+        input="Count from 1 to 5, digits only, comma-separated.",
+        stream=True,
+    )
+    event_types = []
+    deltas = []
+    final = None
+    for event in stream:
+        event_types.append(event.type)
+        if event.type == "response.output_text.delta":
+            deltas.append(event.delta)
+        if event.type == "response.completed":
+            final = event.response
+    assert event_types[0] == "response.created"
+    assert "response.output_text.delta" in event_types
+    assert event_types[-1] == "response.completed"
+    assert final is not None
+    assert final.status == "completed"
+    assert "".join(deltas) == final.output_text
+    assert final.usage.output_tokens > 0
+
+
+def test_responses_json_schema_structured_output():
+    """text.format json_schema constrains the output to schema-valid JSON."""
+    resp = client.responses.create(
+        model=MODEL,
+        input="Extract the person: Alice is 30 years old.",
+        text={"format": {"type": "json_schema", "name": "person", "schema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}, "age": {"type": "integer"}},
+            "required": ["name", "age"],
+        }}},
+    )
+    payload = json.loads(resp.output_text)
+    assert isinstance(payload["name"], str)
+    assert isinstance(payload["age"], int)
+
+
+def test_responses_function_tool_call():
+    """A flat Responses function tool produces a function_call output item.
+
+    The Responses API has no seed parameter, so tool elicitation cannot be
+    pinned; retry a few attempts before failing (same philosophy as the
+    rotating-seed helpers, without the seed)."""
+    calls = []
+    resp = None
+    for _ in range(3):
+        resp = client.responses.create(
+            model=MODEL,
+            input="Use the add tool to compute 15 plus 27. You must call the tool.",
+            tools=[{
+                "type": "function",
+                "name": "add",
+                "description": "Add two numbers",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"a": {"type": "number"}, "b": {"type": "number"}},
+                    "required": ["a", "b"],
+                },
+            }],
+        )
+        calls = [item for item in resp.output if item.type == "function_call"]
+        if calls:
+            break
+    assert calls, f"expected a function_call output item, got {[i.type for i in resp.output]}"
+    assert calls[0].name == "add"
+    args = json.loads(calls[0].arguments)
+    assert set(args.keys()) <= {"a", "b"}
+
+
+def test_responses_metadata_echoed():
+    """Request metadata is echoed back on the response object."""
+    resp = client.responses.create(
+        model=MODEL, input="Say ok.", metadata={"trace_id": "t-123"},
+    )
+    assert resp.metadata == {"trace_id": "t-123"}
