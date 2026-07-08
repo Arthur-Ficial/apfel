@@ -139,6 +139,13 @@ public enum ToolCallHandler {
     /// unparseable: the first function name after the marker, plus the raw
     /// (still unparseable) arguments text so downstream validation fails into
     /// the tool-error feedback path rather than executing with defaults.
+    ///
+    /// When the raw arguments text contains a balanced, valid-JSON `{ ... }`
+    /// object (#367), that object is recovered as the arguments string so the
+    /// tool call can actually execute. This handles the common case where the
+    /// model emits unescaped inner quotes around a perfectly valid argument
+    /// object. When no unambiguous object is extractable, the raw text is
+    /// kept so validation still fails loud (#241).
     private static func salvageUnparseableToolCall(from text: String) -> [ParsedToolCall]? {
         guard let start = text.range(of: "{\"tool_calls\"") else { return nil }
         let tail = String(text[start.lowerBound...])
@@ -148,15 +155,54 @@ public enum ToolCallHandler {
             return nil
         }
         let name = String(tail[nameRange])
-        let rawArguments: String
+        var rawArguments: String
         if let argsMarker = tail.range(of: "\"arguments\"") {
             rawArguments = String(tail[argsMarker.upperBound...])
                 .trimmingCharacters(in: CharacterSet(charactersIn: ": \t\n"))
         } else {
             rawArguments = tail
         }
+        if let recovered = extractFirstBalancedObject(from: rawArguments) {
+            rawArguments = recovered
+        }
         let id = "call_\(UUID().uuidString.prefix(8))"
         return [ParsedToolCall(id: id, name: name, argumentsString: rawArguments)]
+    }
+
+    /// Scan `text` for the first balanced `{ ... }` substring that parses as
+    /// valid JSON. The brace counter is string-aware (same technique as
+    /// `extractCandidates`). Returns `nil` when no unambiguous, parseable
+    /// object is found - the caller keeps the raw text so #241 fires.
+    private static func extractFirstBalancedObject(from text: String) -> String? {
+        guard let firstBrace = text.firstIndex(of: "{") else { return nil }
+        var depth = 0
+        var inString = false
+        var escaped = false
+        var idx = firstBrace
+        while idx < text.endIndex {
+            let ch = text[idx]
+            if inString {
+                if escaped { escaped = false }
+                else if ch == "\\" { escaped = true }
+                else if ch == "\"" { inString = false }
+            } else if ch == "\"" {
+                inString = true
+            } else if ch == "{" {
+                depth += 1
+            } else if ch == "}" {
+                depth -= 1
+                if depth == 0 {
+                    let candidate = String(text[firstBrace...idx])
+                    if let data = candidate.data(using: .utf8),
+                       (try? JSONSerialization.jsonObject(with: data)) != nil {
+                        return candidate
+                    }
+                    return nil
+                }
+            }
+            idx = text.index(after: idx)
+        }
+        return nil
     }
 
     // MARK: - Private Helpers

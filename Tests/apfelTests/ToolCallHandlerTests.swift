@@ -352,6 +352,50 @@ func runToolCallHandlerTests() {
         try assertEqual(parsed!["value"] as? String, "ls -l")
     }
 
+    // MARK: - Argument recovery from unparseable tool calls (#367)
+
+    test("recovers balanced JSON arguments from unescaped-quote salvage (#367)") {
+        // Real model output: arguments as a quoted string with unescaped inner
+        // quotes plus the wrapper's trailing "}}]}". The inner object is valid
+        // JSON that salvage should recover.
+        let response = #"{"tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "multiply", "arguments": "{"value1": 1234, "value2": 5678}"}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.count, 1)
+        try assertEqual(result!.first?.name, "multiply")
+        let args = result!.first!.argumentsString
+        let parsed = try? JSONSerialization.jsonObject(with: Data(args.utf8)) as? [String: Any]
+        try assertNotNil(parsed)
+        try assertEqual(parsed?["value1"] as? Int, 1234)
+        try assertEqual(parsed?["value2"] as? Int, 5678)
+    }
+
+    test("recovers arguments with different param names (#367)") {
+        // Second captured failure from the issue - same signature, different
+        // parameter names.
+        let response = #"{"tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "multiply", "arguments": "{"number1": 1234, "number2": 5678}"}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "multiply")
+        let args = result!.first!.argumentsString
+        let parsed = try? JSONSerialization.jsonObject(with: Data(args.utf8)) as? [String: Any]
+        try assertNotNil(parsed)
+        try assertEqual(parsed?["number1"] as? Int, 1234)
+        try assertEqual(parsed?["number2"] as? Int, 5678)
+    }
+
+    test("non-recoverable salvage still fails loud (#367 respects #241)") {
+        // The existing #358 garbage-placeholder case: no valid JSON object
+        // to extract, so arguments must stay unparseable.
+        let response = #"{"tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "add", "arguments": {"<escaped_json_string>": "{"name": "100", "arguments": {"<escaped_json_string>": "200"}}}}}}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "add")
+        let args = result!.first!.argumentsString
+        let parsed = try? JSONSerialization.jsonObject(with: Data(args.utf8))
+        try assertNil(parsed)
+    }
+
     // MARK: - Split prompt methods
 
     test("buildOutputFormatInstructions contains tool names") {
