@@ -84,8 +84,8 @@ HTTP Server (/v1/*) ───────┘   ContextManager → Transcript API
 
 ## Current Status
 
-- Version: `1.8.2` (source of truth: `.version`)
-- Tests: 989 unit + 454 integration
+- Version: `1.8.3` (source of truth: `.version`)
+- Tests: 1041 unit + 470 integration
 - Distribution: homebrew-core (`brew install apfel`), nixpkgs (`nix profile install nixpkgs#apfel-llm`), and the Arthur-Ficial/homebrew-tap
 - Stability policy: [STABILITY.md](STABILITY.md)
 - Security policy: [SECURITY.md](SECURITY.md)
@@ -98,11 +98,11 @@ make install                   # build release + install to /usr/local/bin (NO v
 make build                     # build release only (NO version bump)
 make version                   # print current version
 swift build                    # debug build
-swift run apfel-tests          # unit tests only (989 tests)
+swift run apfel-tests          # unit tests only (1041 tests)
 make preflight                 # full release qualification (unit + integration + policy checks)
 ```
 
-`make test` builds the release binary, runs all 989 unit tests, starts test servers, runs all 454 integration tests, and cleans up. This is the single command for development.
+`make test` builds the release binary, runs all 1041 unit tests, starts test servers, runs all 470 integration tests, and cleans up. This is the single command for development.
 
 `make install` auto-unlinks Homebrew apfel so the dev binary takes PATH priority. `make uninstall` restores the Homebrew link.
 
@@ -131,7 +131,7 @@ bash scripts/generate-examples.sh          # ~2 minutes, overwrites docs/EXAMPLE
 | Security | `Sources/Core/OriginValidator.swift`, `Sources/SecurityMiddleware.swift` |
 | MCP client | `Sources/Core/MCPProtocol.swift`, `Sources/MCPClient.swift` |
 | MCP calculator | `mcp/calculator/server.py` |
-| Tests | `Tests/apfelTests/` (989 unit), `Tests/integration/` (454 integration) |
+| Tests | `Tests/apfelTests/` (1041 unit), `Tests/integration/` (470 integration) |
 
 | Docs | `docs/` (brew-install, EXAMPLES, release, tool-calling-guide) |
 | Scripts | `scripts/generate-examples.sh`, `scripts/write-homebrew-formula.sh`, `scripts/release-preflight.sh`, `scripts/post-release-verify.sh` |
@@ -310,7 +310,7 @@ This runs locally (not on GitHub Actions - GitHub runners lack Apple Intelligenc
 1. Preflight checks (clean tree, on main, up to date with origin)
 2. Bumps `.version` (patch/minor/major)
 3. Builds the release binary
-4. Runs ALL unit tests (989)
+4. Runs ALL unit tests (1041)
 5. Runs ALL integration test suites under `Tests/integration/` with real Apple Intelligence via directory discovery (cli_e2e, performance, openai_client, openapi_spec, openapi_conformance, security, server_validation, mcp_server, mcp_remote, plus model-free helpers like test_chat, test_brew_service, test_man_page, test_build_info, test_apfelcore_*). `APFEL_REQUIRE_FULL=1` fails the release on any skip (#227)
 6. Stamps the `[Unreleased]` CHANGELOG section as the new version (`scripts/stamp-changelog.sh`), then commits `.version`, `README.md`, `Sources/BuildInfo.swift`, and `CHANGELOG.md` and pushes to `main`
 7. Creates git tag (`v<version>`) and pushes it
@@ -365,9 +365,9 @@ Model-dependent tests carry `@pytest.mark.model`; CI selects the rest with `-m "
 
 **What GitHub CI runs (automatic, every push/PR):**
 - Build (release binary)
-- 989 unit tests (pure Swift, no model needed)
-- 170 model-free integration tests: `cli_e2e_test.py -m "not model"` (70, incl. the #370 silent-drop reject guards), man-page drift `test_man_page.py` (9), the model-free HTTP server suites `security_test.py` + `openapi_spec_test.py` + `server_validation_test.py -m "not model"` (73, servers started in CI so CORS/origin/Host/auth/501/OpenAI-shape and the /v1/responses validation surface are exercised, #261, #365), the bundled-calculator JSON-RPC suite `test_calculator_server.py` (7, #322), the EXAMPLES.md TOC consistency test `test_examples_doc.py` (1, #331), the CHANGELOG merge-gate suite `test_changelog_gate.py` (4, #369), and the ApfelCore consumer + examples smoke tests (6)
-- Total: 1159 tests
+- 1041 unit tests (pure Swift, no model needed)
+- 175 model-free integration tests: `cli_e2e_test.py -m "not model"` (75, incl. the #370 silent-drop reject guards and the #373 --code conflict/help guards), man-page drift `test_man_page.py` (9), the model-free HTTP server suites `security_test.py` + `openapi_spec_test.py` + `server_validation_test.py -m "not model"` (73, servers started in CI so CORS/origin/Host/auth/501/OpenAI-shape and the /v1/responses validation surface are exercised, #261, #365), the bundled-calculator JSON-RPC suite `test_calculator_server.py` (7, #322), the EXAMPLES.md TOC consistency test `test_examples_doc.py` (1, #331), the CHANGELOG merge-gate suite `test_changelog_gate.py` (4, #369), and the ApfelCore consumer + examples smoke tests (6)
+- Total: 1216 tests
 
 **What GitHub CI CANNOT run (no Apple Intelligence, `@pytest.mark.model`):**
 - Model-marked completion tests within cli_e2e, security, openapi_spec, and server_validation
@@ -375,11 +375,11 @@ Model-dependent tests carry `@pytest.mark.model`; CI selects the rest with `-m "
 - MCP tool execution tests (mcp_server, mcp_remote)
 - Benchmark tests (performance)
 - Chat mode tests (test_chat)
-- Total: 284 integration tests (454 full - 170 model-free)
+- Total: 295 integration tests (470 full - 175 model-free)
 
 **What runs the full suite (local, before every release):**
 - `make preflight` or `make release` on a Mac with Apple Intelligence
-- 989 unit + 454 integration = 1443 tests, 0 skipped
+- 1041 unit + 470 integration = 1511 tests, 0 skipped
 - Release scripts use directory discovery (`Tests/integration/`), not explicit file lists
 - This is the REAL qualification gate. GitHub CI is a safety net, not the source of truth.
 
