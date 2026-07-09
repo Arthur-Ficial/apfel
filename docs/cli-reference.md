@@ -26,6 +26,7 @@ OUTPUT
   -o, --output <fmt>                      Output format: plain, json
   -q, --quiet                             Suppress non-essential output
   --no-color                              Disable ANSI colors
+  --code                                  Print only the code: first fenced block, or the bare response (exit 7 if empty)
   --schema <path>                         Constrain output to a JSON Schema file (guaranteed valid JSON)
 
 MODEL
@@ -86,6 +87,10 @@ apfel --system-file persona.txt "Introduce yourself"
 # --schema - guaranteed schema-valid JSON output (single-prompt mode only)
 apfel --schema person.schema.json "Extract the person: Alice is 30 years old."
 apfel --schema invoice.schema.json -f invoice.txt "Extract the invoice data" | jq .total
+
+# --code - only the code, no prose, no fences (pipe-safe)
+apfel --code "a python function that deduplicates a list" > dedupe.py
+apfel --code "shell one-liner to find the 10 largest files here" | pbcopy
 
 # --messages - one-shot multi-turn: conversation JSON in, next assistant turn out
 apfel --messages conversation.json
