@@ -56,6 +56,7 @@ _apfel() {
     '--file[Attach file content to prompt]:file:_files' \
     '--schema[Constrain output to a JSON Schema file]:file:_files' \
     '--messages[One-shot multi-turn from OpenAI messages JSON]:file:_files' \
+    '--code[Print only the first fenced code block of the response]' \
     '1:command:(completions)' \
     '*:file:_files'
 }

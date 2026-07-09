@@ -23,7 +23,7 @@ _apfel() {
     esac
 
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=( $(compgen -W "--allowed-origins --benchmark --chat --context-max-turns --context-output-reserve --context-status --context-strategy --cors --count-tokens --debug --demos --file --footgun --help --host --max-concurrent --max-tokens --mcp --mcp-timeout --mcp-token --messages --model-info --no-color --no-origin-check --output --permissive --port --public-health --quiet --release --retry --schema --seed --serve --stream --strict --system --system-file --temperature --token --token-auto --top-p --update --version -f -h -o -q -s -v completions" -- "$cur") ); return 0
+        COMPREPLY=( $(compgen -W "--allowed-origins --benchmark --chat --code --context-max-turns --context-output-reserve --context-status --context-strategy --cors --count-tokens --debug --demos --file --footgun --help --host --max-concurrent --max-tokens --mcp --mcp-timeout --mcp-token --messages --model-info --no-color --no-origin-check --output --permissive --port --public-health --quiet --release --retry --schema --seed --serve --stream --strict --system --system-file --temperature --token --token-auto --top-p --update --version -f -h -o -q -s -v completions" -- "$cur") ); return 0
     fi
     COMPREPLY=( $(compgen -f -- "$cur") ); return 0
 }
