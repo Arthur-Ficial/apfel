@@ -160,6 +160,28 @@ def post_chat_rotating_seeds(url, payload, timeout, seeds=GUARDRAIL_SEEDS, accep
         f"model gave no usable answer on any seed {seeds}; last content: {last_content!r}")
 
 
+def run_cli_rotating_seeds(run_cli, args, timeout, seeds=GUARDRAIL_SEEDS):
+    """CLI twin of post_chat_rotating_seeds: run `apfel <args> --seed <s>`,
+    rotating seeds past guardrail blocks (exit 3) and in-band refusals.
+    Returns the first usable CompletedProcess; fails loudly if every seed
+    refuses. Adopt per test on observed flake - the first was
+    test_mcp_json_output_is_clean, guardrail-blocked on "What is 5 plus 5?"
+    during the #374 verification run."""
+    result = None
+    for seed in seeds:
+        # --seed goes FIRST: flags after the positional prompt are swallowed
+        # into the prompt text (#255), which would make the rotation a no-op.
+        result = run_cli(["--seed", str(seed), *args], timeout=timeout)
+        if result.returncode == 3:
+            continue
+        if result.returncode == 0 and is_guardrail_refusal(result.stdout):
+            continue
+        return result
+    pytest.fail(
+        f"CLI gave no usable answer on any seed {seeds}; last: "
+        f"exit={result.returncode} stderr={result.stderr[:200]!r}")
+
+
 def _server_alive(url: str) -> bool:
     try:
         resp = httpx.get(f"{url}/health", timeout=2)

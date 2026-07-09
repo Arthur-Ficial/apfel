@@ -1188,7 +1188,12 @@ def test_mcp_quiet_suppresses_tool_info():
 def test_mcp_json_output_is_clean():
     """JSON output must not contain MCP diagnostic lines."""
     require_model()
-    result = run_cli(["-o", "json", "--mcp", MCP_CALC, "What is 5 plus 5?"], timeout=120)
+    from conftest import run_cli_rotating_seeds
+    # Seed-rotated: this prompt drew an in-band guardrail block during the
+    # #374 verification run - the property under test is JSON cleanliness,
+    # not one seed's guardrail luck.
+    result = run_cli_rotating_seeds(
+        run_cli, ["-o", "json", "--mcp", MCP_CALC, "What is 5 plus 5?"], timeout=120)
     assert result.returncode == 0
     import json
     data = json.loads(result.stdout.strip())
