@@ -617,6 +617,33 @@ def test_models_context_window_positive():
     )
 
 
+def test_completion_not_context_length_exceeded():
+    """A minimal completion must never fail with context_length_exceeded (#192).
+
+    Guards the generation path directly. On macOS 27 cold start,
+    contextSize 0 made inputBudget() return -512, rejecting every
+    request before generation could begin. The 4096 floor in
+    TokenCounter.contextSize breaks this deadlock. Model-free: the
+    budget check runs before generation, so an unavailable model
+    produces a different error (server_error/503), never
+    context_length_exceeded.
+    """
+    payload = {
+        "model": MODEL,
+        "messages": [{"role": "user", "content": "Hi"}],
+    }
+    resp = httpx.post(
+        f"{BASE_URL}/v1/chat/completions", json=payload, timeout=30
+    )
+    if resp.status_code != 200:
+        body = resp.json()
+        error_type = body.get("error", {}).get("type", "")
+        assert error_type != "context_length_exceeded", (
+            "Minimal completion rejected with context_length_exceeded; "
+            "inputBudget is likely negative (#192)"
+        )
+
+
 # ============================================================================
 # Tests — CORS
 # ============================================================================
