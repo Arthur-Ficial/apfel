@@ -584,6 +584,32 @@ def test_health_schema():
     validate(instance=resp.json(), schema=HEALTH_SCHEMA)
 
 
+def test_health_context_window_positive():
+    """context_window must be > 0. Regression guard for #192: on macOS 27
+    the server cached model.contextSize before prewarm(), locking in 0
+    because the SDK returns 0 for an uninitialised model."""
+    resp = httpx.get(f"{BASE_URL}/health", timeout=10)
+    assert resp.status_code == 200
+    cw = resp.json()["context_window"]
+    assert cw > 0, (
+        f"context_window is {cw}. The server likely read model.contextSize "
+        f"before the model was ready (pre-prewarm race, #192)."
+    )
+
+
+def test_models_context_window_positive():
+    """context_window in /v1/models must be > 0 (same race as /health, #192)."""
+    resp = httpx.get(f"{BASE_URL}/v1/models", timeout=10)
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert len(data) > 0
+    cw = data[0].get("context_window")
+    assert cw is not None and cw > 0, (
+        f"context_window is {cw} in /v1/models. Same pre-prewarm "
+        f"caching race as /health (#192)."
+    )
+
+
 # ============================================================================
 # Tests — CORS
 # ============================================================================
