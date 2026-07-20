@@ -584,6 +584,41 @@ def test_health_schema():
     validate(instance=resp.json(), schema=HEALTH_SCHEMA)
 
 
+def test_health_context_window_positive():
+    """context_window must be > 0 when the model is available. Regression
+    guard for #192: on macOS 27 the SDK returns 0 for contextSize during
+    model initialization; the server must wait for a real value at startup
+    and use a high-water-mark cache for per-request reads."""
+    resp = httpx.get(f"{BASE_URL}/health", timeout=10)
+    assert resp.status_code == 200
+    data = resp.json()
+    if not data.get("model_available", False):
+        pytest.skip("model unavailable - context_window 0 is expected")
+    cw = data["context_window"]
+    assert cw > 0, (
+        f"context_window is {cw} but model_available is true. "
+        f"The server likely read model.contextSize before the model "
+        f"was ready (initialization race, #192)."
+    )
+
+
+def test_models_context_window_positive():
+    """context_window in /v1/models must be > 0 when the model is available
+    (same initialization race as /health, #192)."""
+    health = httpx.get(f"{BASE_URL}/health", timeout=10).json()
+    if not health.get("model_available", False):
+        pytest.skip("model unavailable - context_window 0 is expected")
+    resp = httpx.get(f"{BASE_URL}/v1/models", timeout=10)
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert len(data) > 0
+    cw = data[0].get("context_window")
+    assert cw is not None and cw > 0, (
+        f"context_window is {cw} in /v1/models but model is available. "
+        f"Same initialization race as /health (#192)."
+    )
+
+
 # ============================================================================
 # Tests — CORS
 # ============================================================================

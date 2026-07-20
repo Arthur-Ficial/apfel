@@ -52,6 +52,37 @@ actor TokenCounter {
         model.contextSize
     }
 
+    /// Last non-zero context size observed. Once the model reports a real
+    /// value, this never regresses to 0 even if the model transiently
+    /// reports 0 during re-initialization (macOS 27, #192).
+    private var _resolvedContextSize: Int = 0
+
+    /// Context size with high-water-mark semantics: returns the live SDK
+    /// value when positive, otherwise the last known positive value.
+    /// Returns 0 only if the model has never reported a non-zero context
+    /// size in this process's lifetime.
+    var resolvedContextSize: Int {
+        let live = model.contextSize
+        if live > 0 {
+            _resolvedContextSize = live
+        }
+        return _resolvedContextSize
+    }
+
+    /// Poll until contextSize is positive or the attempt limit is reached.
+    /// On macOS 27, model.contextSize returns 0 during initialization even
+    /// after prewarm() returns (#192). Call after prewarm() so the first
+    /// /health request sees the real value.
+    @discardableResult
+    func awaitContextSize(maxAttempts: Int = 20, intervalNanoseconds: UInt64 = 100_000_000) async -> Int {
+        for _ in 0..<maxAttempts {
+            let size = resolvedContextSize
+            if size > 0 { return size }
+            try? await Task.sleep(nanoseconds: intervalNanoseconds)
+        }
+        return resolvedContextSize
+    }
+
     /// Tokens available for model input given a reserved output budget.
     func inputBudget(reservedForOutput: Int = 512) -> Int {
         contextSize - reservedForOutput
