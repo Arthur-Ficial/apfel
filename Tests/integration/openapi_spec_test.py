@@ -15,6 +15,7 @@ Run: python3 -m pytest Tests/integration/openapi_spec_test.py -v
 """
 
 import json
+import time
 import pytest
 import httpx
 from jsonschema import validate, ValidationError
@@ -582,6 +583,50 @@ def test_health_schema():
     resp = httpx.get(f"{BASE_URL}/health", timeout=10)
     assert resp.status_code == 200
     validate(instance=resp.json(), schema=HEALTH_SCHEMA)
+
+
+@pytest.mark.model
+def test_health_context_window_positive():
+    """context_window must become > 0 when the model is available. On macOS 27
+    the SDK returns 0 for up to ~20s after prewarm(); the server polls in the
+    background so we retry here to allow for the initialization window (#192)."""
+    from conftest import require_model
+    require_model()
+    deadline = time.time() + 30
+    while time.time() < deadline:
+        resp = httpx.get(f"{BASE_URL}/health", timeout=10)
+        assert resp.status_code == 200
+        data = resp.json()
+        cw = data.get("context_window", 0)
+        if cw > 0:
+            return
+        time.sleep(1)
+    pytest.fail(
+        f"context_window stayed 0 for 30s despite model being available. "
+        f"The background context-size polling may not be working (#192)."
+    )
+
+
+@pytest.mark.model
+def test_models_context_window_positive():
+    """context_window in /v1/models must become > 0 when the model is
+    available (same initialization window as /health, #192)."""
+    from conftest import require_model
+    require_model()
+    deadline = time.time() + 30
+    while time.time() < deadline:
+        resp = httpx.get(f"{BASE_URL}/v1/models", timeout=10)
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert len(data) > 0
+        cw = data[0].get("context_window", 0)
+        if cw > 0:
+            return
+        time.sleep(1)
+    pytest.fail(
+        f"context_window stayed 0 for 30s in /v1/models despite model "
+        f"being available. Same initialization race as /health (#192)."
+    )
 
 
 # ============================================================================

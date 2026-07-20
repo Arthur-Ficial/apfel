@@ -52,6 +52,33 @@ actor TokenCounter {
         model.contextSize
     }
 
+    private var _resolvedContextSize: Int = 0
+
+    /// Context size with high-water-mark semantics: returns the live SDK
+    /// value when positive, otherwise the last known positive value.
+    /// Returns 0 only if the model has never reported a non-zero context
+    /// size in this process's lifetime (macOS 27 initialization window, #192).
+    var resolvedContextSize: Int {
+        let live = model.contextSize
+        if live > 0 {
+            _resolvedContextSize = live
+        }
+        return _resolvedContextSize
+    }
+
+    /// Launch a background poll that updates resolvedContextSize as soon as
+    /// the SDK reports a non-zero value. On macOS 27, model.contextSize
+    /// returns 0 for up to ~20s after prewarm(); this task fills the
+    /// high-water-mark cache without blocking server startup (#192).
+    func startContextSizePolling() {
+        Task {
+            for _ in 0..<120 {
+                if resolvedContextSize > 0 { return }
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
+        }
+    }
+
     /// Tokens available for model input given a reserved output budget.
     func inputBudget(reservedForOutput: Int = 512) -> Int {
         contextSize - reservedForOutput

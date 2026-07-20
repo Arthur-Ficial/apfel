@@ -51,16 +51,10 @@ nonisolated(unsafe) var serverState: ServerState!
 func startServer(config: ServerConfig, mcpManager: MCPManager? = nil) async throws {
     serverState = ServerState(config: config, mcpManager: mcpManager)
 
-    // Pre-fetch static model properties BEFORE binding so:
-    // (a) the first /health or /v1/models request does not pay the cold-start
-    //     SDK cost (12-second GUI health-probe timeouts observed in apfel-gui#4),
-    // (b) any SDK-level crash inside SystemLanguageModel.supportedLanguages
-    //     fails visibly during startup instead of SIGSEGV on a routine health
-    //     probe (also apfel-gui#4).
-    // Availability stays a per-request read because it can flip at runtime
-    // (user toggles Apple Intelligence, assets re-download, etc.).
+    // Pre-fetch supportedLanguages BEFORE binding because repeated
+    // mid-flight access on Hummingbird's dispatch queue can crash the
+    // process on some macOS 26.4 environments (apfel-gui#4).
     let tc = TokenCounter.shared
-    let cachedContextSize = await tc.contextSize
     let cachedLangs = await tc.supportedLanguages
 
     // Prewarm the model so the first chat completion does not pay the
@@ -69,23 +63,34 @@ func startServer(config: ServerConfig, mcpManager: MCPManager? = nil) async thro
     // /health as "prewarmed" (#169).
     let prewarmed = await tc.prewarm()
 
+    // On macOS 27, model.contextSize returns 0 for up to ~20s after
+    // prewarm() (#192). Launch a background poll that fills the
+    // high-water-mark cache as soon as the SDK reports a real value.
+    // Does not block startup; /health and /v1/models read per-request
+    // via resolvedContextSize which returns 0 only until the first
+    // positive observation.
+    await tc.startContextSizePolling()
+
     let router = Router()
 
     // Security middleware: origin check, token auth, CORS headers
     router.add(middleware: SecurityMiddleware<BasicRequestContext>(config: config))
 
     // Health - includes model availability from SDK.
-    // contextSize and supportedLanguages captured from startup to avoid
-    // per-request SDK calls (cold-start safety, apfel-gui#4).
+    // supportedLanguages cached at startup (crash safety, apfel-gui#4).
+    // contextSize is per-request via resolvedContextSize (#192): on macOS 27
+    // the SDK returns 0 during initialization; the high-water-mark cache
+    // ensures we never regress to 0 once a real value has been observed.
     router.get("/health") { _, _ -> Response in
         let active = await serverState.logStore.activeRequests
         let available = await TokenCounter.shared.isAvailable
+        let contextSize = await TokenCounter.shared.resolvedContextSize
         let health: [String: Any] = [
             "status": available ? "ok" : "model_unavailable",
             "model": modelName,
             "version": version,
             "active_requests": active,
-            "context_window": cachedContextSize,
+            "context_window": contextSize,
             "model_available": available,
             "prewarmed": prewarmed,
             "supported_languages": cachedLangs
@@ -97,14 +102,15 @@ func startServer(config: ServerConfig, mcpManager: MCPManager? = nil) async thro
         return jsonResponse("{\"status\":\"ok\"}")
     }
 
-    // Models — includes context_window and supported_languages from SDK.
-    // Uses the same startup-cached values as /health.
+    // Models - context_window per-request via resolvedContextSize (#192),
+    // supportedLanguages cached at startup (crash safety, apfel-gui#4).
     router.get("/v1/models") { _, _ -> Response in
+        let contextSize = await TokenCounter.shared.resolvedContextSize
         return jsonResponse(jsonString(ModelsListResponse(
             object: "list",
             data: [.init(
                 id: modelName, object: "model", created: 1719792000, owned_by: "apple",
-                context_window: cachedContextSize,
+                context_window: contextSize,
                 supported_parameters: ["temperature", "max_tokens", "seed", "stream", "tools", "tool_choice", "response_format", "x_context_strategy", "x_context_max_turns", "x_context_output_reserve"],
                 unsupported_parameters: ["logprobs", "n", "stop", "presence_penalty", "frequency_penalty"],
                 notes: "Apple on-device model via FoundationModels framework. Unsupported parameters are rejected with 400 when present (except n=1 and logprobs=false). Supported languages: \(cachedLangs.joined(separator: ", "))"

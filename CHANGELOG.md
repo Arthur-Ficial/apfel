@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `/health` and `/v1/models` no longer report `context_window: 0` on macOS 27. The server now launches a background poll after `prewarm()` that fills a high-water-mark cache as soon as the SDK reports a non-zero `model.contextSize` (up to 60s), and per-request reads never regress to 0 once a real value has been observed. Previously, the value was cached once at startup before `prewarm()`, and on macOS 27 the SDK returns 0 for an uninitialised model - locking in 0 for the lifetime of the process. The background approach avoids blocking server startup for the ~20s the SDK needs on cold boot. Field-reported by @motacola (#192).
+
 ### Changed
 
 - Integration tests run in two marker-partitioned phases (#374): the model-free, parallel-safe partition first (`-m "not model and not serial"`, parallelized with pytest-xdist one-worker-per-file when installed), then the serial on-device-model phase (`-m "model or serial"`). Every test still runs exactly once and `APFEL_REQUIRE_FULL=1` still forbids skips; cheap doc-drift gates now fail in seconds instead of after ~10 minutes of model tests. `make preflight` is light by default (build + unit + model-free phase, ~1.5 min warm; `FULL=1` restores the full qualification) because `make release` runs the complete suite against the stamped release binary anyway - one full model pass per release instead of two. Marker hygiene enforced by the new `test_marker_discipline.py` source-scan suite (runs on CI): whole-suite `pytestmark` declarations for the generation-driven files (incl. the previously unmarked `test_chat.py`), a single shared `require_model()` in `conftest.py`, and a new `serial` marker for suites that mutate machine-global state (`test_brew_service.py`). Benchmark medians default to 3 runs (`APFEL_BENCH_RUNS=5` to restore the #264-era count).
