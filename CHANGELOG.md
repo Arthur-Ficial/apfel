@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `/health` and `/v1/models` no longer report `context_window: 0` on macOS 27 cold start (#192). On macOS 27 the SDK's `model.contextSize` returns 0 during initialization (observed for 80+ seconds); the server previously cached this at startup and locked in 0 for the process lifetime. `TokenCounter.contextSize` now uses a high-water mark that never regresses to 0 once a positive value is observed, with a floor of 4096 (the known minimum for any Apple Intelligence model). Both `/health` and `/v1/models` read per-request instead of using a startup cache. This also fixes the generation deadlock where `inputBudget` returned -512, rejecting all requests before the model could warm up.
+
 ### Changed
 
 - Integration tests run in two marker-partitioned phases (#374): the model-free, parallel-safe partition first (`-m "not model and not serial"`, parallelized with pytest-xdist one-worker-per-file when installed), then the serial on-device-model phase (`-m "model or serial"`). Every test still runs exactly once and `APFEL_REQUIRE_FULL=1` still forbids skips; cheap doc-drift gates now fail in seconds instead of after ~10 minutes of model tests. `make preflight` is light by default (build + unit + model-free phase, ~1.5 min warm; `FULL=1` restores the full qualification) because `make release` runs the complete suite against the stamped release binary anyway - one full model pass per release instead of two. Marker hygiene enforced by the new `test_marker_discipline.py` source-scan suite (runs on CI): whole-suite `pytestmark` declarations for the generation-driven files (incl. the previously unmarked `test_chat.py`), a single shared `require_model()` in `conftest.py`, and a new `serial` marker for suites that mutate machine-global state (`test_brew_service.py`). Benchmark medians default to 3 runs (`APFEL_BENCH_RUNS=5` to restore the #264-era count).

@@ -12,6 +12,11 @@ actor TokenCounter {
     static let shared = TokenCounter()
     private let model = SystemLanguageModel.default
 
+    /// Highest positive value ever observed from model.contextSize.
+    /// Guards against SDK regressions where contextSize flips back to 0
+    /// after reporting the real window (observed on macOS 27 cold start).
+    private var _highWaterContextSize: Int = 0
+
     /// True when any count call in this process actually fell back to chars/4
     /// at runtime - tokenCount(for:) threw, or availability flipped after the
     /// pre-flight `tokenCountFallback` check said the real API was usable.
@@ -47,9 +52,24 @@ actor TokenCounter {
         }
     }
 
-    /// Real context window size from the model.
+    /// Context window size from the model, with a floor of 4096.
+    ///
+    /// On macOS 27, model.contextSize returns 0 during SDK initialization
+    /// (observed for 80+ seconds on cold start). This property uses the
+    /// highest value ever observed (high-water mark) and falls back to
+    /// 4096 - the known minimum for any Apple Intelligence model - when
+    /// the SDK has not yet reported a positive value. Prevents the
+    /// deadlock where inputBudget returns -512, generation is rejected,
+    /// and the model never warms up (#192).
     var contextSize: Int {
-        model.contextSize
+        let raw = model.contextSize
+        if raw > _highWaterContextSize {
+            _highWaterContextSize = raw
+        }
+        if _highWaterContextSize > 0 {
+            return _highWaterContextSize
+        }
+        return 4096
     }
 
     /// Tokens available for model input given a reserved output budget.
