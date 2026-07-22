@@ -7,6 +7,8 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.8.4] - 2026-07-22
+
 ### Fixed
 
 - `/health` and `/v1/models` no longer report `context_window: 0` on macOS 27 cold start (#192). On macOS 27 the SDK's `model.contextSize` returns 0 during initialization (observed for 80+ seconds); the server previously cached this at startup and locked in 0 for the process lifetime. `TokenCounter.contextSize` now uses a high-water mark that never regresses to 0 once a positive value is observed, with a floor of 4096 (the known minimum for any Apple Intelligence model). Both `/health` and `/v1/models` read per-request instead of using a startup cache. This also fixes the generation deadlock where `inputBudget` returned -512, rejecting all requests before the model could warm up.
