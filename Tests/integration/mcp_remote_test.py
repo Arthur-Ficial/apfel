@@ -32,6 +32,8 @@ pytestmark = pytest.mark.model
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 BINARY = ROOT / ".build" / "release" / "apfel"
 HTTP_MCP_SERVER = ROOT / "mcp" / "http-test-server" / "server.py"
+FIXTURES = pathlib.Path(__file__).resolve().parent / "fixtures"
+OVERSIZE_MCP_SERVER = FIXTURES / "oversize_remote_mcp_server.py"
 STDIO_MCP_SERVER = ROOT / "mcp" / "calculator" / "server.py"
 
 MODEL = "apple-foundationmodel"
@@ -488,6 +490,58 @@ def test_unreachable_mcp_url_fails_gracefully():
     )
     assert result.returncode != 0, (
         "Expected non-zero exit for unreachable MCP server"
+    )
+
+
+def test_oversized_remote_mcp_response_is_rejected():
+    """A remote MCP server that floods the client must be cut off at the cap.
+
+    Guards the per-response memory cap (maxRemoteMCPResponseBytes) as a
+    *streaming* cap: the fixture answers the initialize handshake with a
+    never-completing response, so a client that buffers the whole body before
+    checking its size never returns (the idle timeout never fires while bytes
+    keep arriving) - it hangs until this test's own timeout. A client that
+    enforces the cap mid-read aborts at 10 MB and exits non-zero within a couple
+    of seconds. So a TimeoutExpired here is the regression signal, and a prompt
+    non-zero exit carrying the size-limit error is the pass.
+    """
+    if not OVERSIZE_MCP_SERVER.exists():
+        pytest.skip(f"oversize MCP fixture not found at {OVERSIZE_MCP_SERVER}")
+    mcp_port = find_free_port()
+    with _popen(
+        sys.executable,
+        str(OVERSIZE_MCP_SERVER),
+        "--port",
+        str(mcp_port),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    ):
+        if not _wait_for_port(mcp_port):
+            pytest.fail("oversize MCP server did not start in time")
+        try:
+            result = subprocess.run(
+                [
+                    str(BINARY),
+                    "--serve",
+                    "--port",
+                    str(find_free_port()),
+                    "--mcp",
+                    f"http://127.0.0.1:{mcp_port}/mcp",
+                ],
+                capture_output=True,
+                timeout=12,
+            )
+        except subprocess.TimeoutExpired:
+            pytest.fail(
+                "apfel hung on an unbounded remote MCP response - the 10 MB cap "
+                "must abort the read mid-stream instead of buffering the whole body"
+            )
+    assert result.returncode != 0, (
+        f"Expected non-zero exit for oversized MCP response\nstderr: {result.stderr}"
+    )
+    stderr = result.stderr.decode("utf-8", errors="replace")
+    assert any(x in stderr for x in ["size limit", "exceeded", "10 MB"]), (
+        f"Expected size-limit error in stderr: {stderr[:500]}"
     )
 
 

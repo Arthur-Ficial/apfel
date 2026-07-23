@@ -1,0 +1,144 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:apfel}",
+            "name": "Debug apfel",
+            "target": "apfel",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug apfel"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:apfel}",
+            "name": "Release apfel",
+            "target": "apfel",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release apfel"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:apfel}",
+            "name": "Debug apfelcore-tool-calling-example",
+            "target": "apfelcore-tool-calling-example",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug apfelcore-tool-calling-example"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:apfel}",
+            "name": "Release apfelcore-tool-calling-example",
+            "target": "apfelcore-tool-calling-example",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release apfelcore-tool-calling-example"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:apfel}",
+            "name": "Debug apfelcore-openai-types-example",
+            "target": "apfelcore-openai-types-example",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug apfelcore-openai-types-example"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:apfel}",
+            "name": "Release apfelcore-openai-types-example",
+            "target": "apfelcore-openai-types-example",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release apfelcore-openai-types-example"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:apfel}",
+            "name": "Debug apfelcore-mcp-protocol-example",
+            "target": "apfelcore-mcp-protocol-example",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug apfelcore-mcp-protocol-example"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:apfel}",
+            "name": "Release apfelcore-mcp-protocol-example",
+            "target": "apfelcore-mcp-protocol-example",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release apfelcore-mcp-protocol-example"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:apfel}",
+            "name": "Debug apfelcore-error-handling-example",
+            "target": "apfelcore-error-handling-example",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug apfelcore-error-handling-example"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:apfel}",
+            "name": "Release apfelcore-error-handling-example",
+            "target": "apfelcore-error-handling-example",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release apfelcore-error-handling-example"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:apfel}",
+            "name": "Debug apfelcore-context-strategies-example",
+            "target": "apfelcore-context-strategies-example",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug apfelcore-context-strategies-example"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:apfel}",
+            "name": "Release apfelcore-context-strategies-example",
+            "target": "apfelcore-context-strategies-example",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release apfelcore-context-strategies-example"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:apfel}",
+            "name": "Debug apfel-tests",
+            "target": "apfel-tests",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug apfel-tests"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:apfel}",
+            "name": "Release apfel-tests",
+            "target": "apfel-tests",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release apfel-tests"
+        }
+    ]
+}

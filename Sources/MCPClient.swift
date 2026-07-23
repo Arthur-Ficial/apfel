@@ -324,12 +324,31 @@ actor RemoteMCPConnection: Sendable {
         if let sid = sessionId { request.setValue(sid, forHTTPHeaderField: "Mcp-Session-Id") }
         request.httpBody = body.data(using: .utf8)
 
-        let (data, response) = try await session.data(for: request)
+        let (bytes, response) = try await session.bytes(for: request)
 
-        guard data.count <= maxRemoteMCPResponseBytes else {
-            throw MCPError.serverError(
+        // Enforce the cap during the read, not after: data(for:) buffered the
+        // entire body before the old post-hoc check ran, so a hostile server
+        // could exhaust memory (e.g. an unbounded slow-drip SSE stream, which
+        // the idle-based timeoutInterval never interrupts) before ever being
+        // "rejected". Reject a declared oversized Content-Length before reading
+        // a single byte, then abort mid-stream the moment the running total
+        // crosses the cap - memory stays bounded no matter what the server
+        // sends. Throwing out of the iteration cancels the underlying task,
+        // which closes the connection.
+        func sizeLimitError() -> MCPError {
+            MCPError.serverError(
                 "Response from \(urlString) exceeded size limit (\(maxRemoteMCPResponseBytes / (1024 * 1024)) MB)"
             )
+        }
+        if response.expectedContentLength > Int64(maxRemoteMCPResponseBytes) {
+            throw sizeLimitError()
+        }
+        var data = Data()
+        for try await byte in bytes {
+            data.append(byte)
+            if data.count > maxRemoteMCPResponseBytes {
+                throw sizeLimitError()
+            }
         }
 
         if let httpResponse = response as? HTTPURLResponse {
