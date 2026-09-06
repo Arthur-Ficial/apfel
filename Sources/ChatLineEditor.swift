@@ -90,11 +90,7 @@ final class ChatLineEditor: @unchecked Sendable {
     private func persistHistory() {
         guard let historyFile else { return }
 
-        let dir = (historyFile as NSString).deletingLastPathComponent
-        if !dir.isEmpty {
-            try? FileManager.default.createDirectory(
-                atPath: dir, withIntermediateDirectories: true)
-        }
+        ChatHistory.prepareHistoryFile(at: historyFile)
 
         let wrote = historyFile.withCString { write_history($0) }
         guard wrote == 0 else { return }
