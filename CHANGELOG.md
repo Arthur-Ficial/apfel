@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `StreamPrintSink` no longer silently splices two generations when a stream retry produces divergent text (#402). The sink now tracks what was actually emitted, detects when a retry diverges from the printed prefix, and emits the full new response with a visible discontinuity marker instead of corrupted output.
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed

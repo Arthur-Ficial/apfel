@@ -75,6 +75,56 @@ func runStreamPrintSinkTests() {
         try assertEqual(recorder.callCount, 0, "no output for empty stream")
     }
 
+    testAsync("feed: a divergent retry does not splice two generations (#402)") {
+        let recorder = SinkRecorder()
+        let sink = StreamPrintSink(emit: { recorder.append($0) })
+
+        // Attempt 1 streams "Hello" then hits a retryable error.
+        await sink.feed(cumulative: "Hello")
+
+        // Attempt 2 produces completely different text.
+        await sink.feed(cumulative: "Goodbye.")
+
+        let output = recorder.joined
+        try assertTrue(output.contains("Goodbye."),
+            "the full second-attempt text must appear in output, got: \(output)")
+        try assertTrue(!output.contains("Helloye"),
+            "spliced garbage must never appear, got: \(output)")
+    }
+
+    testAsync("feed: a shorter divergent retry emits the full new text (#402)") {
+        let recorder = SinkRecorder()
+        let sink = StreamPrintSink(emit: { recorder.append($0) })
+
+        // Attempt 1 streams a longer response.
+        await sink.feed(cumulative: "Hello world")
+
+        // Attempt 2 returns shorter, completely different text.
+        await sink.feed(cumulative: "Bye")
+
+        let output = recorder.joined
+        try assertTrue(output.contains("Bye"),
+            "the full shorter retry text must appear, got: \(output)")
+        try assertTrue(!output.contains("Hello worldBye"),
+            "must not simply append divergent text, got: \(output)")
+    }
+
+    testAsync("feed: a divergent retry followed by growth emits correctly (#402)") {
+        let recorder = SinkRecorder()
+        let sink = StreamPrintSink(emit: { recorder.append($0) })
+
+        // Attempt 1 partial.
+        await sink.feed(cumulative: "Hello")
+
+        // Attempt 2 diverges, then grows.
+        await sink.feed(cumulative: "Good")
+        await sink.feed(cumulative: "Goodbye.")
+
+        let output = recorder.joined
+        try assertTrue(output.contains("Goodbye."),
+            "full divergent text including growth must appear, got: \(output)")
+    }
+
     // StreamPrintSink must be Sendable so it can be shared across the isolation
     // hops a retried async operation crosses.
     testAsync("StreamPrintSink conforms to Sendable") {

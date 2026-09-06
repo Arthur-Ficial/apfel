@@ -29,6 +29,9 @@ import Foundation
 public actor StreamPrintSink {
     /// Number of characters already emitted (the high-water mark across retries).
     private var emittedCount = 0
+    /// The text already printed, so a divergent retry can be detected rather
+    /// than silently spliced onto the previous attempt's prefix (#402).
+    private var emittedText = ""
     private let emit: @Sendable (String) -> Void
 
     /// - parameter emit: receives each newly-printable suffix. Defaults to
@@ -39,11 +42,27 @@ public actor StreamPrintSink {
 
     /// Feed a cumulative snapshot. Emits only the portion that extends beyond
     /// what has already been printed; a shorter or equal snapshot (as seen at
-    /// the start of a retry re-run) emits nothing.
+    /// the start of a retry re-run) emits nothing. When a retry diverges from
+    /// what was already printed, the discontinuity is signalled and the new
+    /// text is emitted in full (#402).
     public func feed(cumulative content: String) {
+        if emittedCount > 0 {
+            let convergent = content.count <= emittedCount
+                ? emittedText.hasPrefix(content)
+                : content.hasPrefix(emittedText)
+            if !convergent {
+                emit("\n[retry: new response]\n")
+                emit(content)
+                emittedText = content
+                emittedCount = content.count
+                return
+            }
+        }
         guard content.count > emittedCount else { return }
         let start = content.index(content.startIndex, offsetBy: emittedCount)
-        emit(String(content[start...]))
+        let delta = String(content[start...])
+        emit(delta)
+        emittedText = content
         emittedCount = content.count
     }
 
