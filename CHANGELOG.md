@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Stream retry no longer silently splices two divergent generations into corrupted output (#402). `StreamPrintSink` now tracks the actual emitted text, not just the character count, and marks the discontinuity on stderr when a retry produces different content.
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed

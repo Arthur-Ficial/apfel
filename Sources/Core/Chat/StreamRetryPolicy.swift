@@ -29,6 +29,8 @@ import Foundation
 public actor StreamPrintSink {
     /// Number of characters already emitted (the high-water mark across retries).
     private var emittedCount = 0
+    /// The text that has been emitted so far, used to detect divergent retries.
+    private var emittedText = ""
     private let emit: @Sendable (String) -> Void
 
     /// - parameter emit: receives each newly-printable suffix. Defaults to
@@ -38,13 +40,29 @@ public actor StreamPrintSink {
     }
 
     /// Feed a cumulative snapshot. Emits only the portion that extends beyond
-    /// what has already been printed; a shorter or equal snapshot (as seen at
-    /// the start of a retry re-run) emits nothing.
+    /// what has already been printed. When a retry diverges from the already-
+    /// printed prefix, the sink marks the discontinuity on stderr and re-emits
+    /// the full new content rather than silently splicing two generations (#402).
     public func feed(cumulative content: String) {
-        guard content.count > emittedCount else { return }
-        let start = content.index(content.startIndex, offsetBy: emittedCount)
-        emit(String(content[start...]))
-        emittedCount = content.count
+        if content.hasPrefix(emittedText) {
+            guard content.count > emittedCount else { return }
+            let start = content.index(content.startIndex, offsetBy: emittedCount)
+            emit(String(content[start...]))
+            emittedText = content
+            emittedCount = content.count
+        } else if emittedText.hasPrefix(content) {
+            // Retry re-streaming a prefix we already printed - wait for it
+            // to catch up past the high-water mark.
+            return
+        } else {
+            FileHandle.standardError.write(
+                Data("\n[apfel: retry diverged from previous output; restarting]\n".utf8)
+            )
+            emit("\n")
+            emit(content)
+            emittedText = content
+            emittedCount = content.count
+        }
     }
 
     /// Default emit: write to stdout and flush so streaming output is live.

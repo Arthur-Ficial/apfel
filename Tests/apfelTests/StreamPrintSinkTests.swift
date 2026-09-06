@@ -75,6 +75,56 @@ func runStreamPrintSinkTests() {
         try assertEqual(recorder.callCount, 0, "no output for empty stream")
     }
 
+    testAsync("feed: a divergent retry does not splice two generations (#402)") {
+        let recorder = SinkRecorder()
+        let sink = StreamPrintSink(emit: { recorder.append($0) })
+
+        // Attempt 1 streams "Hello" then hits a retryable error.
+        await sink.feed(cumulative: "Hello")
+
+        // Attempt 2 produces completely different text.
+        await sink.feed(cumulative: "Goodbye.")
+
+        let joined = recorder.joined
+        try assertTrue(!joined.contains("Helloye."),
+            "must never splice first attempt's prefix with second attempt's suffix")
+        try assertTrue(joined.contains("Goodbye."),
+            "the full winning response must reach the user")
+    }
+
+    testAsync("feed: a shorter divergent retry emits the full new response (#402)") {
+        let recorder = SinkRecorder()
+        let sink = StreamPrintSink(emit: { recorder.append($0) })
+
+        // Attempt 1 streams a longer prefix.
+        await sink.feed(cumulative: "Hello world")
+
+        // Attempt 2 produces shorter, different text.
+        await sink.feed(cumulative: "Bye")
+
+        let joined = recorder.joined
+        try assertTrue(joined.contains("Bye"),
+            "shorter divergent retry must emit its full content")
+    }
+
+    testAsync("feed: a divergent retry followed by growth emits correctly (#402)") {
+        let recorder = SinkRecorder()
+        let sink = StreamPrintSink(emit: { recorder.append($0) })
+
+        // Attempt 1 partial.
+        await sink.feed(cumulative: "Hello")
+
+        // Attempt 2 diverges and grows.
+        await sink.feed(cumulative: "Good")
+        await sink.feed(cumulative: "Goodbye.")
+
+        let joined = recorder.joined
+        try assertTrue(!joined.contains("Hellobye."),
+            "divergent retry must not splice")
+        try assertTrue(joined.contains("Goodbye."),
+            "the full second response must reach the user")
+    }
+
     // StreamPrintSink must be Sendable so it can be shared across the isolation
     // hops a retried async operation crosses.
     testAsync("StreamPrintSink conforms to Sendable") {
