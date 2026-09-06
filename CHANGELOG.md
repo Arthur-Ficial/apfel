@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Invalid-UTF-8 and unreadable stdin no longer silently exit 0 with misleading output. Both `readStdinData` and `stdinPromptText` now throw `CLIParseError` on failure instead of swallowing the error (#397).
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed

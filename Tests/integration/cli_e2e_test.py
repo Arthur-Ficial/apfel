@@ -1069,6 +1069,102 @@ def test_empty_file_redirect_no_hint(tmp_path):
     assert "piped input was empty" not in result.stderr
 
 
+# --- Invalid stdin rejection tests (GH-397) ---
+
+
+def test_invalid_utf8_stdin_is_rejected():
+    """Invalid UTF-8 stdin must exit non-zero with a clear error, not silently
+    discard the input and exit 0 (#397)."""
+    merged_env = os.environ.copy()
+    for key in ["NO_COLOR", "APFEL_SYSTEM_PROMPT", "APFEL_HOST", "APFEL_PORT",
+                "APFEL_TEMPERATURE", "APFEL_MAX_TOKENS"]:
+        merged_env.pop(key, None)
+    result = subprocess.run(
+        [str(BINARY), "--count-tokens", "-o", "json", "Question"],
+        input=b"hello\xffworld",
+        capture_output=True,
+        env=merged_env,
+        timeout=15,
+    )
+    assert result.returncode != 0, (
+        f"invalid UTF-8 stdin should fail, got rc={result.returncode}"
+    )
+    stderr = result.stderr.decode("utf-8", errors="replace")
+    assert "UTF-8" in stderr or "utf-8" in stderr.lower(), (
+        f"error should mention UTF-8, got: {stderr!r}"
+    )
+    assert "piped input was empty" not in stderr, (
+        "must not falsely claim pipe was empty when input had invalid bytes"
+    )
+
+
+def test_invalid_utf8_stdin_with_bare_pipe():
+    """Invalid UTF-8 piped as the sole input (no args) must also fail (#397)."""
+    merged_env = os.environ.copy()
+    for key in ["NO_COLOR", "APFEL_SYSTEM_PROMPT", "APFEL_HOST", "APFEL_PORT",
+                "APFEL_TEMPERATURE", "APFEL_MAX_TOKENS"]:
+        merged_env.pop(key, None)
+    result = subprocess.run(
+        [str(BINARY)],
+        input=b"\x80\x81\x82",
+        capture_output=True,
+        env=merged_env,
+        timeout=15,
+    )
+    assert result.returncode != 0
+    stderr = result.stderr.decode("utf-8", errors="replace")
+    assert "UTF-8" in stderr or "utf-8" in stderr.lower()
+
+
+def test_messages_stdin_invalid_utf8_exits_2():
+    """--messages - with non-UTF-8 stdin must exit 2 with a clear message,
+    not a misleading 'invalid JSON' error (#397)."""
+    merged_env = os.environ.copy()
+    for key in ["NO_COLOR", "APFEL_SYSTEM_PROMPT", "APFEL_HOST", "APFEL_PORT",
+                "APFEL_TEMPERATURE", "APFEL_MAX_TOKENS"]:
+        merged_env.pop(key, None)
+    result = subprocess.run(
+        [str(BINARY), "--messages", "-"],
+        input=b'[{"role":"user","content":"hi\xff"}]',
+        capture_output=True,
+        env=merged_env,
+        timeout=15,
+    )
+    assert result.returncode == 2
+    stderr = result.stderr.decode("utf-8", errors="replace")
+    assert "UTF-8" in stderr or "utf-8" in stderr.lower()
+    assert "invalid" not in stderr.lower() or "json" not in stderr.lower(), (
+        "should blame UTF-8, not JSON parsing"
+    )
+
+
+def test_empty_stdin_still_hints():
+    """Genuinely empty stdin must still show the existing 'piped input was
+    empty' hint - the new validation must not break the happy path (#397)."""
+    result = run_cli(["What went wrong?"], input_text="", timeout=10)
+    assert "piped input was empty" in result.stderr
+    assert "2>&1" in result.stderr
+
+
+def test_valid_utf8_stdin_unchanged():
+    """Valid UTF-8 stdin must work exactly as before (#397)."""
+    merged_env = os.environ.copy()
+    for key in ["NO_COLOR", "APFEL_SYSTEM_PROMPT", "APFEL_HOST", "APFEL_PORT",
+                "APFEL_TEMPERATURE", "APFEL_MAX_TOKENS"]:
+        merged_env.pop(key, None)
+    result = subprocess.run(
+        [str(BINARY), "--count-tokens", "-o", "json", "Question"],
+        input="hello world".encode("utf-8"),
+        capture_output=True,
+        env=merged_env,
+        timeout=15,
+    )
+    stderr = result.stderr.decode("utf-8", errors="replace")
+    assert "UTF-8" not in stderr and "utf-8" not in stderr.lower(), (
+        f"valid UTF-8 must not trigger the new rejection, got: {stderr!r}"
+    )
+
+
 # --- Release info tests ---
 
 
