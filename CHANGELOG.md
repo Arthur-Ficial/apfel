@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Every system message after the first was silently discarded before token counting and generation; `buildInstructions` now joins all system messages into the instructions block (#390).
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed

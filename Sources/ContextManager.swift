@@ -124,8 +124,8 @@ enum ContextManager {
             parts.append("You must respond with valid JSON only. No markdown code fences, no explanation text, no preamble. Output raw JSON.")
         }
 
-        // System prompt
-        if let sys = messages.first(where: { $0.role == "system" })?.textContent {
+        // System prompt - join ALL system messages, not just the first (#390)
+        if let sys = OpenAIMessage.joinedSystemContent(from: messages) {
             parts.append(sys)
         }
 

@@ -196,6 +196,17 @@ public struct OpenAIMessage: Codable, Sendable, Equatable, Hashable {
         guard case .parts(let parts) = content else { return false }
         return parts.contains(where: { $0.type == "image_url" })
     }
+
+    /// Joins the text content of every system-role message in `messages`,
+    /// preserving order and separating with double newlines. Returns nil
+    /// when no system message carries non-empty text.
+    public static func joinedSystemContent(from messages: [OpenAIMessage]) -> String? {
+        let parts = messages
+            .filter { $0.role == "system" }
+            .compactMap(\.textContent)
+            .filter { !$0.isEmpty }
+        return parts.isEmpty ? nil : parts.joined(separator: "\n\n")
+    }
 }
 
 /// OpenAI-compatible message content.
