@@ -293,3 +293,29 @@ def test_responses_error_object_has_null_param_and_code():
     err = r.json()["error"]
     assert "param" in err and err["param"] is None
     assert "code" in err and err["code"] is None
+
+
+# ============================================================================
+# #437 - chat and responses error bodies must have the same shape
+# ============================================================================
+
+
+def test_chat_and_responses_error_bodies_have_the_same_shape():
+    """Both endpoints must produce identical JSON error structure for an
+    equivalent bad request. Guards against the two failure paths drifting
+    apart now that they share a single builder (#437)."""
+    chat_r = _post({"model": "nonexistent-model",
+                     "messages": [{"role": "user", "content": "hi"}]})
+    resp_r = _responses({"model": "nonexistent-model", "input": "hi"})
+
+    assert chat_r.status_code == resp_r.status_code == 404
+
+    chat_err = chat_r.json()["error"]
+    resp_err = resp_r.json()["error"]
+
+    assert set(chat_err.keys()) == set(resp_err.keys()), (
+        f"key mismatch: chat={sorted(chat_err.keys())} "
+        f"responses={sorted(resp_err.keys())}")
+    assert chat_err["type"] == resp_err["type"]
+    assert chat_err["code"] == resp_err["code"]
+    assert chat_err["param"] == resp_err["param"]

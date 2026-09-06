@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Deduplicated `chatFailure`/`responsesFailure` into a single `openAIFailure()` builder shared by both `/v1/chat/completions` and `/v1/responses` (#437). Internal-only, no change to wire behaviour.
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed
