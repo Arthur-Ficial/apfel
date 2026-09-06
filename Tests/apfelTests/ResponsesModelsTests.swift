@@ -267,4 +267,38 @@ func runResponsesModelsTests() {
         """)
         try assertEqual(ResponsesRequestValidator.validate(r), nil)
     }
+
+    // ========================================================================
+    // MARK: - Truncation (#391)
+    // ========================================================================
+
+    test("decodes truncation field") {
+        let r = try decodeResponses(#"{"model":"apple-foundationmodel","input":"x","truncation":"disabled"}"#)
+        try assertEqual(r.truncation, "disabled")
+    }
+
+    test("truncation defaults to nil when absent") {
+        let r = try decodeResponses(#"{"model":"apple-foundationmodel","input":"x"}"#)
+        try assertEqual(r.truncation, nil)
+    }
+
+    test("truncation auto decodes and validates") {
+        let r = try decodeResponses(#"{"model":"apple-foundationmodel","input":"x","truncation":"auto"}"#)
+        try assertEqual(r.truncation, "auto")
+        try assertEqual(ResponsesRequestValidator.validate(r), nil)
+    }
+
+    test("validator: unknown truncation value is a 400") {
+        let r = try decodeResponses(#"{"model":"apple-foundationmodel","input":"x","truncation":"magic"}"#)
+        let f = ResponsesRequestValidator.validate(r)
+        try assertEqual(f, .invalidTruncation("magic"))
+        try assertEqual(f?.httpStatusCode, 400)
+        try assertTrue(f?.message.contains("'truncation'") == true)
+        try assertTrue(f?.message.contains("magic") == true)
+    }
+
+    test("validator: truncation disabled passes validation") {
+        let r = try decodeResponses(#"{"model":"apple-foundationmodel","input":"x","truncation":"disabled"}"#)
+        try assertEqual(ResponsesRequestValidator.validate(r), nil)
+    }
 }

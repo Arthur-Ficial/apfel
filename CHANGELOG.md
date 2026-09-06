@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `/v1/responses` now decodes the `truncation` field. `"disabled"` maps to the strict context strategy (400 on oversized input instead of silent history loss), `"auto"` (and absent) keeps the existing newest-first trimming, and unrecognised values are rejected with a 400 naming the parameter. The response envelope echoes the value that was actually applied instead of hardcoding `"disabled"`. (#391)
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed

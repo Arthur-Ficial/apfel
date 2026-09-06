@@ -40,13 +40,17 @@ public struct ResponsesRequest: Decodable, Sendable {
     public let background: Bool?
     public let store: Bool?
     public let include: [String]?
+    /// `"auto"` (default) trims oldest-first; `"disabled"` rejects oversized
+    /// input with a 400 rather than silently dropping history.
+    public let truncation: String?
     /// True when a `reasoning` object was present in the request.
     public let hasReasoning: Bool
 
     enum CodingKeys: String, CodingKey {
         case model, input, instructions, stream, temperature, top_p,
              max_output_tokens, metadata, text, tools, tool_choice,
-             previous_response_id, background, store, include, reasoning
+             previous_response_id, background, store, include, reasoning,
+             truncation
     }
 
     public init(from decoder: Decoder) throws {
@@ -72,6 +76,7 @@ public struct ResponsesRequest: Decodable, Sendable {
         background = try c.decodeIfPresent(Bool.self, forKey: .background)
         store = try c.decodeIfPresent(Bool.self, forKey: .store)
         include = try c.decodeIfPresent([String].self, forKey: .include)
+        truncation = try c.decodeIfPresent(String.self, forKey: .truncation)
         hasReasoning = c.contains(.reasoning)
     }
 }
@@ -188,6 +193,7 @@ public enum ResponsesRequestValidator {
         case invalidTextFormat(String)
         case missingSchema
         case invalidRange(String)
+        case invalidTruncation(String)
         /// A feature the on-device model / this stateless server does not
         /// support. Always a 501 with a plain-spoken message.
         case unsupported(String)
@@ -220,6 +226,8 @@ public enum ResponsesRequestValidator {
                 return "text.format json_schema requires a 'schema' object."
             case .invalidRange(let what):
                 return what
+            case .invalidTruncation(let v):
+                return "'truncation' must be 'auto' or 'disabled', got '\(v)'."
             case .unsupported(let feature):
                 switch feature {
                 case "previous_response_id":
@@ -276,6 +284,11 @@ public enum ResponsesRequestValidator {
         }
         if r.text?.format?.type == "json_schema" && r.stream == true {
             return .unsupported("json_schema with stream")
+        }
+
+        // Truncation policy (mirrors x_context_strategy validation in chat, #237).
+        if let t = r.truncation, t != "auto" && t != "disabled" {
+            return .invalidTruncation(t)
         }
 
         // Input shape.

@@ -293,3 +293,32 @@ def test_responses_error_object_has_null_param_and_code():
     err = r.json()["error"]
     assert "param" in err and err["param"] is None
     assert "code" in err and err["code"] is None
+
+
+# ============================================================================
+# POST /v1/responses - truncation validation (#391)
+# ============================================================================
+
+
+def test_responses_unknown_truncation_is_400():
+    """An unrecognised truncation value must be a 400 naming the parameter."""
+    r = _responses({"model": "apple-foundationmodel", "input": "hi", "truncation": "magic"})
+    assert r.status_code == 400
+    assert "truncation" in r.json()["error"]["message"]
+    assert "magic" in r.json()["error"]["message"]
+
+
+def test_responses_truncation_auto_passes_validation():
+    """truncation: auto (the default behaviour) must not be rejected."""
+    r = _responses({"model": "apple-foundationmodel", "input": "hi", "truncation": "auto"})
+    # Should not be a 400 on the truncation field (may still be another status
+    # depending on model availability, but never a truncation validation error).
+    if r.status_code == 400:
+        assert "truncation" not in r.json()["error"]["message"]
+
+
+def test_responses_truncation_disabled_passes_validation():
+    """truncation: disabled is a valid value and must not be rejected at validation."""
+    r = _responses({"model": "apple-foundationmodel", "input": "hi", "truncation": "disabled"})
+    if r.status_code == 400:
+        assert "truncation" not in r.json()["error"]["message"]

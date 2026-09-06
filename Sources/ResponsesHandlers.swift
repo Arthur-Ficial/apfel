@@ -32,6 +32,7 @@ struct ResponsesEcho {
     let formatName: String?
     let formatSchemaJSON: String?
     let toolsEcho: [ResponsesToolEcho]
+    let truncation: String
 
     init(_ r: ResponsesRequest, formatType: String) {
         instructions = r.instructions
@@ -47,6 +48,7 @@ struct ResponsesEcho {
             return ResponsesToolEcho(name: name, description: tool.description,
                                      parametersJSON: tool.parameters?.value)
         }
+        truncation = r.truncation ?? "auto"
     }
 
     func envelope(id: String, created: Int, status: String,
@@ -59,6 +61,7 @@ struct ResponsesEcho {
             temperature: temperature, topP: topP,
             formatType: formatType, formatName: formatName,
             formatSchemaJSON: formatSchemaJSON, toolsEcho: toolsEcho,
+            truncation: truncation,
             usage: usage, incompleteReason: incompleteReason)
     }
 }
@@ -164,7 +167,8 @@ func handleResponses(_ request: Request, context: some RequestContext) async thr
         seed: nil,
         permissive: serverState.config.permissive,
         contextConfig: ContextConfig(
-            strategy: .newestFirst, maxTurns: nil,
+            strategy: responsesRequest.truncation == "disabled" ? .strict : .newestFirst,
+            maxTurns: nil,
             outputReserve: BodyLimits.defaultOutputReserveTokens),
         retryEnabled: serverState.config.retryEnabled,
         retryCount: serverState.config.retryCount
