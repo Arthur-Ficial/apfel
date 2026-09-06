@@ -221,4 +221,43 @@ func runMessagesFlagTests() {
     test("knownFlags contains --messages") {
         try assertTrue(CLIArguments.knownFlags.contains("--messages"))
     }
+
+    // ========================================================================
+    // MARK: - Repeated --messages: last flag wins (#416)
+    // ========================================================================
+
+    test("--messages - then --messages file uses the file (last wins)") {
+        let args = try CLIArguments.parse(
+            ["--messages", "-", "--messages", "conv.json"],
+            readFile: { path in
+                guard path == "conv.json" else { throw CLIParseError("unexpected path") }
+                return twoTurn
+            })
+        try assertEqual(args.messagesJSON, twoTurn)
+        try assertTrue(!args.messagesFromStdin)
+    }
+
+    test("--messages file then --messages - uses stdin (last wins)") {
+        let args = try CLIArguments.parse(
+            ["--messages", "conv.json", "--messages", "-"],
+            readFile: { path in
+                guard path == "conv.json" else { throw CLIParseError("unexpected path") }
+                return twoTurn
+            })
+        try assertTrue(args.messagesFromStdin)
+        try assertEqual(args.messagesJSON, nil)
+    }
+
+    test("--messages file1 then --messages file2 uses file2 (last wins)") {
+        let file2JSON = "[{\"role\":\"user\",\"content\":\"second file\"}]"
+        let args = try CLIArguments.parse(
+            ["--messages", "first.json", "--messages", "second.json"],
+            readFile: { path in
+                if path == "first.json" { return twoTurn }
+                if path == "second.json" { return file2JSON }
+                throw CLIParseError("unexpected path: \(path)")
+            })
+        try assertEqual(args.messagesJSON, file2JSON)
+        try assertTrue(!args.messagesFromStdin)
+    }
 }
