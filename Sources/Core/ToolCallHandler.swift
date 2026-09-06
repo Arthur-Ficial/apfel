@@ -369,10 +369,13 @@ public enum ToolCallHandler {
             let args: String
             if let s = rawArguments as? String {
                 args = ensureJSONArguments(s)
-            } else if let obj = rawArguments,
+            } else if let obj = rawArguments, !(obj is NSNull),
+                      JSONSerialization.isValidJSONObject(obj),
                       let data = try? JSONSerialization.data(withJSONObject: obj),
                       let s = String(data: data, encoding: .utf8) {
                 args = s
+            } else if let obj = rawArguments, !(obj is NSNull) {
+                args = ensureJSONArguments("\(obj)")
             } else {
                 args = "{}"
             }

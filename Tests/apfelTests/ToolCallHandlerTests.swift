@@ -396,6 +396,48 @@ func runToolCallHandlerTests() {
         try assertNil(parsed)
     }
 
+    // MARK: - Scalar arguments do not crash (#388)
+
+    test("scalar number arguments do not crash and produce valid JSON (#388)") {
+        let response = #"{"tool_calls": [{"id": "c1", "type": "function", "function": {"name": "add", "arguments": 7}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.count, 1)
+        try assertEqual(result!.first?.name, "add")
+        let args = result!.first!.argumentsString
+        let parsed = try? JSONSerialization.jsonObject(with: Data(args.utf8)) as? [String: Any]
+        try assertNotNil(parsed)
+    }
+
+    test("scalar bool arguments do not crash and produce valid JSON (#388)") {
+        let response = #"{"tool_calls": [{"id": "c1", "type": "function", "function": {"name": "toggle", "arguments": true}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "toggle")
+        let args = result!.first!.argumentsString
+        let parsed = try? JSONSerialization.jsonObject(with: Data(args.utf8)) as? [String: Any]
+        try assertNotNil(parsed)
+    }
+
+    test("null arguments fall through to empty object (#388)") {
+        let response = #"{"tool_calls": [{"id": "c1", "type": "function", "function": {"name": "ping", "arguments": null}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "ping")
+        try assertEqual(result!.first?.argumentsString, "{}")
+    }
+
+    test("object arguments still serialize correctly after scalar fix (#388)") {
+        let response = #"{"tool_calls": [{"id": "c1", "type": "function", "function": {"name": "fn", "arguments": {"a": 1, "b": 2}}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        let args = result!.first!.argumentsString
+        let parsed = try? JSONSerialization.jsonObject(with: Data(args.utf8)) as? [String: Any]
+        try assertNotNil(parsed)
+        try assertEqual(parsed?["a"] as? Int, 1)
+        try assertEqual(parsed?["b"] as? Int, 2)
+    }
+
     // MARK: - Split prompt methods
 
     test("buildOutputFormatInstructions contains tool names") {
