@@ -293,3 +293,39 @@ def test_responses_error_object_has_null_param_and_code():
     err = r.json()["error"]
     assert "param" in err and err["param"] is None
     assert "code" in err and err["code"] is None
+
+
+# ============================================================================
+# #437 - chat and responses error bodies must have the same shape
+# ============================================================================
+
+
+def test_chat_and_responses_error_bodies_have_the_same_shape():
+    """Both endpoints use the same openAIFailure builder, so equivalent bad
+    requests must produce error bodies with identical key sets and types (#437)."""
+    chat_r = httpx.post(
+        f"{BASE_URL}/v1/chat/completions",
+        content="{not json",
+        headers={"Content-Type": "application/json"},
+        timeout=15,
+    )
+    resp_r = httpx.post(
+        f"{BASE_URL}/v1/responses",
+        content="{not json",
+        headers={"Content-Type": "application/json"},
+        timeout=15,
+    )
+    assert chat_r.status_code == resp_r.status_code == 400
+
+    chat_err = chat_r.json()["error"]
+    resp_err = resp_r.json()["error"]
+
+    assert set(chat_err.keys()) == set(resp_err.keys()), (
+        f"key mismatch: chat={sorted(chat_err.keys())} responses={sorted(resp_err.keys())}"
+    )
+    for key in chat_err:
+        assert type(chat_err[key]) is type(resp_err[key]), (
+            f"type mismatch on '{key}': chat={type(chat_err[key]).__name__} "
+            f"responses={type(resp_err[key]).__name__}"
+        )
+    assert chat_err["type"] == resp_err["type"] == "invalid_request_error"

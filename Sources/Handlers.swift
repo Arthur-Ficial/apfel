@@ -48,7 +48,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
         body = try await request.body.collect(upTo: BodyLimits.maxRequestBodyBytes)
     } catch {
         let mib = BodyLimits.maxRequestBodyBytes / (1024 * 1024)
-        return chatFailure(
+        return openAIFailure(
             status: .init(code: 413),
             message: "Request body exceeds the \(mib) MiB limit.",
             type: "invalid_request_error",
@@ -66,7 +66,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
         chatRequest = try JSONDecoder().decode(ChatCompletionRequest.self, from: body)
     } catch {
         let msg = "Invalid JSON: \(error.localizedDescription)"
-        return chatFailure(
+        return openAIFailure(
             status: .badRequest,
             message: msg,
             type: "invalid_request_error",
@@ -82,7 +82,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
     let wantsJSONSchema = chatRequest.response_format?.type == "json_schema"
 
     if let failure = ChatRequestValidator.validate(chatRequest) {
-        return chatFailure(
+        return openAIFailure(
             status: .init(code: failure.httpStatusCode),
             message: failure.message,
             type: "invalid_request_error",
@@ -104,7 +104,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
     if wantsJSONSchema {
         guard let spec = chatRequest.response_format?.json_schema,
               let schemaJSON = spec.schema?.value else {
-            return chatFailure(
+            return openAIFailure(
                 status: .badRequest,
                 message: "response_format.json_schema requires a 'schema' object",
                 type: "invalid_request_error",
@@ -117,7 +117,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
         do {
             structuredSchema = try SchemaConverter.generationSchema(fromJSON: schemaJSON, name: spec.name)
         } catch {
-            return chatFailure(
+            return openAIFailure(
                 status: .badRequest,
                 message: "Invalid response_format.json_schema: \(error)",
                 type: "invalid_request_error",
@@ -169,7 +169,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
     } catch {
         let classified = ApfelError.classify(error)
         let msg = classified.openAIMessage
-        return chatFailure(
+        return openAIFailure(
             status: .init(code: classified.httpStatusCode),
             message: msg,
             type: classified.openAIType,
@@ -288,7 +288,7 @@ private func mcpAutoExecuteResponse(
             )
         }
         let msg = classified.openAIMessage
-        return chatFailure(
+        return openAIFailure(
             status: .init(code: classified.httpStatusCode),
             message: msg,
             type: classified.openAIType,
@@ -321,7 +321,7 @@ private func mcpAutoExecuteResponse(
     } catch {
         let classified = ApfelError.classify(error)
         let msg = classified.openAIMessage
-        return chatFailure(
+        return openAIFailure(
             status: .init(code: classified.httpStatusCode),
             message: msg,
             type: classified.openAIType,
@@ -425,7 +425,7 @@ private func nonStreamingResponse(
             )
         }
         let msg = classified.openAIMessage
-        return chatFailure(
+        return openAIFailure(
             status: .init(code: classified.httpStatusCode),
             message: msg,
             type: classified.openAIType,
@@ -826,7 +826,7 @@ private func structuredNonStreamingResponse(
             )
         }
         let msg = classified.openAIMessage
-        return chatFailure(
+        return openAIFailure(
             status: .init(code: classified.httpStatusCode),
             message: msg,
             type: classified.openAIType,
@@ -1035,7 +1035,7 @@ private func structuredStreamingResponse(
     )
 }
 
-private func chatFailure(
+func openAIFailure(
     status: HTTPResponse.Status,
     message: String,
     type: String,

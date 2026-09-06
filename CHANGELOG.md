@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Unified the duplicate `chatFailure`/`responsesFailure` HTTP error builders into a single `openAIFailure` function shared by both the chat completions and responses endpoints, eliminating a drift risk (#437). No change to error payloads, status codes, or debug capture.
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed

@@ -63,31 +63,7 @@ struct ResponsesEcho {
     }
 }
 
-// MARK: - Failure helper (same shape as the chat handler's chatFailure)
-
-private func responsesFailure(
-    status: HTTPResponse.Status,
-    message: String,
-    type: String,
-    stream: Bool,
-    requestBody: String?,
-    events: [String],
-    event: String,
-    code: String? = nil,
-    param: String? = nil
-) -> (response: Response, trace: ChatRequestTrace) {
-    (
-        openAIError(status: status, message: message, type: type, code: code, param: param),
-        ChatRequestTrace(
-            stream: stream,
-            estimatedTokens: nil,
-            error: message,
-            requestBody: requestBody,
-            responseBody: captureTruncatedLogBody(message, enabled: serverState.config.debug),
-            events: events + [event]
-        )
-    )
-}
+// Failure construction shared with the chat handler - see openAIFailure() in Handlers.swift.
 
 // MARK: - Handler
 
@@ -100,7 +76,7 @@ func handleResponses(_ request: Request, context: some RequestContext) async thr
         body = try await request.body.collect(upTo: BodyLimits.maxRequestBodyBytes)
     } catch {
         let mib = BodyLimits.maxRequestBodyBytes / (1024 * 1024)
-        return responsesFailure(
+        return openAIFailure(
             status: .init(code: 413),
             message: "Request body exceeds the \(mib) MiB limit.",
             type: "invalid_request_error",
@@ -115,7 +91,7 @@ func handleResponses(_ request: Request, context: some RequestContext) async thr
         responsesRequest = try JSONDecoder().decode(ResponsesRequest.self, from: body)
     } catch {
         let msg = "Invalid JSON: \(error.localizedDescription)"
-        return responsesFailure(
+        return openAIFailure(
             status: .badRequest, message: msg, type: "invalid_request_error",
             stream: false, requestBody: requestBodyString, events: events,
             event: "decode failed: \(msg)")
@@ -123,7 +99,7 @@ func handleResponses(_ request: Request, context: some RequestContext) async thr
     let isStreaming = responsesRequest.stream == true
 
     if let failure = ResponsesRequestValidator.validate(responsesRequest) {
-        return responsesFailure(
+        return openAIFailure(
             status: .init(code: failure.httpStatusCode),
             message: failure.message,
             type: "invalid_request_error",
@@ -144,7 +120,7 @@ func handleResponses(_ request: Request, context: some RequestContext) async thr
             structuredSchema = try SchemaConverter.generationSchema(
                 fromJSON: schemaJSON, name: format.name ?? "schema")
         } catch {
-            return responsesFailure(
+            return openAIFailure(
                 status: .badRequest,
                 message: "Invalid text.format json_schema: \(error)",
                 type: "invalid_request_error",
@@ -179,7 +155,7 @@ func handleResponses(_ request: Request, context: some RequestContext) async thr
             jsonMode: jsonMode, toolChoice: responsesRequest.tool_choice)
     } catch {
         let classified = ApfelError.classify(error)
-        return responsesFailure(
+        return openAIFailure(
             status: .init(code: classified.httpStatusCode),
             message: classified.openAIMessage,
             type: classified.openAIType,
@@ -276,7 +252,7 @@ private func responsesNonStreamingResponse(
                                   events: events + ["refusal delivered"],
                                   estimatedTokens: promptTokens + completionTokens)
         }
-        return responsesFailure(
+        return openAIFailure(
             status: .init(code: classified.httpStatusCode),
             message: classified.openAIMessage,
             type: classified.openAIType,
