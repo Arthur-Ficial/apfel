@@ -85,6 +85,9 @@ public struct ResponsesInputItem: Decodable, Sendable {
     /// Flattened text of the content (string form, or `input_text` /
     /// `output_text` parts joined with newlines).
     public let textContent: String?
+    /// True when any content part has a type other than `input_text` /
+    /// `output_text` (e.g. `input_image`). The validator rejects these.
+    public let hasNonTextParts: Bool
 
     enum CodingKeys: String, CodingKey { case type, role, content }
 
@@ -93,16 +96,27 @@ public struct ResponsesInputItem: Decodable, Sendable {
         let text: String?
     }
 
+    private static let textPartTypes: Set<String> = ["input_text", "output_text"]
+
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         type = try c.decodeIfPresent(String.self, forKey: .type)
         role = try c.decodeIfPresent(String.self, forKey: .role)
-        if let s = try? c.decodeIfPresent(String.self, forKey: .content) {
-            textContent = s
-        } else if let parts = try? c.decodeIfPresent([Part].self, forKey: .content) {
-            textContent = parts.compactMap(\.text).joined(separator: "\n")
+        if c.contains(.content) {
+            if let s = try? c.decode(String.self, forKey: .content) {
+                textContent = s
+                hasNonTextParts = false
+            } else {
+                let parts = try c.decode([Part].self, forKey: .content)
+                textContent = parts.compactMap(\.text).joined(separator: "\n")
+                hasNonTextParts = parts.contains { part in
+                    guard let partType = part.type else { return false }
+                    return !Self.textPartTypes.contains(partType)
+                }
+            }
         } else {
             textContent = nil
+            hasNonTextParts = false
         }
     }
 }
@@ -185,6 +199,8 @@ public enum ResponsesRequestValidator {
         case emptyInput
         case unknownRole(String)
         case invalidLastRole(String)
+        case emptyLastMessageContent
+        case imageContent
         case invalidTextFormat(String)
         case missingSchema
         case invalidRange(String)
@@ -214,6 +230,10 @@ public enum ResponsesRequestValidator {
                 return "Unknown input role '\(r)' (allowed: system, developer, user, assistant)."
             case .invalidLastRole(let r):
                 return "The last input item must be a user turn, got role '\(r)'."
+            case .emptyLastMessageContent:
+                return "The last message must have non-empty 'content'"
+            case .imageContent:
+                return "Image content is not supported by the Apple on-device model"
             case .invalidTextFormat(let t):
                 return "Unsupported text.format.type '\(t)' (supported: text, json_object, json_schema)."
             case .missingSchema:
@@ -295,6 +315,11 @@ public enum ResponsesRequestValidator {
                 }
             }
             if last.role != "user" { return .invalidLastRole(last.role ?? "none") }
+            if items.contains(where: \.hasNonTextParts) { return .imageContent }
+            let lastText = last.textContent
+            if lastText == nil || lastText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true {
+                return .emptyLastMessageContent
+            }
         }
 
         // Output format.

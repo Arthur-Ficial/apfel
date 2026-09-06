@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `/v1/responses` now returns 400 (not 500) for malformed content: empty strings, non-string scalars, and text parts with no `text` field. Image content parts are rejected with a 400 naming the unsupported content type instead of being silently dropped. Mirrors the existing `ChatRequestValidator` checks for `.emptyLastMessageContent` and `.imageContent` (#409).
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed
