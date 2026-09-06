@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Blocking MCP stdio I/O no longer parks a cooperative-pool thread (#431). `AnyMCPConnection.callTool` dispatches the blocking `sendAndReceive` call to `DispatchQueue.global()` instead of `Task.detached`, which does not leave the cooperative executor.
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed

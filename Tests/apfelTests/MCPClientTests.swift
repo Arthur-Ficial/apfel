@@ -517,4 +517,33 @@ func runMCPClientTests() {
         try assertEqual(calls!.first?.id, "call_001")
         try assertTrue(calls!.first!.argumentsString.contains("CLAUDE.md"), "arguments must contain the file path")
     }
+
+    // MARK: - Cooperative-pool starvation fix (#431)
+    // Task.detached does not leave the cooperative pool; blocking stdio I/O
+    // must be dispatched to DispatchQueue.global() instead.
+
+    testAsync("DispatchQueue.global continuation propagates tool results (#431)") {
+        let result: String = try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                continuation.resume(returning: "20501")
+            }
+        }
+        try assertEqual(result, "20501")
+    }
+
+    testAsync("DispatchQueue.global continuation propagates errors (#431)") {
+        do {
+            let _: String = try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    continuation.resume(throwing: MCPError.timedOut("tool 'slow' timed out after 5s"))
+                }
+            }
+            throw TestFailure("expected MCPError.timedOut to propagate through continuation")
+        } catch let e as MCPError {
+            guard case .timedOut(let msg) = e else {
+                throw TestFailure("expected .timedOut, got \(e)")
+            }
+            try assertTrue(msg.contains("slow"), "message must preserve tool name: \(msg)")
+        }
+    }
 }

@@ -14,8 +14,8 @@ private let mcpShutdownGraceSeconds: TimeInterval = 2.0
 /// A connection to a single MCP server process (stdio transport).
 ///
 /// Thread safety (justifying `@unchecked Sendable`): in `--serve` mode,
-/// `AnyMCPConnection.callTool` runs this connection's blocking stdio I/O via
-/// `Task.detached`, so concurrent requests reach one instance from multiple
+/// `AnyMCPConnection.callTool` dispatches this connection's blocking stdio
+/// I/O to `DispatchQueue.global()`, so concurrent requests reach one instance from multiple
 /// threads. All mutable state is confined behind locks: `nextId` is guarded by
 /// `lock` (`allocId()`), and every wire exchange - the full send+receive pair
 /// in `sendAndReceive` and standalone notification writes via `sendLocked` -
@@ -384,8 +384,15 @@ enum AnyMCPConnection: Sendable {
     func callTool(name: String, arguments: String) async throws -> MCPProtocol.ToolCallResult {
         switch self {
         case .local(let c):
-            // Run blocking stdio I/O off the cooperative thread pool
-            return try await Task.detached { try c.callTool(name: name, arguments: arguments) }.value
+            return try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    do {
+                        continuation.resume(returning: try c.callTool(name: name, arguments: arguments))
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+                }
+            }
         case .remote(let c):
             return try await c.callTool(name: name, arguments: arguments)
         }
