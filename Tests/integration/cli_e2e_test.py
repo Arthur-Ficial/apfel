@@ -468,6 +468,76 @@ def test_count_tokens_strict_exit_over_budget():
     assert result.returncode == 4, f"expected exit 4, got {result.returncode}: {result.stderr}"
 
 
+@pytest.mark.model
+def test_count_tokens_mcp_total_includes_prompt():
+    """#399: --count-tokens --mcp must include the prompt in the total.
+
+    A short and a long prompt must produce different totals. Before the fix,
+    total was the same regardless of prompt length because the final prompt
+    entry was never appended to the transcript entries on the MCP path.
+    """
+    require_model()
+    mcp_server = str(ROOT / "mcp" / "calculator" / "server.py")
+    short = run_cli(
+        ["--count-tokens", "-o", "json", "--mcp", mcp_server, "hello"],
+        timeout=60,
+    )
+    assert short.returncode == 0, f"stderr: {short.stderr}"
+    short_data = json.loads(short.stdout)
+
+    long_prompt = "hello " * 100
+    long = run_cli(
+        ["--count-tokens", "-o", "json", "--mcp", mcp_server, long_prompt],
+        timeout=60,
+    )
+    assert long.returncode == 0, f"stderr: {long.stderr}"
+    long_data = json.loads(long.stdout)
+
+    assert long_data["total"] > short_data["total"], (
+        f"total must grow with prompt length under --mcp (#399): "
+        f"short total={short_data['total']}, long total={long_data['total']}"
+    )
+    assert long_data["prompt_tokens"] > short_data["prompt_tokens"], (
+        f"prompt_tokens must differ: "
+        f"short={short_data['prompt_tokens']}, long={long_data['prompt_tokens']}"
+    )
+
+
+@pytest.mark.model
+def test_count_tokens_mcp_total_equals_plain_plus_tools():
+    """#399: total with --mcp must equal the plain total plus mcp_tool_tokens.
+
+    This verifies the arithmetic relationship: the MCP path adds tool
+    definitions on top of the same prompt, so the difference between the
+    with-tools and without-tools counts is exactly mcp_tool_tokens.
+    """
+    require_model()
+    mcp_server = str(ROOT / "mcp" / "calculator" / "server.py")
+    prompt = "What is 2 plus 3?"
+
+    with_mcp = run_cli(
+        ["--count-tokens", "-o", "json", "--mcp", mcp_server, prompt],
+        timeout=60,
+    )
+    assert with_mcp.returncode == 0, f"stderr: {with_mcp.stderr}"
+    mcp_data = json.loads(with_mcp.stdout)
+
+    without_mcp = run_cli(
+        ["--count-tokens", "-o", "json", prompt],
+        timeout=60,
+    )
+    assert without_mcp.returncode == 0, f"stderr: {without_mcp.stderr}"
+    plain_data = json.loads(without_mcp.stdout)
+
+    expected_total = plain_data["total"] + mcp_data["mcp_tool_tokens"]
+    assert mcp_data["total"] == expected_total, (
+        f"total with --mcp must equal plain total + mcp_tool_tokens (#399): "
+        f"mcp total={mcp_data['total']}, plain total={plain_data['total']}, "
+        f"mcp_tool_tokens={mcp_data['mcp_tool_tokens']}, "
+        f"expected={expected_total}"
+    )
+
+
 def test_invalid_flag_exit_code():
     result = run_cli(["--definitely-not-a-real-flag"])
     assert result.returncode == 2

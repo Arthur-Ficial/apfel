@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `--count-tokens --mcp` now includes the prompt in the reported `total`, fixing incorrect `fits` verdicts and `--strict` pass-throughs (#399). The MCP branch of the token-counting path was assigning raw transcript entries from `ContextManager.makeSession` without wrapping them with `sessionInputEntries`, which every other call site does to append the final prompt entry.
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed
