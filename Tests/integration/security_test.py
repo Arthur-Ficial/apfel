@@ -560,3 +560,35 @@ def test_default_preflight_still_works_without_cors():
     )
     assert resp.status_code == 204
     assert "access-control-allow-headers" not in resp.headers
+
+
+# MARK: - Deep nesting DoS (#462)
+
+
+def _deeply_nested_object(depth):
+    """Build a JSON object nested `depth` levels deep."""
+    return '{"a":' * depth + '1' + '}' * depth
+
+
+def test_deeply_nested_schema_is_rejected_not_fatal():
+    """A 200-level nested tools[].function.parameters must return 400, not crash the server (#462)."""
+    nest = _deeply_nested_object(200)
+    payload = {
+        "model": "apple-foundationmodel",
+        "messages": [{"role": "user", "content": "hi"}],
+        "tools": [{"type": "function", "function": {"name": "t", "parameters": None}}],
+    }
+    import json
+    raw = json.dumps(payload)
+    raw = raw.replace('"parameters": null', '"parameters": ' + nest)
+
+    resp = httpx.post(
+        f"{BASE_URL}/v1/chat/completions",
+        content=raw,
+        headers={"Content-Type": "application/json"},
+        timeout=30,
+    )
+    assert resp.status_code == 400, f"expected 400 for deep nesting, got {resp.status_code}"
+
+    health = httpx.get(f"{BASE_URL}/health", timeout=5)
+    assert health.status_code == 200, "server should still be alive after deep-nesting rejection"

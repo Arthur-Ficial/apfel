@@ -124,6 +124,26 @@ func runOpenAIModelsTests() {
         try assertEqual(parsed?[1] as? String, "two")
         try assertEqual(parsed?[2] as? Bool, false)
     }
+
+    test("AnyCodable rejects excessive nesting (#462)") {
+        let depth = 200
+        let json = String(repeating: #"{"a":"#, count: depth) + "1" + String(repeating: "}", count: depth)
+        do {
+            _ = try decode(AnyCodable.self, from: json)
+            throw TestFailure("expected DecodingError for depth \(depth), but decoding succeeded")
+        } catch is DecodingError {
+            // correct - excessive nesting rejected with DecodingError
+        }
+    }
+
+    test("AnyCodable accepts realistic nesting (#462)") {
+        let depth = 10
+        let json = String(repeating: #"{"a":"#, count: depth) + "1" + String(repeating: "}", count: depth)
+        let decoded = try decode(AnyCodable.self, from: json)
+        let reEncoded = try JSONEncoder().encode(decoded)
+        let reparsed = try JSONSerialization.jsonObject(with: reEncoded) as? [String: Any]
+        try assertNotNil(reparsed?["a"])
+    }
 }
 
 func runChatRequestValidatorTests() {

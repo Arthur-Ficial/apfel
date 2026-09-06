@@ -411,9 +411,19 @@ public struct JSONSchemaSpec: Decodable, Sendable, Equatable, Hashable {
 // MARK: - Type-erased Codable for raw JSON schemas
 
 struct AnyCodable: Codable, Sendable {
+    static let maxNestingDepth = 64
+
     let value: (any Sendable)?
 
     init(from decoder: Decoder) throws {
+        guard decoder.codingPath.count <= Self.maxNestingDepth else {
+            throw DecodingError.dataCorrupted(
+                DecodingError.Context(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "JSON nesting exceeds the maximum supported depth of \(Self.maxNestingDepth)"
+                )
+            )
+        }
         let container = try decoder.singleValueContainer()
         if container.decodeNil()                                    { value = nil; return }
         if let bool = try? container.decode(Bool.self)              { value = bool; return }

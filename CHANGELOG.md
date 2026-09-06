@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `AnyCodable.init(from:)` now rejects JSON nested deeper than 64 levels with a `DecodingError` instead of recursing until the cooperative-pool thread stack overflows (#462). Prevents a ~1.3 KB POST from crashing the entire `apfel --serve` process via `tools[].function.parameters`, `response_format.json_schema.schema`, or `text.format.schema`.
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed
