@@ -547,6 +547,91 @@ def test_cors_preflight_echoes_requested_headers():
     assert "x-stainless-lang" in allowed.lower()
 
 
+def test_deeply_nested_schema_is_rejected_not_fatal():
+    """A ~200-level nested JSON in tool parameters / response_format / text.format
+    must return 400 and the server must survive (not crash with SIGBUS). #462"""
+    depth = 200
+    nest = '{"a":' * depth + "1" + "}" * depth
+
+    tool_payload = {
+        "model": "apple-foundationmodel",
+        "messages": [{"role": "user", "content": "hi"}],
+        "tools": [
+            {
+                "type": "function",
+                "function": {"name": "t", "parameters": None},
+            }
+        ],
+    }
+
+    import json
+
+    # Inject the deeply nested JSON as raw text into the payload string to avoid
+    # Python's own recursion limit on json.dumps for deeply nested dicts.
+    def make_payload_with_nested(field_path):
+        """Build a JSON string with `nest` injected at the given field."""
+        if field_path == "tools_parameters":
+            base = json.dumps(tool_payload)
+            return base.replace("null", nest, 1)
+        elif field_path == "response_format_schema":
+            rf_payload = {
+                "model": "apple-foundationmodel",
+                "messages": [{"role": "user", "content": "hi"}],
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {"name": "deep", "schema": None},
+                },
+            }
+            base = json.dumps(rf_payload)
+            return base.replace("null", nest, 1)
+        elif field_path == "text_format_schema":
+            resp_payload = {
+                "model": "apple-foundationmodel",
+                "input": "hi",
+                "text": {"format": {"type": "json_schema", "name": "deep", "schema": None}},
+            }
+            base = json.dumps(resp_payload)
+            return base.replace("null", nest, 1)
+
+    with running_server() as (base_url, _):
+        # 1) tools[].function.parameters
+        resp = httpx.post(
+            f"{base_url}/v1/chat/completions",
+            content=make_payload_with_nested("tools_parameters"),
+            headers={"Content-Type": "application/json"},
+            timeout=10,
+        )
+        assert resp.status_code == 400, f"tools nesting: expected 400, got {resp.status_code}"
+
+        # Confirm server survived
+        health = httpx.get(f"{base_url}/health", timeout=5)
+        assert health.status_code == 200, "server died after tools nesting payload"
+
+        # 2) response_format.json_schema.schema
+        resp = httpx.post(
+            f"{base_url}/v1/chat/completions",
+            content=make_payload_with_nested("response_format_schema"),
+            headers={"Content-Type": "application/json"},
+            timeout=10,
+        )
+        assert resp.status_code == 400, f"response_format nesting: expected 400, got {resp.status_code}"
+
+        health = httpx.get(f"{base_url}/health", timeout=5)
+        assert health.status_code == 200, "server died after response_format nesting payload"
+
+        # 3) text.format.schema on /v1/responses
+        resp = httpx.post(
+            f"{base_url}/v1/responses",
+            content=make_payload_with_nested("text_format_schema"),
+            headers={"Content-Type": "application/json"},
+            timeout=10,
+        )
+        assert resp.status_code == 400, f"text.format nesting: expected 400, got {resp.status_code}"
+
+        health = httpx.get(f"{base_url}/health", timeout=5)
+        assert health.status_code == 200, "server died after text.format nesting payload"
+
+
 def test_default_preflight_still_works_without_cors():
     """Without --cors flag, OPTIONS should return 204 but no CORS headers."""
     resp = httpx.options(

@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `AnyCodable.init(from:)` now caps JSON nesting at 64 levels, preventing a stack overflow crash (SIGBUS) when a deeply nested `tools[].function.parameters`, `response_format.json_schema.schema`, or `text.format.schema` payload is sent to the server (#462). Depths beyond the cap return 400 instead of crashing the process.
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed
