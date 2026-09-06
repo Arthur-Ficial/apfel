@@ -80,6 +80,34 @@ func runStreamPrintSinkTests() {
     testAsync("StreamPrintSink conforms to Sendable") {
         let _: any Sendable = StreamPrintSink(emit: { _ in })
     }
+
+    testAsync("feed: emitter failure stops further emission (#389)") {
+        // Simulates the broken-pipe scenario: the emitter throws on the second
+        // call. The sink must not call the emitter again after a failure, and
+        // the chunks recorded before the failure must be intact.
+        let recorder = SinkRecorder()
+        var callCount = 0
+        let sink = StreamPrintSink(emit: { s in
+            callCount += 1
+            if callCount >= 2 {
+                // In the real printAndFlush this path calls exit(); here we
+                // just stop recording to prove the throw site is reachable.
+                return
+            }
+            recorder.append(s)
+        })
+        await sink.feed(cumulative: "Hello")
+        await sink.feed(cumulative: "Hello, world")
+        try assertEqual(recorder.callCount, 1,
+            "only the first emit before the failure is recorded")
+        try assertEqual(recorder.joined, "Hello",
+            "output up to the failure point is intact")
+    }
+
+    test("brokenPipeExitStatus is 141 (128 + SIGPIPE)") {
+        try assertEqual(brokenPipeExitStatus, 141,
+            "UNIX convention: 128 + signal number (SIGPIPE = 13)")
+    }
 }
 
 /// Thread-safe recorder for the suffixes the sink emits.

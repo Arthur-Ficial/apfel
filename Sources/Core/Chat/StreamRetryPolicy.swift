@@ -26,6 +26,10 @@
 
 import Foundation
 
+// Exit status a UNIX filter uses when stdout's consumer closes the pipe.
+// 128 + SIGPIPE (13) = 141.
+public let brokenPipeExitStatus: Int32 = 141
+
 public actor StreamPrintSink {
     /// Number of characters already emitted (the high-water mark across retries).
     private var emittedCount = 0
@@ -48,7 +52,18 @@ public actor StreamPrintSink {
     }
 
     /// Default emit: write to stdout and flush so streaming output is live.
+    ///
+    /// Uses the throwing `write(contentsOf:)` overload. The legacy non-throwing
+    /// `write(_:)` raises an ObjC `NSFileHandleOperationException` on EPIPE
+    /// that Swift cannot catch, so `apfel --stream ... | head -1` aborted with
+    /// a stack trace (#389). With SIGPIPE ignored process-wide (main.swift:57),
+    /// a closed reader surfaces as EPIPE here. A consumer that stopped reading
+    /// is normal for a UNIX filter - exit the way SIGPIPE would have, quietly.
     public static let printAndFlush: @Sendable (String) -> Void = { suffix in
-        FileHandle.standardOutput.write(Data(suffix.utf8))
+        do {
+            try FileHandle.standardOutput.write(contentsOf: Data(suffix.utf8))
+        } catch {
+            exit(brokenPipeExitStatus)
+        }
     }
 }
