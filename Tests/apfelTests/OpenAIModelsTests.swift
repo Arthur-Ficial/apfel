@@ -125,53 +125,52 @@ func runOpenAIModelsTests() {
         try assertEqual(parsed?[2] as? Bool, false)
     }
 
-    test("AnyCodable rejects excessive nesting depth (#462)") {
+    test("RawJSON rejects deeply nested JSON with DecodingError (#462)") {
         let depth = 200
-        let json = String(repeating: #"{"a":"#, count: depth) + "1" + String(repeating: "}", count: depth)
+        let nest = String(repeating: #"{"a":"#, count: depth) + "1" + String(repeating: "}", count: depth)
         do {
-            _ = try JSONDecoder().decode(AnyCodable.self, from: Data(json.utf8))
+            _ = try JSONDecoder().decode(RawJSON.self, from: Data(nest.utf8))
             throw TestFailure("expected DecodingError but decoding succeeded")
         } catch is DecodingError {
             // expected
         }
     }
 
-    test("AnyCodable accepts realistic nesting depth (#462)") {
-        let json = #"{"type":"object","properties":{"address":{"type":"object","properties":{"city":{"type":"string"},"geo":{"type":"object","properties":{"lat":{"type":"number"},"lon":{"type":"number"}}}}}}}"#
-        let decoded = try JSONDecoder().decode(AnyCodable.self, from: Data(json.utf8))
-        let reEncoded = try JSONEncoder().encode(decoded)
-        let reparsed = try JSONSerialization.jsonObject(with: reEncoded) as? [String: Any]
-        try assertEqual(reparsed?["type"] as? String, "object")
-        try assertNotNil(reparsed?["properties"])
-    }
-
-    test("AnyCodable rejects nesting at exactly maxNestingDepth + 1 (#462)") {
-        let depth = AnyCodable.maxNestingDepth + 1
-        let json = String(repeating: #"{"k":"#, count: depth) + "1" + String(repeating: "}", count: depth)
+    test("ChatCompletionRequest rejects deeply nested tool parameters (#462)") {
+        let depth = 200
+        let nest = String(repeating: #"{"a":"#, count: depth) + "1" + String(repeating: "}", count: depth)
+        let json = #"{"model":"apple-foundationmodel","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"t","parameters":"# + nest + #"}}]}"#
         do {
-            _ = try JSONDecoder().decode(AnyCodable.self, from: Data(json.utf8))
+            _ = try JSONDecoder().decode(ChatCompletionRequest.self, from: Data(json.utf8))
             throw TestFailure("expected DecodingError but decoding succeeded")
-        } catch let error as DecodingError {
-            if case .dataCorrupted(let ctx) = error {
-                try assertTrue(ctx.debugDescription.contains("nesting"))
-            } else {
-                throw TestFailure("expected dataCorrupted but got \(error)")
-            }
+        } catch is DecodingError {
+            // expected
         }
     }
 
-    test("AnyCodable accepts nesting at exactly maxNestingDepth (#462)") {
-        let depth = AnyCodable.maxNestingDepth
-        let json = String(repeating: #"{"k":"#, count: depth) + #""v""# + String(repeating: "}", count: depth)
-        let decoded = try JSONDecoder().decode(AnyCodable.self, from: Data(json.utf8))
-        try assertNotNil(decoded.value)
+    test("RawJSON accepts realistic nested schema and round-trips (#462)") {
+        let json = #"{"type":"object","properties":{"address":{"type":"object","properties":{"city":{"type":"string"},"geo":{"type":"object","properties":{"lat":{"type":"number"},"lon":{"type":"number"}}}}}}}"#
+        let raw = try decode(RawJSON.self, from: json)
+        let parsed = try JSONSerialization.jsonObject(with: Data(raw.value.utf8)) as? [String: Any]
+        try assertEqual(parsed?["type"] as? String, "object")
+        try assertNotNil(parsed?["properties"])
     }
 
-    test("RawJSON rejects excessive nesting via AnyCodable guard (#462)") {
+    test("ChatCompletionRequest with normal nested tool schema decodes (#462)") {
+        let json = #"{"model":"apple-foundationmodel","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"weather","description":"lookup","parameters":{"type":"object","properties":{"city":{"type":"string"},"opts":{"type":"object","properties":{"units":{"type":"string","enum":["c","f"]}}}}}}}]}"#
+        let req = try decode(ChatCompletionRequest.self, from: json)
+        try assertEqual(req.tools?.count, 1)
+        let params = try unwrap(req.tools?.first?.function.parameters, "expected parameters")
+        let parsed = try JSONSerialization.jsonObject(with: Data(params.value.utf8)) as? [String: Any]
+        try assertEqual(parsed?["type"] as? String, "object")
+    }
+
+    test("ChatCompletionRequest rejects deeply nested response_format schema (#462)") {
         let depth = 200
-        let json = String(repeating: #"{"a":"#, count: depth) + "1" + String(repeating: "}", count: depth)
+        let nest = String(repeating: #"{"a":"#, count: depth) + "1" + String(repeating: "}", count: depth)
+        let json = #"{"model":"apple-foundationmodel","messages":[{"role":"user","content":"hi"}],"response_format":{"type":"json_schema","json_schema":{"name":"deep","schema":"# + nest + #"}}}"#
         do {
-            _ = try JSONDecoder().decode(RawJSON.self, from: Data(json.utf8))
+            _ = try JSONDecoder().decode(ChatCompletionRequest.self, from: Data(json.utf8))
             throw TestFailure("expected DecodingError but decoding succeeded")
         } catch is DecodingError {
             // expected

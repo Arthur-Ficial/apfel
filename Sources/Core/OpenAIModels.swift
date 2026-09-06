@@ -413,16 +413,37 @@ public struct JSONSchemaSpec: Decodable, Sendable, Equatable, Hashable {
 struct AnyCodable: Codable, Sendable {
     static let maxNestingDepth = 64
 
+    private struct DepthExceededMarker: Error {}
+
+    private static func depthError(codingPath: [CodingKey]) -> DecodingError {
+        .dataCorrupted(.init(
+            codingPath: codingPath,
+            debugDescription: "JSON nesting exceeds the maximum supported depth of \(maxNestingDepth)",
+            underlyingError: DepthExceededMarker()
+        ))
+    }
+
+    private static func isDepthError(_ error: Error) -> Bool {
+        guard let de = error as? DecodingError,
+              case .dataCorrupted(let ctx) = de else { return false }
+        return ctx.underlyingError is DepthExceededMarker
+    }
+
     let value: (any Sendable)?
+
+    private static func probe<T: Decodable>(_ type: T.Type, in container: SingleValueDecodingContainer) throws -> T? {
+        do {
+            return try container.decode(type)
+        } catch where isDepthError(error) {
+            throw error
+        } catch {
+            return nil
+        }
+    }
 
     init(from decoder: Decoder) throws {
         if decoder.codingPath.count > Self.maxNestingDepth {
-            throw DecodingError.dataCorrupted(
-                DecodingError.Context(
-                    codingPath: decoder.codingPath,
-                    debugDescription: "JSON nesting exceeds the maximum supported depth of \(Self.maxNestingDepth)"
-                )
-            )
+            throw depthError(codingPath: decoder.codingPath)
         }
         let container = try decoder.singleValueContainer()
         if container.decodeNil()                                    { value = nil; return }
@@ -430,11 +451,11 @@ struct AnyCodable: Codable, Sendable {
         if let int = try? container.decode(Int.self)                { value = int; return }
         if let double = try? container.decode(Double.self)          { value = double; return }
         if let string = try? container.decode(String.self)          { value = string; return }
-        if let object = try? container.decode([String: AnyCodable].self) {
+        if let object = try Self.probe([String: AnyCodable].self, in: container) {
             value = object
             return
         }
-        if let array = try? container.decode([AnyCodable].self) {
+        if let array = try Self.probe([AnyCodable].self, in: container) {
             value = array
             return
         }
