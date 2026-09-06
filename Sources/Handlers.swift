@@ -193,6 +193,21 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
     // MCP auto-execute: when tools were server-injected, run model, execute tool calls,
     // re-prompt for final answer, then deliver as JSON or SSE.
     if toolsAreMCPInjected {
+        // json_schema is a documented guarantee (#167) but mcpAutoExecuteResponse
+        // uses unconstrained generation - reject loudly instead of silently
+        // dropping the schema (#392).
+        if structuredSchema != nil {
+            return chatFailure(
+                status: .badRequest,
+                message: "response_format.json_schema is not supported while the server has MCP tools attached (--mcp). Start a server without --mcp for guaranteed structured output.",
+                type: "invalid_request_error",
+                stream: isStreaming,
+                requestBody: requestBodyString,
+                events: events,
+                event: "json_schema + mcp auto-execute rejected",
+                param: "response_format"
+            )
+        }
         let userPrompt = chatRequest.messages.last(where: { $0.role == "user" })?.textContent ?? finalPrompt
         let result = try await mcpAutoExecuteResponse(
             session: session, prompt: finalPrompt, userPrompt: userPrompt,

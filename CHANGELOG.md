@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `response_format: json_schema` against an `--mcp` server now returns 400 instead of silently ignoring the schema and generating unconstrained text (#392).
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed

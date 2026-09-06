@@ -293,3 +293,68 @@ def test_responses_error_object_has_null_param_and_code():
     err = r.json()["error"]
     assert "param" in err and err["param"] is None
     assert "code" in err and err["code"] is None
+
+
+# ============================================================================
+# #392 - json_schema + MCP must be rejected, not silently ignored
+# ============================================================================
+
+MCP_BASE_URL = "http://localhost:11435"
+
+
+def _post_mcp(payload, timeout=15):
+    return httpx.post(
+        f"{MCP_BASE_URL}/v1/chat/completions",
+        json=payload,
+        timeout=timeout,
+    )
+
+
+def test_json_schema_with_mcp_is_rejected():
+    """response_format json_schema against an --mcp server returns 400 (#392).
+
+    json_schema is a documented guarantee (#167). The MCP auto-execute path
+    uses unconstrained generation and cannot honour the schema, so the
+    combination must fail loudly rather than silently dropping the constraint.
+    Model-free: the rejection fires before the model is touched.
+    """
+    resp = _post_mcp({
+        "model": MODEL,
+        "messages": [{"role": "user", "content": "Say hello."}],
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "answer",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "properties": {"count": {"type": "integer"}},
+                    "required": ["count"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+    })
+    assert resp.status_code == 400, f"Expected 400, got {resp.status_code}: {resp.text[:300]}"
+    err = _assert_openai_error(resp, expected_type="invalid_request_error")
+    assert "response_format" in err["message"].lower() or "json_schema" in err["message"].lower(), \
+        f"Error message must name the conflict: {err['message']}"
+    assert err["param"] == "response_format"
+
+
+def test_json_object_with_mcp_still_works():
+    """response_format json_object against an --mcp server is unaffected (#392).
+
+    Only json_schema is rejected; json_object (unconstrained JSON mode) works
+    fine with the MCP path because it does not promise schema adherence.
+    Model-free: a 200 proves the request was accepted (the model call itself
+    may or may not succeed depending on Apple Intelligence availability, but
+    a 400 would prove a false rejection).
+    """
+    resp = _post_mcp({
+        "model": MODEL,
+        "messages": [{"role": "user", "content": "Return JSON with key 'answer' and value 42."}],
+        "response_format": {"type": "json_object"},
+    })
+    assert resp.status_code != 400, \
+        f"json_object must not be rejected on MCP server: {resp.text[:300]}"
