@@ -125,24 +125,26 @@ func runOpenAIModelsTests() {
         try assertEqual(parsed?[2] as? Bool, false)
     }
 
-    test("AnyCodable rejects excessive nesting (#462)") {
+    test("RawJSON rejects excessive nesting with DecodingError (#462)") {
         let depth = 200
-        let json = String(repeating: #"{"a":"#, count: depth) + "1" + String(repeating: "}", count: depth)
+        let nest = String(repeating: "{\"a\":", count: depth) + "1" + String(repeating: "}", count: depth)
+        let json = "{\"model\":\"apple-foundationmodel\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"t\",\"parameters\":" + nest + "}}]}"
         do {
-            _ = try decode(AnyCodable.self, from: json)
+            _ = try decode(ChatCompletionRequest.self, from: json)
             throw TestFailure("expected DecodingError for depth \(depth), but decoding succeeded")
         } catch is DecodingError {
-            // correct - excessive nesting rejected with DecodingError
+            // correct - excessive nesting rejected before reaching the handler
         }
     }
 
-    test("AnyCodable accepts realistic nesting (#462)") {
+    test("RawJSON accepts realistic nesting (#462)") {
         let depth = 10
-        let json = String(repeating: #"{"a":"#, count: depth) + "1" + String(repeating: "}", count: depth)
-        let decoded = try decode(AnyCodable.self, from: json)
-        let reEncoded = try JSONEncoder().encode(decoded)
-        let reparsed = try JSONSerialization.jsonObject(with: reEncoded) as? [String: Any]
-        try assertNotNil(reparsed?["a"])
+        let nest = String(repeating: "{\"a\":", count: depth) + "1" + String(repeating: "}", count: depth)
+        let toolJSON = "{\"type\":\"function\",\"function\":{\"name\":\"t\",\"parameters\":" + nest + "}}"
+        let tool = try decode(OpenAITool.self, from: toolJSON)
+        let raw = try unwrap(tool.function.parameters, "expected parameters JSON")
+        let parsed = try JSONSerialization.jsonObject(with: Data(raw.value.utf8)) as? [String: Any]
+        try assertNotNil(parsed?["a"])
     }
 }
 

@@ -413,14 +413,33 @@ public struct JSONSchemaSpec: Decodable, Sendable, Equatable, Hashable {
 struct AnyCodable: Codable, Sendable {
     static let maxNestingDepth = 64
 
+    private struct NestingDepthExceeded: Error {}
+
     let value: (any Sendable)?
+
+    private static func probe<T: Decodable>(
+        _ type: T.Type,
+        in container: SingleValueDecodingContainer
+    ) throws -> T? {
+        do {
+            return try container.decode(type)
+        } catch let error as DecodingError {
+            if case .dataCorrupted(let ctx) = error, ctx.underlyingError is NestingDepthExceeded {
+                throw error
+            }
+            return nil
+        } catch {
+            return nil
+        }
+    }
 
     init(from decoder: Decoder) throws {
         guard decoder.codingPath.count <= Self.maxNestingDepth else {
             throw DecodingError.dataCorrupted(
                 DecodingError.Context(
                     codingPath: decoder.codingPath,
-                    debugDescription: "JSON nesting exceeds the maximum supported depth of \(Self.maxNestingDepth)"
+                    debugDescription: "JSON nesting exceeds the maximum supported depth of \(Self.maxNestingDepth)",
+                    underlyingError: NestingDepthExceeded()
                 )
             )
         }
@@ -430,11 +449,11 @@ struct AnyCodable: Codable, Sendable {
         if let int = try? container.decode(Int.self)                { value = int; return }
         if let double = try? container.decode(Double.self)          { value = double; return }
         if let string = try? container.decode(String.self)          { value = string; return }
-        if let object = try? container.decode([String: AnyCodable].self) {
+        if let object = try Self.probe([String: AnyCodable].self, in: container) {
             value = object
             return
         }
-        if let array = try? container.decode([AnyCodable].self) {
+        if let array = try Self.probe([AnyCodable].self, in: container) {
             value = array
             return
         }
