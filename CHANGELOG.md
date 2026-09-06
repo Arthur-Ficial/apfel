@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `shellOutput` now reads the child's stdout before `waitUntilExit()`, preventing a deadlock when output exceeds the OS pipe buffer. Launch failures and non-zero exit codes return `nil` instead of an empty string so callers can distinguish failure from empty output (#433).
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed
