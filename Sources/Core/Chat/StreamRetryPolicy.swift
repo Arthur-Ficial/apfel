@@ -29,26 +29,48 @@ import Foundation
 public actor StreamPrintSink {
     /// Number of characters already emitted (the high-water mark across retries).
     private var emittedCount = 0
-    private let emit: @Sendable (String) -> Void
+    private let emit: @Sendable (String) throws -> Void
+    private var broken = false
 
     /// - parameter emit: receives each newly-printable suffix. Defaults to
-    ///   writing to stdout and flushing, so deltas appear live.
-    public init(emit: @escaping @Sendable (String) -> Void = StreamPrintSink.printAndFlush) {
+    ///   writing to stdout and flushing, so deltas appear live. A throwing
+    ///   emitter that fails marks the sink broken; subsequent feeds are no-ops.
+    public init(emit: @escaping @Sendable (String) throws -> Void = StreamPrintSink.printAndFlush) {
         self.emit = emit
     }
 
     /// Feed a cumulative snapshot. Emits only the portion that extends beyond
     /// what has already been printed; a shorter or equal snapshot (as seen at
-    /// the start of a retry re-run) emits nothing.
+    /// the start of a retry re-run) emits nothing. Once the emitter has
+    /// failed (broken pipe), all subsequent feeds are silent no-ops.
     public func feed(cumulative content: String) {
+        guard !broken else { return }
         guard content.count > emittedCount else { return }
         let start = content.index(content.startIndex, offsetBy: emittedCount)
-        emit(String(content[start...]))
+        do {
+            try emit(String(content[start...]))
+        } catch {
+            broken = true
+            return
+        }
         emittedCount = content.count
     }
 
+    /// True once the emitter has failed (e.g. EPIPE on a closed stdout pipe).
+    public var isBroken: Bool { broken }
+
     /// Default emit: write to stdout and flush so streaming output is live.
+    ///
+    /// Uses the throwing `write(contentsOf:)` variant. The legacy non-throwing
+    /// `write(_:)` raises an Objective-C `NSFileHandleOperationException` on
+    /// EPIPE (when SIGPIPE is SIG_IGN'd), which Swift cannot catch (#389).
+    /// On a broken pipe, exit 141 (128 + SIGPIPE) - the standard UNIX
+    /// convention for a consumer that closed the pipe.
     public static let printAndFlush: @Sendable (String) -> Void = { suffix in
-        FileHandle.standardOutput.write(Data(suffix.utf8))
+        do {
+            try FileHandle.standardOutput.write(contentsOf: Data(suffix.utf8))
+        } catch {
+            exit(141)
+        }
     }
 }

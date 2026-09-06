@@ -75,6 +75,29 @@ func runStreamPrintSinkTests() {
         try assertEqual(recorder.callCount, 0, "no output for empty stream")
     }
 
+    testAsync("feed: a throwing emitter marks the sink broken and stops emission (#389)") {
+        struct BrokenPipe: Error {}
+        let recorder = SinkRecorder()
+        let sink = StreamPrintSink(emit: { suffix in
+            if recorder.callCount >= 1 { throw BrokenPipe() }
+            recorder.append(suffix)
+        })
+        // First feed succeeds.
+        await sink.feed(cumulative: "Hello")
+        try assertEqual(recorder.joined, "Hello", "first emit succeeds")
+        try assertFalse(await sink.isBroken, "not broken yet")
+
+        // Second feed triggers the throw inside the emitter.
+        await sink.feed(cumulative: "Hello, world")
+        try assertTrue(await sink.isBroken, "sink is broken after emitter throw")
+        try assertEqual(recorder.joined, "Hello", "no new output after break")
+
+        // Subsequent feeds are silent no-ops.
+        await sink.feed(cumulative: "Hello, world! More text.")
+        try assertEqual(recorder.joined, "Hello", "broken sink stays silent")
+        try assertTrue(await sink.isBroken, "still broken")
+    }
+
     // StreamPrintSink must be Sendable so it can be shared across the isolation
     // hops a retried async operation crosses.
     testAsync("StreamPrintSink conforms to Sendable") {

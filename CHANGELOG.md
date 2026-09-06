@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Streaming to a closed stdout pipe (`apfel --stream ... | head -1`) no longer aborts with an uncatchable `NSFileHandleOperationException` (#389). The default stream emitter now uses the throwing `write(contentsOf:)` variant and exits cleanly with status 141 (128 + SIGPIPE) when the consumer closes the pipe.
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed
