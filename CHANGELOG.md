@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Scalar tool-call arguments (number, bool) no longer abort the process via an uncatchable `NSInvalidArgumentException` (#388). `JSONSerialization.data(withJSONObject:)` now uses `.fragmentsAllowed` and the result is routed through `ensureJSONArguments` so a bare scalar becomes a valid JSON object.
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed

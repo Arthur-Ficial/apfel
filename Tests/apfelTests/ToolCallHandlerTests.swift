@@ -145,6 +145,36 @@ func runToolCallHandlerTests() {
         try assertTrue(prompt.contains("fn"))
     }
 
+    // MARK: - Scalar arguments do not crash (#388)
+
+    test("scalar number arguments do not crash (#388)") {
+        let response = #"{"tool_calls": [{"id": "x", "type": "function", "function": {"name": "add", "arguments": 7}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "add")
+        let args = result!.first!.argumentsString
+        let parsed = try? JSONSerialization.jsonObject(with: Data(args.utf8)) as? [String: Any]
+        try assertNotNil(parsed, "scalar number arguments must produce valid JSON object, got: \(args)")
+    }
+
+    test("scalar bool arguments do not crash (#388)") {
+        let response = #"{"tool_calls": [{"id": "x", "type": "function", "function": {"name": "toggle", "arguments": true}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "toggle")
+        let args = result!.first!.argumentsString
+        let parsed = try? JSONSerialization.jsonObject(with: Data(args.utf8)) as? [String: Any]
+        try assertNotNil(parsed, "scalar bool arguments must produce valid JSON object, got: \(args)")
+    }
+
+    test("null arguments fall through to empty object (#388)") {
+        let response = #"{"tool_calls": [{"id": "x", "type": "function", "function": {"name": "ping", "arguments": null}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "ping")
+        try assertEqual(result!.first?.argumentsString, "{}")
+    }
+
     // MARK: - Edge cases (bug fixes)
 
     test("detects tool call with missing closing bracket (#187)") {
