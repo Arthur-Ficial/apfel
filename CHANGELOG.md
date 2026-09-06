@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- MCP tool arguments and results no longer leak to stderr without `--debug` (#464). Without `--debug`, the server logs only the tool name, ok/error status, and result length. With `--debug`, args and results appear but are truncated to 512 characters. Prevents sensitive tool output from being written to the world-readable brew-service log file.
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed

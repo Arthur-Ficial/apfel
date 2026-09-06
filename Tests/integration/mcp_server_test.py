@@ -960,3 +960,84 @@ def test_temperature_zero_with_mcp():
     assert data["choices"][0]["finish_reason"] == "stop"
     content = data["choices"][0]["message"]["content"]
     assert content is not None
+
+
+# ============================================================================
+# MCP tool log gating (#464)
+# ============================================================================
+
+@contextlib.contextmanager
+def _running_mcp_server_with_log(mcp_script, debug=False):
+    """Start apfel --serve --mcp <script>; yield (api_url, read_log).
+
+    When debug=True the server is started with --debug so tool arguments
+    and results appear in the event log.
+    """
+    port = find_free_port()
+    with tempfile.NamedTemporaryFile(mode="w+", encoding="utf-8") as log_file:
+        args = [str(BINARY), "--serve", "--port", str(port),
+                "--mcp", str(mcp_script)]
+        if debug:
+            args.append("--debug")
+        proc = subprocess.Popen(args, stdout=log_file, stderr=log_file,
+                                text=True)
+        base_url = f"http://127.0.0.1:{port}"
+
+        def read_log():
+            log_file.flush()
+            with open(log_file.name, "r", encoding="utf-8") as fh:
+                return fh.read()
+
+        try:
+            wait_for_server(base_url)
+            yield f"{base_url}/v1", read_log
+        finally:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5)
+
+
+def test_tool_result_not_logged_without_debug():
+    """Without --debug, stderr shows tool name and ok/error but not args or result (#464)."""
+    require_model()
+    mcp_script = ROOT / "mcp" / "calculator" / "server.py"
+    with _running_mcp_server_with_log(mcp_script, debug=False) as (api_url, read_log):
+        post_chat_rotating_seeds(f"{api_url}/chat/completions", {
+            "model": MODEL,
+            "messages": [
+                {"role": "user",
+                 "content": "Use the add function to add 100 and 200. Reply with just the number."}
+            ],
+        }, TIMEOUT)
+        time.sleep(0.5)
+        log = read_log()
+        mcp_lines = [l for l in log.splitlines() if "mcp tool:" in l]
+        assert mcp_lines, "Expected at least one 'mcp tool:' event in log"
+        for line in mcp_lines:
+            assert "result_chars=" in line, \
+                f"Non-debug log should use shape-only format: {line}"
+            assert "(" not in line.split("mcp tool:")[1], \
+                f"Tool args leaked into non-debug log: {line}"
+
+
+def test_tool_result_logged_truncated_with_debug():
+    """With --debug, tool args and results appear in stderr (#464)."""
+    require_model()
+    mcp_script = ROOT / "mcp" / "calculator" / "server.py"
+    with _running_mcp_server_with_log(mcp_script, debug=True) as (api_url, read_log):
+        post_chat_rotating_seeds(f"{api_url}/chat/completions", {
+            "model": MODEL,
+            "messages": [
+                {"role": "user",
+                 "content": "Use the add function to add 100 and 200. Reply with just the number."}
+            ],
+        }, TIMEOUT)
+        time.sleep(0.5)
+        log = read_log()
+        mcp_lines = [l for l in log.splitlines() if "mcp tool:" in l]
+        assert mcp_lines, "Expected at least one 'mcp tool:' event in debug log"
+        assert any("(" in l for l in mcp_lines), \
+            f"Debug log should show tool args in parens: {mcp_lines}"
