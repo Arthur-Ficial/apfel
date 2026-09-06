@@ -82,25 +82,24 @@ func runStreamPrintSinkTests() {
     }
 
     testAsync("feed: emitter failure stops further emission (#389)") {
-        // Simulates the broken-pipe scenario: the emitter throws on the second
-        // call. The sink must not call the emitter again after a failure, and
-        // the chunks recorded before the failure must be intact.
-        let recorder = SinkRecorder()
-        var callCount = 0
+        // Simulates the broken-pipe scenario: the emitter stops recording on
+        // the second call. In the real printAndFlush this path calls exit(141);
+        // here we just skip the append to prove the error path is reachable.
+        // Both recorders are @unchecked Sendable, so capturing them in a
+        // @Sendable closure is Swift 6 clean.
+        let allCalls = SinkRecorder()
+        let recorded = SinkRecorder()
         let sink = StreamPrintSink(emit: { s in
-            callCount += 1
-            if callCount >= 2 {
-                // In the real printAndFlush this path calls exit(); here we
-                // just stop recording to prove the throw site is reachable.
-                return
-            }
-            recorder.append(s)
+            allCalls.append(s)
+            guard allCalls.callCount < 2 else { return }
+            recorded.append(s)
         })
         await sink.feed(cumulative: "Hello")
         await sink.feed(cumulative: "Hello, world")
-        try assertEqual(recorder.callCount, 1,
-            "only the first emit before the failure is recorded")
-        try assertEqual(recorder.joined, "Hello",
+        try assertEqual(allCalls.callCount, 2, "emitter was called twice")
+        try assertEqual(recorded.callCount, 1,
+            "only the first emit before the simulated failure is recorded")
+        try assertEqual(recorded.joined, "Hello",
             "output up to the failure point is intact")
     }
 
