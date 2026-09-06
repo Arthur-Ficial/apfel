@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `shellOutput` now drains stdout before waiting for the child process to exit, preventing a pipe-buffer deadlock when output exceeds 64 KiB (#433). The function also returns `String?` so callers can distinguish a failed or non-zero-exit command from successful empty output.
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed

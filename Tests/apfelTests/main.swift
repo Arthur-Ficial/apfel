@@ -129,6 +129,7 @@ suite("MessagesFlagTests") { runMessagesFlagTests() }
 suite("CodeFlagTests") { runCodeFlagTests() }
 suite("PrewarmDecisionTests") { runPrewarmDecisionTests() }
 suite("ResponsesModelsTests") { runResponsesModelsTests() }
+suite("ShellRunnerTests") { runShellRunnerTests() }
 
 // MARK: - Summary
 
