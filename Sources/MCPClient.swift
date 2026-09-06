@@ -279,7 +279,7 @@ actor RemoteMCPConnection: Sendable {
         do {
             let initResp = try await post(MCPProtocol.initializeRequest(id: allocId()))
             _ = try MCPProtocol.parseInitializeResponse(initResp)
-            _ = try? await post(MCPProtocol.initializedNotification())
+            _ = try await post(MCPProtocol.initializedNotification())
             let toolsResp = try await post(MCPProtocol.toolsListRequest(id: allocId()))
             self.tools = try MCPProtocol.parseToolsListResponse(toolsResp)
         } catch let error as MCPError {

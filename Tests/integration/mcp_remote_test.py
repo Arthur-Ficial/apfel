@@ -492,6 +492,119 @@ def test_unreachable_mcp_url_fails_gracefully():
 
 
 # ============================================================================
+# Fixtures: MCP server that rejects notifications/initialized (#432)
+# ============================================================================
+
+
+@pytest.fixture(scope="module")
+def rejecting_initialized_mcp_port():
+    """HTTP MCP server that returns 503 for notifications/initialized."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    class RejectInitializedHandler(BaseHTTPRequestHandler):
+        def log_message(self, fmt, *args):
+            pass
+
+        def do_POST(self):
+            if self.path != "/mcp":
+                self.send_response(404)
+                self.end_headers()
+                return
+            length = int(self.headers.get("Content-Length", 0))
+            raw = self.rfile.read(length)
+            try:
+                body = json.loads(raw)
+            except json.JSONDecodeError:
+                self.send_response(400)
+                self.end_headers()
+                return
+            method = body.get("method", "")
+            req_id = body.get("id")
+            if method == "initialize":
+                resp = {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {
+                        "protocolVersion": "2025-06-18",
+                        "capabilities": {"tools": {}},
+                        "serverInfo": {"name": "reject-test", "version": "1.0"},
+                    },
+                }
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps(resp).encode())
+            elif method in ("notifications/initialized", "initialized"):
+                self.send_response(503)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"error":"service unavailable"}')
+            elif method == "tools/list":
+                resp = {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {
+                        "tools": [{
+                            "name": "dummy",
+                            "description": "dummy tool",
+                            "inputSchema": {"type": "object", "properties": {}},
+                        }],
+                    },
+                }
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps(resp).encode())
+            else:
+                self.send_response(202)
+                self.end_headers()
+
+    port = find_free_port()
+    server = HTTPServer(("127.0.0.1", port), RejectInitializedHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    if not _wait_for_port(port):
+        pytest.fail("Rejecting-initialized MCP server did not start in time")
+    yield port
+    server.shutdown()
+
+
+# ============================================================================
+# Tests: notifications/initialized rejection (#432)
+# ============================================================================
+
+
+def test_remote_rejecting_initialized_notification_fails(rejecting_initialized_mcp_port):
+    """A remote server returning 503 to notifications/initialized must not attach (#432).
+
+    Before the fix the try? on the notification post silently discarded
+    the error and apfel continued to tool discovery, attaching a server
+    whose handshake never completed."""
+    mcp_url = f"http://127.0.0.1:{rejecting_initialized_mcp_port}/mcp"
+    result = subprocess.run(
+        [
+            str(BINARY),
+            "--serve",
+            "--port",
+            str(find_free_port()),
+            "--mcp",
+            mcp_url,
+        ],
+        capture_output=True,
+        timeout=15,
+    )
+    assert result.returncode != 0, (
+        f"Expected non-zero exit when notifications/initialized is rejected\n"
+        f"stderr: {result.stderr.decode('utf-8', errors='replace')[:500]}"
+    )
+    stderr = result.stderr.decode("utf-8", errors="replace")
+    assert any(x in stderr.lower() for x in ["503", "handshake", "failed", "mcp"]), (
+        f"Expected handshake failure indicator in stderr: {stderr[:500]}"
+    )
+
+
+# ============================================================================
 # Tests: mixed local stdio + remote HTTP MCP
 # ============================================================================
 

@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Remote MCP handshake no longer silently swallows a failed `notifications/initialized` response (#432). The `try?` that discarded non-2xx status from the notification post is now `try`, matching the stdio transport. A remote server that rejects the notification correctly fails to attach instead of presenting broken tools to the model.
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed
