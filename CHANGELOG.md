@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `AnyCodable` no longer silently rewrites unrepresentable JSON numbers (e.g. `1e999`) to `null`. Tool parameter schemas and `response_format.json_schema.schema` containing such values now fail decoding and return HTTP 400 `invalid_request_error` instead of silently dropping constraints (#455).
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed

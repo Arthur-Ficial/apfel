@@ -152,6 +152,28 @@ def test_undecodable_tool_choice_object_returns_400():
 
 
 # ============================================================================
+# #455 - unrepresentable number in tool parameters returns 400
+# ============================================================================
+
+def test_tool_parameters_with_unrepresentable_number_returns_400():
+    """A tool parameter schema containing a number outside Double range (1e999)
+    must be rejected with 400, not silently rewritten to null (#455)."""
+    raw = (
+        '{"model":"apple-foundationmodel","messages":[{"role":"user","content":"hi"}],'
+        '"tools":[{"type":"function","function":{"name":"f","description":"d",'
+        '"parameters":{"type":"object","properties":{"x":{"type":"number","maximum":1e999}}}}}]}'
+    )
+    resp = httpx.post(
+        f"{BASE_URL}/v1/chat/completions",
+        content=raw,
+        headers={"Content-Type": "application/json"},
+        timeout=15,
+    )
+    assert resp.status_code == 400, f"expected 400, got {resp.status_code}: {resp.text}"
+    _assert_openai_error(resp, expected_type="invalid_request_error")
+
+
+# ============================================================================
 # #238a - stream_options.include_usage emits usage:null on non-final chunks
 # (model-dependent: needs Apple Intelligence, run by the controller)
 # ============================================================================

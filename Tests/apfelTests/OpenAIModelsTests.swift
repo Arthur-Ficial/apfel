@@ -124,6 +124,30 @@ func runOpenAIModelsTests() {
         try assertEqual(parsed?[1] as? String, "two")
         try assertEqual(parsed?[2] as? Bool, false)
     }
+
+    test("AnyCodable rejects unrepresentable number instead of storing null (#455)") {
+        do {
+            _ = try decode(RawJSON.self, from: "1e999")
+            throw TestFailure("expected DecodingError for 1e999 but decode succeeded")
+        } catch is DecodingError {
+            // expected
+        }
+    }
+
+    test("AnyCodable preserves explicit JSON null (#455)") {
+        let raw = try decode(RawJSON.self, from: "null")
+        try assertEqual(raw.value, "null")
+    }
+
+    test("RawJSON round-trips nested tool parameter schema unchanged (#455)") {
+        let json = #"{"type":"object","properties":{"x":{"type":"number","maximum":100}}}"#
+        let raw = try decode(RawJSON.self, from: json)
+        let decoded = try JSONSerialization.jsonObject(with: Data(raw.value.utf8)) as? [String: Any]
+        let props = decoded?["properties"] as? [String: Any]
+        let x = props?["x"] as? [String: Any]
+        try assertEqual(x?["maximum"] as? Int, 100)
+        try assertEqual(x?["type"] as? String, "number")
+    }
 }
 
 func runChatRequestValidatorTests() {
