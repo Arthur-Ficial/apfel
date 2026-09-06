@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `shellOutput` now drains the pipe before waiting for exit, preventing a deadlock when child output exceeds the OS pipe buffer. Launch failures and non-zero exits return nil instead of an empty string, so callers can distinguish "command failed" from "empty output" (#433).
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed

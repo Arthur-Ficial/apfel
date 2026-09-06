@@ -715,8 +715,8 @@ func performUpdate() {
     }
 
     // Check for updates via brew
-    let outdatedJSON = shellOutput(brewExec, args: ["info", "--json=v2", "apfel"])
-    guard let data = outdatedJSON.data(using: .utf8),
+    guard let outdatedJSON = shellOutput(brewExec, args: ["info", "--json=v2", "apfel"]),
+          let data = outdatedJSON.data(using: .utf8),
           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
           let formulae = json["formulae"] as? [[String: Any]],
           let formula = formulae.first,
@@ -751,8 +751,11 @@ func performUpdate() {
     print(styled("Running: brew upgrade apfel", .dim))
     let result = shellPassthrough(brewExec, args: ["upgrade", "apfel"])
     if result == 0 {
-        let newVersion = shellOutput(apfelExec, args: ["--version"]).trimmingCharacters(in: .whitespacesAndNewlines)
-        print(styled("Updated to \(newVersion)", .green))
+        if let newVersion = shellOutput(apfelExec, args: ["--version"])?.trimmingCharacters(in: .whitespacesAndNewlines), !newVersion.isEmpty {
+            print(styled("Updated to \(newVersion)", .green))
+        } else {
+            print(styled("Upgrade complete.", .green))
+        }
     } else {
         printError("brew upgrade failed (exit \(result)). Try manually: brew upgrade apfel")
     }
@@ -769,23 +772,6 @@ private func findExecutableInPath(_ name: String) -> String? {
         if fm.isExecutableFile(atPath: candidate) { return candidate }
     }
     return nil
-}
-
-/// Run a command and capture stdout.
-private func shellOutput(_ executable: String, args: [String]) -> String {
-    let proc = Process()
-    let pipe = Pipe()
-    proc.executableURL = URL(fileURLWithPath: executable)
-    proc.arguments = args
-    proc.standardOutput = pipe
-    proc.standardError = FileHandle.nullDevice
-    do {
-        try proc.run()
-        proc.waitUntilExit()
-    } catch {
-        return ""
-    }
-    return String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
 }
 
 /// Run a command with stdout/stderr passed through to the terminal.
