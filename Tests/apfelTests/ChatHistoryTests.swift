@@ -41,4 +41,62 @@ func runChatHistoryTests() {
     test("history bound matches the in-memory stifle limit") {
         try assertEqual(ChatHistory.maxEntries, 500)
     }
+
+    // -----------------------------------------------------------------------
+    // prepareHistoryPath - file and directory permissions (#473)
+    // -----------------------------------------------------------------------
+
+    test("prepareHistoryPath creates file at 0600") {
+        let tmp = NSTemporaryDirectory() + "apfel-test-\(UUID().uuidString)"
+        defer { try? FileManager.default.removeItem(atPath: tmp) }
+        let path = tmp + "/hist"
+        ChatHistory.prepareHistoryPath(path)
+        let fm = FileManager.default
+        try assertTrue(fm.fileExists(atPath: path))
+        let attrs = try fm.attributesOfItem(atPath: path)
+        let mode = (attrs[.posixPermissions] as? Int) ?? -1
+        try assertEqual(mode, 0o600)
+    }
+
+    test("prepareHistoryPath creates parent directories at 0700") {
+        let tmp = NSTemporaryDirectory() + "apfel-test-\(UUID().uuidString)"
+        defer { try? FileManager.default.removeItem(atPath: tmp) }
+        let sub = tmp + "/a/b"
+        let path = sub + "/hist"
+        ChatHistory.prepareHistoryPath(path)
+        let fm = FileManager.default
+        for dir in [tmp, tmp + "/a", sub] {
+            let attrs = try fm.attributesOfItem(atPath: dir)
+            let mode = (attrs[.posixPermissions] as? Int) ?? -1
+            try assertEqual(mode, 0o700)
+        }
+    }
+
+    test("prepareHistoryPath does not overwrite existing file") {
+        let tmp = NSTemporaryDirectory() + "apfel-test-\(UUID().uuidString)"
+        defer { try? FileManager.default.removeItem(atPath: tmp) }
+        let path = tmp + "/hist"
+        try FileManager.default.createDirectory(
+            atPath: tmp, withIntermediateDirectories: true)
+        FileManager.default.createFile(
+            atPath: path, contents: "existing\n".data(using: .utf8))
+        ChatHistory.prepareHistoryPath(path)
+        let content = try String(contentsOfFile: path, encoding: .utf8)
+        try assertEqual(content, "existing\n")
+    }
+
+    test("prepareHistoryPath corrects permissions on existing file") {
+        let tmp = NSTemporaryDirectory() + "apfel-test-\(UUID().uuidString)"
+        defer { try? FileManager.default.removeItem(atPath: tmp) }
+        let path = tmp + "/hist"
+        try FileManager.default.createDirectory(
+            atPath: tmp, withIntermediateDirectories: true)
+        FileManager.default.createFile(
+            atPath: path, contents: nil,
+            attributes: [.posixPermissions: 0o644])
+        ChatHistory.prepareHistoryPath(path)
+        let attrs = try FileManager.default.attributesOfItem(atPath: path)
+        let mode = (attrs[.posixPermissions] as? Int) ?? -1
+        try assertEqual(mode, 0o600)
+    }
 }

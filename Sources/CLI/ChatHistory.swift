@@ -38,4 +38,28 @@ public enum ChatHistory {
         guard !trimmed.isEmpty else { return nil }
         return (trimmed as NSString).expandingTildeInPath
     }
+
+    /// Ensure the history file and its parent directories exist with
+    /// restrictive permissions BEFORE libedit writes prompts into it.
+    ///
+    /// libedit's `write_history` uses `fopen(path, "w")` which creates at
+    /// `0666 & ~umask` (typically `0644`). Calling this first guarantees the
+    /// file is never observable at a mode other than `0600`, closing the
+    /// race window where prompts sit in a world-readable file (#473).
+    public static func prepareHistoryPath(_ path: String) {
+        let fm = FileManager.default
+        let dir = (path as NSString).deletingLastPathComponent
+        if !dir.isEmpty {
+            try? fm.createDirectory(
+                atPath: dir, withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700])
+        }
+        if fm.fileExists(atPath: path) {
+            try? fm.setAttributes(
+                [.posixPermissions: 0o600], ofItemAtPath: path)
+        } else {
+            fm.createFile(atPath: path, contents: nil,
+                          attributes: [.posixPermissions: 0o600])
+        }
+    }
 }

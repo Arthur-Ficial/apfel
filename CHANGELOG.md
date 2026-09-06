@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Chat history file (`APFEL_HISTFILE`) is now created at `0600` before libedit writes prompts into it, closing a race window where the file was briefly world-readable at `0644` (#473). Parent directories are created at `0700`. An existing file with wrong permissions is corrected before writing.
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed
