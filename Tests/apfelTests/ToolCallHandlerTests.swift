@@ -492,4 +492,30 @@ func runToolCallHandlerTests() {
         let result = ProcessPromptResult(content: "", toolLog: [])
         try assertTrue(result.content.isEmpty)
     }
+
+    // MARK: - Re-prompt cap exhaustion (#435)
+
+    test("toolExecution error for re-prompt cap exhaustion maps to HTTP 500 and non-zero exit") {
+        let err = ApfelError.toolExecution(
+            "model kept requesting tool calls after 3 re-prompt rounds; no final answer was produced")
+        try assertEqual(err.httpStatusCode, 500)
+        try assertEqual(err.openAIType, "server_error")
+        try assertEqual(err.cliLabel, "[tool error]")
+        try assertTrue(!err.isRetryable)
+        try assertTrue(err.openAIMessage.contains("re-prompt rounds"))
+    }
+
+    test("stripToolCallJSON still strips when tool-call JSON is present") {
+        let text = "Here is some text {\"tool_calls\": [{\"id\": \"call_1\", \"type\": \"function\", \"function\": {\"name\": \"add\", \"arguments\": \"{}\"}}]}"
+        let stripped = ToolCallHandler.stripToolCallJSON(from: text)
+        try assertTrue(!stripped.contains("tool_calls"), "tool-call JSON must be stripped")
+        try assertTrue(stripped.contains("Here is some text"), "surrounding text must be preserved")
+    }
+
+    test("detectToolCall finds pending call in cap-exhaustion scenario") {
+        let modelOutput = "{\"tool_calls\": [{\"id\": \"call_99\", \"type\": \"function\", \"function\": {\"name\": \"multiply\", \"arguments\": \"{\\\"a\\\": 6, \\\"b\\\": 7}\"}}]}"
+        let detected = ToolCallHandler.detectToolCall(in: modelOutput)
+        try assertNotNil(detected, "must detect the pending tool call")
+        try assertEqual(detected!.first!.name, "multiply")
+    }
 }

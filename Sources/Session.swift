@@ -428,10 +428,9 @@ func executeMCPToolCallsForCLI(
         ).content
     }
 
-    // Cap exhausted but the model is still emitting a tool call: strip the raw
-    // JSON so it never reaches the user as text.
     if ToolCallHandler.detectToolCall(in: finalContent) != nil {
-        finalContent = stripToolCallJSON(from: finalContent)
+        throw ApfelError.toolExecution(
+            "model kept requesting tool calls after \(maxReprompts) re-prompt rounds; no final answer was produced")
     }
 
     return (content: finalContent, toolLog: aggregatedLog)
@@ -525,10 +524,9 @@ func executeMCPToolCallsForServer(
         currentExecuted = next
     }
 
-    // Cap exhausted but the model is still emitting a tool call: strip the raw
-    // JSON so it never reaches the client as content with finish_reason stop.
     if ToolCallHandler.detectToolCall(in: finalContent) != nil {
-        finalContent = stripToolCallJSON(from: finalContent)
+        throw ApfelError.toolExecution(
+            "model kept requesting tool calls after \(maxReprompts) re-prompt rounds; no final answer was produced")
     }
 
     return (content: finalContent, toolLog: aggregatedLog)
