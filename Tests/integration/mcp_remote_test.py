@@ -15,7 +15,9 @@ import pathlib
 import socket
 import subprocess
 import sys
+import threading
 import time
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import httpx
 import pytest
@@ -518,3 +520,134 @@ def test_mixed_mcp_tool_executes(apfel_mixed_mcp_url):
     assert data["choices"][0]["finish_reason"] == "stop"
     content = data["choices"][0]["message"]["content"]
     assert "144" in content, f"Expected '144' (12*12) in: {content}"
+
+
+# ============================================================================
+# Tests: notifications/initialized rejection (#432)
+#
+# A remote server that returns non-2xx to notifications/initialized has not
+# completed the MCP handshake. apfel must fail to attach, matching the stdio
+# transport's behavior (which propagates via `try`).
+# ============================================================================
+
+
+class _RejectInitializedHandler(BaseHTTPRequestHandler):
+    """Minimal MCP server that accepts initialize but rejects notifications/initialized."""
+
+    def log_message(self, fmt, *args):
+        pass
+
+    def do_POST(self):
+        length = int(self.headers.get("Content-Length", 0))
+        raw = self.rfile.read(length)
+        try:
+            body = json.loads(raw)
+        except json.JSONDecodeError:
+            self.send_response(400)
+            self.end_headers()
+            return
+        method = body.get("method", "")
+        req_id = body.get("id")
+        if method == "initialize":
+            resp = {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {
+                    "protocolVersion": "2025-06-18",
+                    "capabilities": {"tools": {}},
+                    "serverInfo": {"name": "reject-test", "version": "1.0"},
+                },
+            }
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(resp).encode())
+        elif method in ("notifications/initialized", "initialized"):
+            self.send_response(503)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"error":"service unavailable"}')
+        elif method == "tools/list":
+            resp = {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {"tools": [{"name": "noop", "description": "no-op", "inputSchema": {"type": "object", "properties": {}}}]},
+            }
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(resp).encode())
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_DELETE(self):
+        self.send_response(200)
+        self.end_headers()
+
+
+@pytest.fixture(scope="module")
+def reject_initialized_port():
+    """Start a mock MCP server that rejects notifications/initialized with 503."""
+    if not BINARY.exists():
+        pytest.skip(f"apfel binary not found at {BINARY}")
+    port = find_free_port()
+    server = HTTPServer(("127.0.0.1", port), _RejectInitializedHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    if not _wait_for_port(port, timeout=5):
+        pytest.fail("Reject-initialized mock server did not start")
+    yield port
+    server.shutdown()
+
+
+def test_remote_rejecting_initialized_notification_fails_to_attach(reject_initialized_port):
+    """A remote server returning 503 to notifications/initialized must cause a non-zero exit (#432)."""
+    mcp_url = f"http://127.0.0.1:{reject_initialized_port}/mcp"
+    result = subprocess.run(
+        [
+            str(BINARY),
+            "--serve",
+            "--port",
+            str(find_free_port()),
+            "--mcp",
+            mcp_url,
+        ],
+        capture_output=True,
+        timeout=15,
+    )
+    assert result.returncode != 0, (
+        f"Expected non-zero exit when notifications/initialized is rejected\nstderr: {result.stderr}"
+    )
+    stderr = result.stderr.decode("utf-8", errors="replace")
+    assert any(x in stderr for x in ["503", "handshake", "failed", "HTTP", "MCP"]), (
+        f"Expected handshake error in stderr: {stderr[:500]}"
+    )
+
+
+def test_remote_and_stdio_agree_on_handshake_failure(reject_initialized_port):
+    """Both transports must fail when the handshake is incomplete (#432).
+
+    The remote transport is tested via the reject-initialized fixture above.
+    The stdio transport fails on any sendLocked error (already covered by
+    existing tests via broken-pipe and unreachable scenarios). This test
+    verifies the remote path exits with a diagnostic naming the URL.
+    """
+    mcp_url = f"http://127.0.0.1:{reject_initialized_port}/mcp"
+    result = subprocess.run(
+        [
+            str(BINARY),
+            "test prompt",
+            "--mcp",
+            mcp_url,
+        ],
+        capture_output=True,
+        timeout=15,
+    )
+    assert result.returncode != 0, (
+        f"Expected non-zero exit for rejected initialized notification\nstderr: {result.stderr}"
+    )
+    stderr = result.stderr.decode("utf-8", errors="replace")
+    assert "127.0.0.1" in stderr, (
+        f"Error message must name the URL: {stderr[:500]}"
+    )

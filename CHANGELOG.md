@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Remote MCP handshake now propagates errors from `notifications/initialized` instead of silently swallowing them via `try?` (#432). A remote server that rejects the notification correctly fails to attach, matching the stdio transport's behavior.
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed
