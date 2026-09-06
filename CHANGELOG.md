@@ -7,6 +7,11 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- MCP `send()` now respects `--mcp-timeout`: writes use non-blocking I/O with `poll(2)` and a shared deadline, preventing a peer that stops reading stdin from hanging apfel indefinitely (#418).
+- Ping requests with oversized string ids (> 4096 bytes) are silently ignored instead of echoed, removing the write-amplification vector that made the hang trivially triggerable (#418).
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed
