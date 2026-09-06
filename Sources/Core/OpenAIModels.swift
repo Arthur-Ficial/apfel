@@ -285,7 +285,17 @@ public struct RawJSON: Decodable, Sendable, Equatable, Hashable {
     /// Decodes arbitrary JSON and stores its canonical serialized form.
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
-        let raw = try container.decode(AnyCodable.self)
+        let raw: AnyCodable
+        do {
+            raw = try container.decode(AnyCodable.self)
+        } catch is AnyCodable.NestingDepthExceeded {
+            throw DecodingError.dataCorrupted(
+                DecodingError.Context(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "JSON nesting exceeds the maximum supported depth of \(AnyCodable.maxNestingDepth)"
+                )
+            )
+        }
         let data = try JSONEncoder().encode(raw)
         value = String(data: data, encoding: .utf8) ?? "{}"
     }
@@ -413,16 +423,13 @@ public struct JSONSchemaSpec: Decodable, Sendable, Equatable, Hashable {
 struct AnyCodable: Codable, Sendable {
     static let maxNestingDepth = 64
 
+    struct NestingDepthExceeded: Error {}
+
     let value: (any Sendable)?
 
     init(from decoder: Decoder) throws {
         if decoder.codingPath.count > Self.maxNestingDepth {
-            throw DecodingError.dataCorrupted(
-                DecodingError.Context(
-                    codingPath: decoder.codingPath,
-                    debugDescription: "JSON nesting exceeds the maximum supported depth of \(Self.maxNestingDepth)"
-                )
-            )
+            throw NestingDepthExceeded()
         }
         let container = try decoder.singleValueContainer()
         if container.decodeNil()                                    { value = nil; return }
@@ -430,14 +437,16 @@ struct AnyCodable: Codable, Sendable {
         if let int = try? container.decode(Int.self)                { value = int; return }
         if let double = try? container.decode(Double.self)          { value = double; return }
         if let string = try? container.decode(String.self)          { value = string; return }
-        if let object = try? container.decode([String: AnyCodable].self) {
+        do {
+            let object = try container.decode([String: AnyCodable].self)
             value = object
             return
-        }
-        if let array = try? container.decode([AnyCodable].self) {
+        } catch is NestingDepthExceeded { throw NestingDepthExceeded() } catch {}
+        do {
+            let array = try container.decode([AnyCodable].self)
             value = array
             return
-        }
+        } catch is NestingDepthExceeded { throw NestingDepthExceeded() } catch {}
         value = nil
     }
 
