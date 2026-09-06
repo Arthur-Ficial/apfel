@@ -262,3 +262,93 @@ class TestErrorConformance:
         data = resp.json()
         assert "error" in data
         assert "message" in data["error"]
+
+
+# ---------------------------------------------------------------------------
+# Responses streaming terminal event (#412)
+# ---------------------------------------------------------------------------
+
+def _collect_responses_sse(url, body, timeout=TIMEOUT):
+    """Stream a /v1/responses request and return (events, last_event_name).
+
+    Each entry in events is (event_name, parsed_data_dict).
+    """
+    events = []
+    with httpx.stream("POST", url, json=body, timeout=timeout) as resp:
+        current_event = None
+        for line in resp.iter_lines():
+            if line.startswith("event: "):
+                current_event = line[7:].strip()
+            elif line.startswith("data: "):
+                data = json.loads(line[6:])
+                events.append((current_event or "message", data))
+    return events
+
+
+class TestResponsesStreamTerminalEvent:
+    """The terminal SSE event name must match the response status (#412).
+
+    A truncated stream must end with event: response.incomplete.
+    A complete stream must end with event: response.completed.
+    The event name and the nested response.status must always agree.
+    """
+
+    def test_responses_stream_truncated_emits_incomplete(self):
+        """A stream truncated by max_output_tokens ends with response.incomplete."""
+        events = _collect_responses_sse(
+            f"{BASE_URL}/v1/responses",
+            {
+                "model": MODEL,
+                "input": "List the numbers from one to one thousand.",
+                "stream": True,
+                "max_output_tokens": 1,
+            },
+        )
+        terminal = [(name, data) for name, data in events if name in ("response.completed", "response.incomplete")]
+        assert len(terminal) == 1, f"expected exactly one terminal event, got {len(terminal)}"
+        event_name, payload = terminal[0]
+        assert event_name == "response.incomplete", (
+            f"truncated stream must emit response.incomplete, got {event_name}"
+        )
+        assert payload["type"] == "response.incomplete"
+        assert payload["response"]["status"] == "incomplete"
+        assert payload["response"]["incomplete_details"]["reason"] == "max_output_tokens"
+
+    def test_responses_stream_complete_emits_completed(self):
+        """A stream that finishes normally ends with response.completed."""
+        events = _collect_responses_sse(
+            f"{BASE_URL}/v1/responses",
+            {
+                "model": MODEL,
+                "input": "Say hi.",
+                "stream": True,
+            },
+        )
+        terminal = [(name, data) for name, data in events if name in ("response.completed", "response.incomplete")]
+        assert len(terminal) == 1, f"expected exactly one terminal event, got {len(terminal)}"
+        event_name, payload = terminal[0]
+        assert event_name == "response.completed", (
+            f"complete stream must emit response.completed, got {event_name}"
+        )
+        assert payload["type"] == "response.completed"
+        assert payload["response"]["status"] == "completed"
+
+    def test_responses_terminal_event_matches_status(self):
+        """The SSE event name and the nested response.status always agree."""
+        for body, expected_status in [
+            ({"model": MODEL, "input": "Say hi.", "stream": True, "max_output_tokens": 1}, "incomplete"),
+            ({"model": MODEL, "input": "Say hi.", "stream": True}, "completed"),
+        ]:
+            events = _collect_responses_sse(f"{BASE_URL}/v1/responses", body)
+            terminal = [(n, d) for n, d in events if n in ("response.completed", "response.incomplete")]
+            assert len(terminal) == 1
+            event_name, payload = terminal[0]
+            nested_status = payload["response"]["status"]
+            expected_event = f"response.{expected_status}"
+            assert event_name == expected_event, (
+                f"event name {event_name} does not match expected {expected_event}"
+            )
+            assert nested_status == expected_status, (
+                f"nested status {nested_status} does not match expected {expected_status}"
+            )
+            assert payload["type"] == expected_event

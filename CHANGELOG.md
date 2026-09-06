@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Truncated `/v1/responses` streams now emit `event: response.incomplete` instead of `event: response.completed` when `status` is `"incomplete"` (#412). The output-overflow path is also corrected. Non-streaming responses are unchanged.
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed

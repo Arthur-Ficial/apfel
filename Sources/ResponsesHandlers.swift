@@ -418,8 +418,9 @@ private func responsesStreamingResponse(
                     id: id, created: created, status: status, output: [doneItem],
                     usage: ResponsesUsage(input_tokens: promptTokens, output_tokens: completionTokens),
                     incompleteReason: status == "incomplete" ? "max_output_tokens" : nil)
-                emit("response.completed", ResponsesLifecycleEvent(
-                    type: "response.completed", sequence_number: nextSeq(), response: final))
+                let terminalEvent = status == "incomplete" ? "response.incomplete" : "response.completed"
+                emit(terminalEvent, ResponsesLifecycleEvent(
+                    type: terminalEvent, sequence_number: nextSeq(), response: final))
                 await eventBox.append("responses stream complete chars=\(finalText.count) status=\(status)")
             } catch is CancellationError {
                 streamCancelled = true
@@ -440,8 +441,8 @@ private func responsesStreamingResponse(
                         id: id, created: created, status: "incomplete", output: [doneItem],
                         usage: ResponsesUsage(input_tokens: promptTokens, output_tokens: completionTokens),
                         incompleteReason: "max_output_tokens")
-                    emit("response.completed", ResponsesLifecycleEvent(
-                        type: "response.completed", sequence_number: nextSeq(), response: final))
+                    emit("response.incomplete", ResponsesLifecycleEvent(
+                        type: "response.incomplete", sequence_number: nextSeq(), response: final))
                     await eventBox.append("responses stream truncated -> incomplete")
                 } else {
                     emit("error", ResponsesErrorEvent(sequence_number: nextSeq(), message: classified.openAIMessage))
