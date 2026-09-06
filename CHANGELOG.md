@@ -7,6 +7,11 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- MCP `send()` now uses non-blocking I/O with `poll(POLLOUT)` under the same deadline as the read side, so a stdio peer that stops reading its stdin causes a timeout error instead of hanging apfel forever (#418). `sendLocked` (notification path) and `sendAndReceive` (request/response path, including inline ping replies) both share the configured `--mcp-timeout` budget.
+- `classifyIncoming` rejects ping requests whose `id` exceeds 4096 UTF-8 bytes, preventing a peer from sizing apfel's reply write arbitrarily (#418).
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed

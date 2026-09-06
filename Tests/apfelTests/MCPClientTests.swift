@@ -445,6 +445,22 @@ func runMCPClientTests() {
         try assertEqual(MCPProtocol.classifyIncoming(#"{"jsonrpc":"2.0"}"#, awaitingId: 7), .unrelated)
     }
 
+    test("classifyIncoming rejects a ping with an oversized string id (#418)") {
+        let hugeId = String(repeating: "x", count: 262_144)
+        let line = #"{"jsonrpc":"2.0","id":"\#(hugeId)","method":"ping"}"#
+        try assertEqual(MCPProtocol.classifyIncoming(line, awaitingId: 7), .unrelated)
+    }
+
+    test("classifyIncoming still answers a ping with a 4096-byte string id (#418)") {
+        let okId = String(repeating: "y", count: 4096)
+        let line = #"{"jsonrpc":"2.0","id":"\#(okId)","method":"ping"}"#
+        guard case .pingRequest(let reply) = MCPProtocol.classifyIncoming(line, awaitingId: 7) else {
+            throw TestFailure("expected .pingRequest for a 4096-byte id")
+        }
+        let obj = try JSONSerialization.jsonObject(with: Data(reply.utf8)) as! [String: Any]
+        try assertEqual(obj["id"] as! String, okId)
+    }
+
     // MARK: - Malformed model-emitted arguments must fail loudly (#241)
     // The formatting fallback in toolsCallRequest silently replaced malformed
     // JSON with {}; the call sites must validate first and throw a typed error.

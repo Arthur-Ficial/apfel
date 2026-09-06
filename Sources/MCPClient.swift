@@ -74,6 +74,13 @@ final class MCPConnection: @unchecked Sendable {
         self.lineReader = BufferedLineReader(fileDescriptor: stdoutP.fileHandleForReading.fileDescriptor)
         self.tools = [] // placeholder, filled below
 
+        // Set stdin fd non-blocking so writes can be poll-bounded (#418).
+        let stdinFD = stdinP.fileHandleForWriting.fileDescriptor
+        let flags = fcntl(stdinFD, F_GETFL)
+        if flags != -1 {
+            _ = fcntl(stdinFD, F_SETFL, flags | O_NONBLOCK)
+        }
+
         try proc.run()
 
         do {
@@ -159,31 +166,55 @@ final class MCPConnection: @unchecked Sendable {
         return id
     }
 
-    private func send(_ message: String) throws {
+    /// Write `message` (plus trailing newline) to the child's stdin under a
+    /// deadline. Uses non-blocking I/O + `poll(POLLOUT)` so a peer that stops
+    /// reading its stdin can never hang apfel past the timeout (#418).
+    private func send(_ message: String, deadline: TimeInterval) throws {
         guard let data = (message + "\n").data(using: .utf8) else { return }
-        // Guard against writing to a crashed MCP server. Without this a closed
-        // read end raises SIGPIPE (fatal by default) or, with the legacy
-        // non-throwing FileHandle.write(_:), an uncatchable ObjC exception on
-        // EPIPE. The isRunning check catches the common case fast; the throwing
-        // write(contentsOf:) inside do/catch catches the crash-mid-write race
-        // and maps it to a recoverable MCPError (#215).
         guard process.isRunning else {
             throw MCPError.processError("MCP server process is not running (\(path))")
         }
-        do {
-            try stdinPipe.fileHandleForWriting.write(contentsOf: data)
-        } catch {
-            throw MCPError.processError("failed to write to MCP server stdin (\(path)): \(error.localizedDescription)")
+        let fd = stdinPipe.fileHandleForWriting.fileDescriptor
+        try data.withUnsafeBytes { rawBuf in
+            guard let base = rawBuf.baseAddress else { return }
+            var offset = 0
+            while offset < data.count {
+                let remainingMs = Int((deadline - Date().timeIntervalSinceReferenceDate) * 1000.0)
+                guard remainingMs > 0 else {
+                    throw MCPError.timedOut("Write to MCP server timed out (\(path))")
+                }
+                var pfd = pollfd(fd: fd, events: Int16(POLLOUT), revents: 0)
+                let ready = poll(&pfd, 1, Int32(clamping: remainingMs))
+                if ready == 0 {
+                    throw MCPError.timedOut("Write to MCP server timed out (\(path))")
+                }
+                if ready < 0 {
+                    if errno == EINTR { continue }
+                    throw MCPError.processError("Failed waiting to write to MCP server (\(path)): \(String(cString: strerror(errno)))")
+                }
+                if (pfd.revents & Int16(POLLERR | POLLHUP)) != 0 {
+                    throw MCPError.processError("MCP server stdin closed unexpectedly (\(path))")
+                }
+                let written = Darwin.write(fd, base + offset, data.count - offset)
+                if written < 0 {
+                    if errno == EINTR { continue }
+                    if errno == EAGAIN || errno == EWOULDBLOCK { continue }
+                    throw MCPError.processError("Failed to write to MCP server stdin (\(path)): \(String(cString: strerror(errno)))")
+                }
+                offset += written
+            }
         }
     }
 
     /// Standalone write (notification path) serialized against in-flight
     /// exchanges so it cannot interleave with another request's stdin bytes
-    /// (#218). Never call while holding `ioLock` - NSLock is not reentrant.
+    /// (#218). Uses its own deadline from `timeoutMilliseconds` (#418).
+    /// Never call while holding `ioLock` - NSLock is not reentrant.
     private func sendLocked(_ message: String) throws {
         ioLock.lock()
         defer { ioLock.unlock() }
-        try send(message)
+        let deadline = Date().timeIntervalSinceReferenceDate + Double(timeoutMilliseconds) / 1000.0
+        try send(message, deadline: deadline)
     }
 
     /// Sends `message` and reads until the response whose JSON-RPC `"id"`
@@ -205,8 +236,8 @@ final class MCPConnection: @unchecked Sendable {
     ) throws -> String {
         ioLock.lock()
         defer { ioLock.unlock() }
-        try send(message)
         let deadline = Date().timeIntervalSinceReferenceDate + Double(timeoutMilliseconds) / 1000.0
+        try send(message, deadline: deadline)
         while true {
             let remainingMilliseconds = Int((deadline - Date().timeIntervalSinceReferenceDate) * 1000.0)
             guard remainingMilliseconds > 0 else {
@@ -220,7 +251,7 @@ final class MCPConnection: @unchecked Sendable {
             case .matchingResponse:
                 return line
             case .pingRequest(let reply):
-                try send(reply)
+                try send(reply, deadline: deadline)
             case .unrelated:
                 continue
             }
