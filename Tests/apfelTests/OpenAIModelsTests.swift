@@ -124,6 +124,68 @@ func runOpenAIModelsTests() {
         try assertEqual(parsed?[1] as? String, "two")
         try assertEqual(parsed?[2] as? Bool, false)
     }
+
+    // MARK: - joinedSystemContent (#390)
+
+    test("joinedSystemContent returns nil when no system messages exist") {
+        let messages: [OpenAIMessage] = [
+            OpenAIMessage(role: "user", content: .text("hello")),
+        ]
+        try assertNil(messages.joinedSystemContent)
+    }
+
+    test("joinedSystemContent returns single system message text") {
+        let messages: [OpenAIMessage] = [
+            OpenAIMessage(role: "system", content: .text("Be concise.")),
+            OpenAIMessage(role: "user", content: .text("hello")),
+        ]
+        try assertEqual(messages.joinedSystemContent, "Be concise.")
+    }
+
+    test("joinedSystemContent joins multiple system messages with double newlines (#390)") {
+        let messages: [OpenAIMessage] = [
+            OpenAIMessage(role: "system", content: .text("Be concise.")),
+            OpenAIMessage(role: "system", content: .text("Always answer in JSON.")),
+            OpenAIMessage(role: "user", content: .text("hello")),
+        ]
+        try assertEqual(messages.joinedSystemContent, "Be concise.\n\nAlways answer in JSON.")
+    }
+
+    test("joinedSystemContent skips system messages with empty text") {
+        let messages: [OpenAIMessage] = [
+            OpenAIMessage(role: "system", content: .text("Be concise.")),
+            OpenAIMessage(role: "system", content: .text("")),
+            OpenAIMessage(role: "system", content: .text("Answer in English.")),
+            OpenAIMessage(role: "user", content: .text("hello")),
+        ]
+        try assertEqual(messages.joinedSystemContent, "Be concise.\n\nAnswer in English.")
+    }
+
+    test("joinedSystemContent returns nil when all system messages are empty") {
+        let messages: [OpenAIMessage] = [
+            OpenAIMessage(role: "system", content: .text("")),
+            OpenAIMessage(role: "user", content: .text("hello")),
+        ]
+        try assertNil(messages.joinedSystemContent)
+    }
+
+    test("joinedSystemContent returns nil for nil content system message") {
+        let messages: [OpenAIMessage] = [
+            OpenAIMessage(role: "system", content: nil),
+            OpenAIMessage(role: "user", content: .text("hello")),
+        ]
+        try assertNil(messages.joinedSystemContent)
+    }
+
+    test("joinedSystemContent preserves order of system messages") {
+        let messages: [OpenAIMessage] = [
+            OpenAIMessage(role: "system", content: .text("First.")),
+            OpenAIMessage(role: "user", content: .text("middle")),
+            OpenAIMessage(role: "system", content: .text("Second.")),
+            OpenAIMessage(role: "user", content: .text("hello")),
+        ]
+        try assertEqual(messages.joinedSystemContent, "First.\n\nSecond.")
+    }
 }
 
 func runChatRequestValidatorTests() {

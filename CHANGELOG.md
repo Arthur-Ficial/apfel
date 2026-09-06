@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- All system messages now reach the model instructions instead of silently dropping every message after the first (#390). Affects `/v1/chat/completions`, Responses `developer` messages, and CLI `--messages` combined with `-s`.
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed
