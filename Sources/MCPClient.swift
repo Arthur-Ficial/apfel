@@ -35,6 +35,7 @@ final class MCPConnection: @unchecked Sendable {
     private let process: Process
     private let stdinPipe: Pipe
     private let stdoutPipe: Pipe
+    private let stdinFd: Int32
     private let lineReader: BufferedLineReader
     private let lock = NSLock()
     /// Serializes complete wire exchanges (send+receive) per connection (#218).
@@ -71,10 +72,15 @@ final class MCPConnection: @unchecked Sendable {
         self.process = proc
         self.stdinPipe = stdinP
         self.stdoutPipe = stdoutP
+        let fd = stdinP.fileHandleForWriting.fileDescriptor
+        self.stdinFd = fd
         self.lineReader = BufferedLineReader(fileDescriptor: stdoutP.fileHandleForReading.fileDescriptor)
         self.tools = [] // placeholder, filled below
 
         try proc.run()
+
+        let flags = fcntl(fd, F_GETFL)
+        if flags >= 0 { _ = fcntl(fd, F_SETFL, flags | O_NONBLOCK) }
 
         do {
             // Initialize handshake
@@ -159,21 +165,43 @@ final class MCPConnection: @unchecked Sendable {
         return id
     }
 
-    private func send(_ message: String) throws {
+    private func send(_ message: String, deadline: Double) throws {
         guard let data = (message + "\n").data(using: .utf8) else { return }
-        // Guard against writing to a crashed MCP server. Without this a closed
-        // read end raises SIGPIPE (fatal by default) or, with the legacy
-        // non-throwing FileHandle.write(_:), an uncatchable ObjC exception on
-        // EPIPE. The isRunning check catches the common case fast; the throwing
-        // write(contentsOf:) inside do/catch catches the crash-mid-write race
-        // and maps it to a recoverable MCPError (#215).
         guard process.isRunning else {
             throw MCPError.processError("MCP server process is not running (\(path))")
         }
-        do {
-            try stdinPipe.fileHandleForWriting.write(contentsOf: data)
-        } catch {
-            throw MCPError.processError("failed to write to MCP server stdin (\(path)): \(error.localizedDescription)")
+        var bytesWritten = 0
+        let totalBytes = data.count
+        try data.withUnsafeBytes { rawBuffer in
+            guard let base = rawBuffer.baseAddress else { return }
+            while bytesWritten < totalBytes {
+                let remainingMs = Int((deadline - Date().timeIntervalSinceReferenceDate) * 1000.0)
+                if remainingMs <= 0 {
+                    throw MCPError.timedOut("Write to MCP server timed out (\(path))")
+                }
+                var pfd = pollfd(fd: stdinFd, events: Int16(POLLOUT), revents: 0)
+                let ready = poll(&pfd, 1, Int32(clamping: remainingMs))
+                if ready == 0 {
+                    throw MCPError.timedOut("Write to MCP server timed out (\(path))")
+                }
+                if ready < 0 {
+                    if errno == EINTR { continue }
+                    throw MCPError.processError("Failed waiting to write to MCP server (\(path)): \(String(cString: strerror(errno)))")
+                }
+                if (pfd.revents & Int16(POLLERR)) != 0 {
+                    throw MCPError.processError("MCP server stdin reported an error (\(path))")
+                }
+                if (pfd.revents & Int16(POLLHUP)) != 0 && (pfd.revents & Int16(POLLOUT)) == 0 {
+                    throw MCPError.processError("MCP server closed its stdin (\(path))")
+                }
+                let n = Darwin.write(stdinFd, base.advanced(by: bytesWritten), totalBytes - bytesWritten)
+                if n < 0 {
+                    if errno == EINTR { continue }
+                    if errno == EAGAIN || errno == EWOULDBLOCK { continue }
+                    throw MCPError.processError("failed to write to MCP server stdin (\(path)): \(String(cString: strerror(errno)))")
+                }
+                bytesWritten += n
+            }
         }
     }
 
@@ -183,7 +211,8 @@ final class MCPConnection: @unchecked Sendable {
     private func sendLocked(_ message: String) throws {
         ioLock.lock()
         defer { ioLock.unlock() }
-        try send(message)
+        let deadline = Date().timeIntervalSinceReferenceDate + Double(timeoutMilliseconds) / 1000.0
+        try send(message, deadline: deadline)
     }
 
     /// Sends `message` and reads until the response whose JSON-RPC `"id"`
@@ -205,8 +234,8 @@ final class MCPConnection: @unchecked Sendable {
     ) throws -> String {
         ioLock.lock()
         defer { ioLock.unlock() }
-        try send(message)
         let deadline = Date().timeIntervalSinceReferenceDate + Double(timeoutMilliseconds) / 1000.0
+        try send(message, deadline: deadline)
         while true {
             let remainingMilliseconds = Int((deadline - Date().timeIntervalSinceReferenceDate) * 1000.0)
             guard remainingMilliseconds > 0 else {
@@ -220,7 +249,7 @@ final class MCPConnection: @unchecked Sendable {
             case .matchingResponse:
                 return line
             case .pingRequest(let reply):
-                try send(reply)
+                try send(reply, deadline: deadline)
             case .unrelated:
                 continue
             }

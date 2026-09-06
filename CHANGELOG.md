@@ -7,6 +7,11 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- MCP `send()` now enforces a write deadline using `poll(POLLOUT)` + non-blocking I/O, sharing the same timeout budget as the read side (#418). A stdio MCP server that stops reading its stdin can no longer hang apfel forever.
+- `classifyIncoming` rejects ping requests whose string `id` exceeds 4096 bytes (#418). A peer can no longer force an arbitrarily large write by sending a ping with an oversized id.
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed

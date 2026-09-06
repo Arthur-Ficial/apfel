@@ -217,6 +217,9 @@ public enum MCPProtocol {
         // notifications do not. Answer pings; skip everything else.
         if let method = obj["method"] as? String {
             if method == "ping", let pingId = obj["id"] {
+                if let s = pingId as? String, s.utf8.count > 4096 {
+                    return .unrelated
+                }
                 let reply: [String: Any] = ["jsonrpc": "2.0", "id": pingId, "result": [:] as [String: Any]]
                 if JSONSerialization.isValidJSONObject(reply),
                    let replyData = try? JSONSerialization.data(withJSONObject: reply, options: [.sortedKeys]),

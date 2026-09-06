@@ -427,6 +427,28 @@ func runMCPClientTests() {
         try assertEqual(obj["id"] as! String, "ping-1")
     }
 
+    test("classifyIncoming rejects a ping with an oversized string id (#418)") {
+        let oversizedId = String(repeating: "x", count: 262144)
+        let line = #"{"jsonrpc":"2.0","id":"\#(oversizedId)","method":"ping"}"#
+        try assertEqual(MCPProtocol.classifyIncoming(line, awaitingId: 7), .unrelated)
+    }
+
+    test("classifyIncoming still echoes a ping with a 4096-byte string id (#418)") {
+        let maxId = String(repeating: "y", count: 4096)
+        let line = #"{"jsonrpc":"2.0","id":"\#(maxId)","method":"ping"}"#
+        guard case .pingRequest(let reply) = MCPProtocol.classifyIncoming(line, awaitingId: 7) else {
+            throw TestFailure("expected .pingRequest for a 4096-byte id")
+        }
+        let obj = try JSONSerialization.jsonObject(with: Data(reply.utf8)) as! [String: Any]
+        try assertEqual(obj["id"] as! String, maxId)
+    }
+
+    test("classifyIncoming rejects a ping whose string id is just over the cap (#418)") {
+        let overById1 = String(repeating: "z", count: 4097)
+        let line = #"{"jsonrpc":"2.0","id":"\#(overById1)","method":"ping"}"#
+        try assertEqual(MCPProtocol.classifyIncoming(line, awaitingId: 7), .unrelated)
+    }
+
     test("classifyIncoming skips a non-ping server request") {
         let line = #"{"jsonrpc":"2.0","id":9002,"method":"roots/list"}"#
         try assertEqual(MCPProtocol.classifyIncoming(line, awaitingId: 7), .unrelated)
