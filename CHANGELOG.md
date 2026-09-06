@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Benchmark cases no longer swallow errors with `try?` inside `measure()` closures (#436). A throwing timed operation now fails the benchmark instead of being recorded as a fast, validated sample. `measure()` accepts a throwing closure and rethrows, so errors propagate to the caller.
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed
