@@ -34,6 +34,25 @@ func runCLIServerParityTests() {
                        "Sources/Handlers.swift must not reference the removed defaultMaxResponseTokens constant")
     }
 
+    // MARK: - originValidationConstrains wiring (#465)
+
+    test("originValidationConstrains: ServerConfig declares the computed property") {
+        try assertTrue(serverSrc.contains("var originValidationConstrains: Bool"),
+                       "Sources/Server.swift ServerConfig must declare originValidationConstrains")
+    }
+
+    test("originValidationConstrains: banner keys off originValidationConstrains, not originCheckEnabled") {
+        try assertTrue(!serverSrc.contains("let originStatus = config.originCheckEnabled"),
+                       "Sources/Server.swift banner must use config.originValidationConstrains, not config.originCheckEnabled")
+        try assertTrue(serverSrc.contains("let originStatus = config.originValidationConstrains"),
+                       "Sources/Server.swift banner must use config.originValidationConstrains")
+    }
+
+    test("originValidationConstrains: warning gate keys off originValidationConstrains") {
+        try assertTrue(serverSrc.contains("if !config.originValidationConstrains"),
+                       "Sources/Server.swift warning gate must use !config.originValidationConstrains")
+    }
+
     test("permissive: ServerConfig declares the field") {
         try assertTrue(serverSrc.contains("let permissive: Bool"),
                        "Sources/Server.swift ServerConfig must declare 'let permissive: Bool' so --permissive flows through")

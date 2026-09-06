@@ -112,6 +112,43 @@ func runServerSecurityTests() {
         try assertTrue(scrubbed["PATH"]!.contains("/usr/bin"))
     }
 
+    // MARK: - originValidationConstrains (#465)
+
+    test("originValidationConstrains: normal list constrains") {
+        try assertTrue(ServerSecurity.originValidationConstrains(
+            originCheckEnabled: true,
+            allowedOrigins: ["http://localhost", "http://127.0.0.1"]
+        ))
+    }
+
+    test("originValidationConstrains: wildcard does not constrain") {
+        try assertTrue(!ServerSecurity.originValidationConstrains(
+            originCheckEnabled: true,
+            allowedOrigins: ["http://localhost", "*"]
+        ))
+    }
+
+    test("originValidationConstrains: wildcard alone does not constrain") {
+        try assertTrue(!ServerSecurity.originValidationConstrains(
+            originCheckEnabled: true,
+            allowedOrigins: ["*"]
+        ))
+    }
+
+    test("originValidationConstrains: origin check disabled does not constrain") {
+        try assertTrue(!ServerSecurity.originValidationConstrains(
+            originCheckEnabled: false,
+            allowedOrigins: ["http://localhost"]
+        ))
+    }
+
+    test("originValidationConstrains: both disabled and wildcard does not constrain") {
+        try assertTrue(!ServerSecurity.originValidationConstrains(
+            originCheckEnabled: false,
+            allowedOrigins: ["*"]
+        ))
+    }
+
     // MARK: - isAllowedHostHeader (#230 DNS-rebinding defense)
 
     test("host header: nil/empty Host is allowed (nothing to rebind)") {

@@ -55,6 +55,19 @@ public enum ServerSecurity {
         return result
     }
 
+    /// True only when origin validation actually constrains requests (#465).
+    ///
+    /// `--no-origin-check` turns it off outright, but `--allowed-origins '*'`
+    /// reaches the same posture by a different route: `OriginValidator.isAllowed`
+    /// short-circuits to `true` for every origin. The startup banner and the
+    /// #232 warning must key off this, not off `originCheckEnabled` alone.
+    public static func originValidationConstrains(
+        originCheckEnabled: Bool,
+        allowedOrigins: [String]
+    ) -> Bool {
+        originCheckEnabled && !allowedOrigins.contains("*")
+    }
+
     /// DNS-rebinding defense: is this request's `Host` header acceptable? (#230)
     ///
     /// Same-origin GET requests carry no Origin header, so origin checking alone

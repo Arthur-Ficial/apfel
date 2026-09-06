@@ -27,6 +27,13 @@ struct ServerConfig: Sendable {
     var healthRequiresAuthentication: Bool {
         token != nil && !publicHealth && !isLoopbackHost(host)
     }
+
+    var originValidationConstrains: Bool {
+        ServerSecurity.originValidationConstrains(
+            originCheckEnabled: originCheckEnabled,
+            allowedOrigins: allowedOrigins
+        )
+    }
 }
 
 /// Shared server state accessible by all request handlers.
@@ -286,7 +293,7 @@ func startServer(config: ServerConfig, mcpManager: MCPManager? = nil) async thro
         )
     )
 
-    let originStatus = config.originCheckEnabled
+    let originStatus = config.originValidationConstrains
         ? "localhost only (\(config.allowedOrigins.joined(separator: ", ")))"
         : styledErr("disabled (all origins allowed)", .red)
     var bannerLines = [
@@ -306,7 +313,7 @@ func startServer(config: ServerConfig, mcpManager: MCPManager? = nil) async thro
     // The loud warning fires whenever origin validation is off, not only when
     // CORS is also on (#232). Without origin checks, any web page can read
     // responses from this server regardless of the CORS flag.
-    if !config.originCheckEnabled {
+    if !config.originValidationConstrains {
         let headline = config.cors
             ? "WARNING: --footgun mode - no origin check + CORS enabled"
             : "WARNING: origin check disabled - all origins allowed"

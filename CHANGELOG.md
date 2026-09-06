@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `--allowed-origins '*'` now fires the same red startup warning as `--no-origin-check` and the banner correctly reads "disabled (all origins allowed)" instead of the misleading "localhost only" (#465). The wildcard short-circuits `OriginValidator.isAllowed` to `true` for every origin, so origin validation does not actually constrain anything - the banner and warning gate now key off a single `originValidationConstrains` predicate that accounts for both paths.
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed
