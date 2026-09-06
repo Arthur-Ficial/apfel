@@ -152,6 +152,120 @@ def test_undecodable_tool_choice_object_returns_400():
 
 
 # ============================================================================
+# #392 - response_format json_schema rejected when server has --mcp
+# ============================================================================
+
+MCP_BASE_URL = "http://localhost:11435"
+
+
+def _post_mcp(payload, headers=None, timeout=15):
+    return httpx.post(
+        f"{MCP_BASE_URL}/v1/chat/completions",
+        json=payload,
+        headers=headers or {},
+        timeout=timeout,
+    )
+
+
+def test_json_schema_with_mcp_is_rejected():
+    """json_schema + --mcp must return 400 naming response_format (#392)."""
+    payload = {
+        "model": MODEL,
+        "messages": [{"role": "user", "content": "Say hello."}],
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "answer",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "properties": {"greeting": {"type": "string"}},
+                    "required": ["greeting"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+    }
+    resp = _post_mcp(payload)
+    assert resp.status_code == 400, (resp.status_code, resp.text)
+    err = _assert_openai_error(resp, expected_type="invalid_request_error")
+    assert "response_format" in err["message"].lower() or "json_schema" in err["message"].lower(), err
+    assert err["param"] == "response_format", err
+
+
+def test_json_schema_with_mcp_rejected_streaming():
+    """The rejection fires for streaming requests too (#392)."""
+    payload = {
+        "model": MODEL,
+        "messages": [{"role": "user", "content": "Say hello."}],
+        "stream": True,
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "answer",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "properties": {"greeting": {"type": "string"}},
+                    "required": ["greeting"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+    }
+    resp = _post_mcp(payload)
+    assert resp.status_code == 400, (resp.status_code, resp.text)
+    err = _assert_openai_error(resp, expected_type="invalid_request_error")
+    assert err["param"] == "response_format", err
+
+
+def test_json_object_with_mcp_still_accepted():
+    """json_object mode must NOT be rejected when --mcp is active (#392)."""
+    payload = {
+        "model": MODEL,
+        "messages": [{"role": "user", "content": "Say hello."}],
+        "response_format": {"type": "json_object"},
+    }
+    resp = _post_mcp(payload)
+    assert resp.status_code != 400 or "json_schema" not in resp.text.lower(), \
+        f"json_object should not be rejected: {resp.text}"
+
+
+def test_no_response_format_with_mcp_still_accepted():
+    """Requests without response_format must still work with --mcp (#392)."""
+    payload = {
+        "model": MODEL,
+        "messages": [{"role": "user", "content": "Say hello."}],
+    }
+    resp = _post_mcp(payload)
+    assert resp.status_code != 400, f"No response_format should not be rejected: {resp.text}"
+
+
+def test_json_schema_without_mcp_still_accepted():
+    """json_schema on the plain (non-MCP) server must not be rejected (#392)."""
+    payload = {
+        "model": MODEL,
+        "messages": [{"role": "user", "content": "Say hello."}],
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "answer",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "properties": {"greeting": {"type": "string"}},
+                    "required": ["greeting"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+    }
+    resp = _post(payload)
+    assert resp.status_code != 400 or "mcp" not in resp.text.lower(), \
+        f"json_schema on non-MCP server should not mention MCP: {resp.text}"
+
+
+# ============================================================================
 # #238a - stream_options.include_usage emits usage:null on non-final chunks
 # (model-dependent: needs Apple Intelligence, run by the controller)
 # ============================================================================

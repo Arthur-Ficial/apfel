@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `response_format: json_schema` is now explicitly rejected with a 400 when the server has MCP tools attached (`--mcp`). Previously the schema was silently ignored and the model answered in free text, breaking the structured-output guarantee documented in #167. The error message names the conflict and suggests starting a server without `--mcp` (#392).
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed
