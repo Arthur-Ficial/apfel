@@ -560,3 +560,45 @@ def test_default_preflight_still_works_without_cors():
     )
     assert resp.status_code == 204
     assert "access-control-allow-headers" not in resp.headers
+
+
+# MARK: - Idle timeout (stalled request body permit leak, #463)
+
+def test_stalled_request_body_releases_permit():
+    """Stalled request bodies must not hold permits forever (#463).
+
+    Opens max_concurrent connections that send HTTP headers and a partial
+    body, then stop. With the idle timeout set, Hummingbird closes those
+    connections after ~30s. Once the permits are released, a normal health
+    check must succeed.
+    """
+    max_concurrent = 2
+    with running_server("--max-concurrent", str(max_concurrent)) as (base_url, _):
+        port = int(base_url.rsplit(":", 1)[1])
+        socks = []
+        for _ in range(max_concurrent):
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.connect(("127.0.0.1", port))
+            s.sendall(
+                b"POST /v1/chat/completions HTTP/1.1\r\n"
+                b"Host: 127.0.0.1\r\n"
+                b"Content-Type: application/json\r\n"
+                b"Content-Length: 5000\r\n"
+                b"\r\n"
+                b'{"model":"apple-foundationmodel","mess'
+            )
+            socks.append(s)
+
+        time.sleep(35)
+
+        resp = httpx.get(f"{base_url}/health", timeout=10)
+        assert resp.status_code == 200, (
+            f"Health check failed after idle timeout: HTTP {resp.status_code}"
+        )
+        data = resp.json()
+        assert data["active_requests"] == 0, (
+            f"Permits not released: active_requests={data['active_requests']}"
+        )
+
+        for s in socks:
+            s.close()

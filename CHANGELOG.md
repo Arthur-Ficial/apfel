@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Server now sets a 30-second HTTP idle timeout so stalled request bodies cannot hold concurrency permits forever (#463). Previously, a client that sent headers and stalled the body held its permit for as long as the socket stayed open; `--max-concurrent` such connections wedged the server permanently. Streaming completions and slow generations are unaffected (Hummingbird skips the timeout for fully-read requests still producing a response).
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed
