@@ -548,6 +548,65 @@ func runChatRequestValidatorTests() {
             .invalidParameterValue("'x_context_max_turns' must be a positive integer, got 0")
         )
     }
+
+    // --- Unknown role validation (#405) ---
+
+    test("validator rejects unknown role in history (#405)") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"bogus","content":"ctx"},{"role":"user","content":"hi"}]}"#
+        )
+        try assertEqual(ChatRequestValidator.validate(request), .unknownRole("bogus"))
+    }
+
+    test("validator rejects case-sensitive role mismatch (#405)") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"User","content":"ctx"},{"role":"user","content":"hi"}]}"#
+        )
+        try assertEqual(ChatRequestValidator.validate(request), .unknownRole("User"))
+    }
+
+    test("validator accepts all known roles in history (#405)") {
+        for role in ["system", "developer", "assistant"] {
+            let request = try decode(
+                ChatCompletionRequest.self,
+                from: #"{"model":"\#(M)","messages":[{"role":"\#(role)","content":"ctx"},{"role":"user","content":"hi"}]}"#
+            )
+            try assertNil(ChatRequestValidator.validate(request))
+        }
+    }
+
+    test("unknownRole failure has correct metadata (#405)") {
+        let failure = ChatRequestValidationFailure.unknownRole("bogus")
+        try assertEqual(failure.httpStatusCode, 400)
+        try assertEqual(failure.errorParam, "messages")
+        try assertNil(failure.errorCode)
+        try assertTrue(failure.message.contains("bogus"))
+        try assertTrue(failure.message.contains("Supported roles"))
+        try assertTrue(failure.event.contains("unknown role bogus"))
+    }
+
+    test("knownRoles matches historyEntry handled roles plus system and developer (#405)") {
+        let expected: Set<String> = ["system", "developer", "user", "assistant", "tool"]
+        try assertEqual(ChatRequestValidator.knownRoles, expected)
+    }
+
+    test("validator prioritizes invalid last role before unknown role in history (#405)") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"bogus","content":"ctx"},{"role":"assistant","content":"hi"}]}"#
+        )
+        try assertEqual(ChatRequestValidator.validate(request), .invalidLastRole)
+    }
+
+    test("validator prioritizes unknown role before image content (#405)") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"bogus","content":"ctx"},{"role":"user","content":[{"type":"image_url"}]}]}"#
+        )
+        try assertEqual(ChatRequestValidator.validate(request), .unknownRole("bogus"))
+    }
 }
 
 private func unwrap<T>(_ value: T?, _ message: String) throws -> T {

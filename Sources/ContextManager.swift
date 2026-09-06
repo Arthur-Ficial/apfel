@@ -32,7 +32,7 @@ enum ContextManager {
         jsonMode: Bool = false,
         toolChoice: ToolChoice? = nil
     ) async throws -> (session: LanguageModelSession, finalPrompt: String, inputEntries: [Transcript.Entry]) {
-        let conversation = messages.filter { $0.role != "system" }
+        let conversation = messages.filter { $0.role != "system" && $0.role != "developer" }
         let effectiveTools: [OpenAITool]?
         if case .some(.none) = toolChoice {
             effectiveTools = nil
@@ -124,9 +124,12 @@ enum ContextManager {
             parts.append("You must respond with valid JSON only. No markdown code fences, no explanation text, no preamble. Output raw JSON.")
         }
 
-        // System prompt
+        // System prompt (system and developer roles are both instruction channels)
         if let sys = messages.first(where: { $0.role == "system" })?.textContent {
             parts.append(sys)
+        }
+        if let dev = messages.first(where: { $0.role == "developer" })?.textContent {
+            parts.append(dev)
         }
 
         if case .some(.none) = toolChoice {

@@ -7,6 +7,11 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- An unknown message role on a non-final message (e.g. `"assistent"`, `"User"`, `"System"`) was silently dropped from the conversation instead of returning HTTP 400. The validator now checks every role against the known set (`system`, `developer`, `user`, `assistant`, `tool`) and rejects unknown roles with `error.param = "messages"` (#405).
+- `"developer"` role messages in `/v1/chat/completions` are now treated as instruction text (like `"system"`), matching the `/v1/responses` endpoint behavior. Previously they were silently discarded.
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed
