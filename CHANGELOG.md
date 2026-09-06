@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- An unknown message role (e.g. `"bogus"`, `"assistent"`, `"User"`) on a non-final message was silently dropped from the conversation instead of returning a 400 error. The model generated against a mutilated history with no indication to the caller. `ChatRequestValidator` now validates every role against the set the server handles (`system`, `user`, `assistant`, `tool`) and returns `unknownRole` with `error.param = "messages"` for any unrecognised value (#405).
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed

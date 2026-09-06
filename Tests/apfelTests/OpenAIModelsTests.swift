@@ -538,6 +538,84 @@ func runChatRequestValidatorTests() {
         )
     }
 
+    test("unknown role in history is rejected (#405)") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"bogus","content":"The number is 123."},{"role":"user","content":"Say OK"}]}"#
+        )
+        try assertEqual(ChatRequestValidator.validate(request), .unknownRole("bogus"))
+    }
+
+    test("case-sensitive role mismatch is rejected (#405)") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"User","content":"hi"},{"role":"user","content":"ok"}]}"#
+        )
+        try assertEqual(ChatRequestValidator.validate(request), .unknownRole("User"))
+    }
+
+    test("unknown role as last message returns unknownRole not invalidLastRole (#405)") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"assistent","content":"hi"}]}"#
+        )
+        try assertEqual(ChatRequestValidator.validate(request), .unknownRole("assistent"))
+    }
+
+    test("all known roles pass validation when conversation is valid (#405)") {
+        let systemOnly = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"system","content":"You help."},{"role":"user","content":"hi"}]}"#
+        )
+        try assertNil(ChatRequestValidator.validate(systemOnly))
+
+        let withAssistant = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"assistant","content":"hello"},{"role":"user","content":"hi"}]}"#
+        )
+        try assertNil(ChatRequestValidator.validate(withAssistant))
+
+        let withTool = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"tool","tool_call_id":"c1","name":"x","content":"result"}]}"#
+        )
+        try assertNil(ChatRequestValidator.validate(withTool))
+    }
+
+    test("unknownRole failure maps to 400 with param messages (#405)") {
+        let failure = ChatRequestValidationFailure.unknownRole("bogus")
+        try assertEqual(failure.httpStatusCode, 400)
+        try assertNil(failure.errorCode)
+        try assertEqual(failure.errorParam, "messages")
+    }
+
+    test("unknownRole stable metadata (#405)") {
+        try assertEqual(
+            ChatRequestValidationFailure.unknownRole("bogus").message,
+            "Unknown message role 'bogus'. Supported roles: system, user, assistant, tool"
+        )
+        try assertEqual(
+            ChatRequestValidationFailure.unknownRole("bogus").event,
+            "validation failed: unknown role bogus"
+        )
+    }
+
+    test("validator prioritizes unknown role before invalid last role (#405)") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"bogus","content":"x"}]}"#
+        )
+        try assertEqual(ChatRequestValidator.validate(request), .unknownRole("bogus"))
+    }
+
+    test("validator prioritizes unsupported parameters before unknown role (#405)") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"bogus","content":"x"}],"logprobs":true}"#
+        )
+        try assertEqual(ChatRequestValidator.validate(request), .unsupportedParameter(.logprobs))
+    }
+
     test("validator reports x_context_max_turns before x_context_output_reserve") {
         let request = try decode(
             ChatCompletionRequest.self,

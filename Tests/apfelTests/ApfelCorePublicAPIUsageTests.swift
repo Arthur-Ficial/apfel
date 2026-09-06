@@ -259,6 +259,7 @@ func runApfelCorePublicAPIUsageTests() {
             .emptyMessages,
             .unsupportedParameter(.logprobs),
             .invalidLastRole,
+            .unknownRole("bogus"),
             .imageContent,
             .invalidParameterValue("why"),
             .invalidModel("gpt-5"),

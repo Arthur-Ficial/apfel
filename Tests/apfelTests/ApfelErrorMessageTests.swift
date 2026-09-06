@@ -188,6 +188,10 @@ func runApfelErrorMessageTests() {
             "Last message must have role 'user' or 'tool'"
         )
         try assertEqual(
+            ChatRequestValidationFailure.unknownRole("bogus").message,
+            "Unknown message role 'bogus'. Supported roles: system, user, assistant, tool"
+        )
+        try assertEqual(
             ChatRequestValidationFailure.imageContent.message,
             "Image content is not supported by the Apple on-device model"
         )
@@ -221,6 +225,10 @@ func runApfelErrorMessageTests() {
         try assertEqual(
             ChatRequestValidationFailure.invalidLastRole.event,
             "validation failed: last role != user/tool"
+        )
+        try assertEqual(
+            ChatRequestValidationFailure.unknownRole("bogus").event,
+            "validation failed: unknown role bogus"
         )
         try assertEqual(
             ChatRequestValidationFailure.imageContent.event,
