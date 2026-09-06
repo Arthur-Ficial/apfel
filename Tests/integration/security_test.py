@@ -564,13 +564,16 @@ def test_default_preflight_still_works_without_cors():
 
 # MARK: - Idle timeout (stalled request body permit leak, #463)
 
+IDLE_TIMEOUT_SECONDS = 30
+
+
 def test_stalled_request_body_releases_permit():
     """Stalled request bodies must not hold permits forever (#463).
 
     Opens max_concurrent connections that send HTTP headers and a partial
     body, then stop. With the idle timeout set, Hummingbird closes those
-    connections after ~30s. Once the permits are released, a normal health
-    check must succeed.
+    connections after ~IDLE_TIMEOUT_SECONDS. Once the permits are released,
+    a normal health check must succeed.
     """
     max_concurrent = 2
     with running_server("--max-concurrent", str(max_concurrent)) as (base_url, _):
@@ -589,7 +592,7 @@ def test_stalled_request_body_releases_permit():
             )
             socks.append(s)
 
-        time.sleep(35)
+        time.sleep(IDLE_TIMEOUT_SECONDS + 5)
 
         resp = httpx.get(f"{base_url}/health", timeout=10)
         assert resp.status_code == 200, (
