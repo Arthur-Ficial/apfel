@@ -14,9 +14,10 @@ private let mcpShutdownGraceSeconds: TimeInterval = 2.0
 /// A connection to a single MCP server process (stdio transport).
 ///
 /// Thread safety (justifying `@unchecked Sendable`): in `--serve` mode,
-/// `AnyMCPConnection.callTool` runs this connection's blocking stdio I/O via
-/// `Task.detached`, so concurrent requests reach one instance from multiple
-/// threads. All mutable state is confined behind locks: `nextId` is guarded by
+/// `AnyMCPConnection.callTool` runs this connection's blocking stdio I/O on
+/// a GCD thread via `DispatchQueue.global()` (#431), so concurrent requests
+/// reach one instance from multiple threads. All mutable state is confined
+/// behind locks: `nextId` is guarded by
 /// `lock` (`allocId()`), and every wire exchange - the full send+receive pair
 /// in `sendAndReceive` and standalone notification writes via `sendLocked` -
 /// is serialized by `ioLock`, so two concurrent tool calls can neither
@@ -384,8 +385,20 @@ enum AnyMCPConnection: Sendable {
     func callTool(name: String, arguments: String) async throws -> MCPProtocol.ToolCallResult {
         switch self {
         case .local(let c):
-            // Run blocking stdio I/O off the cooperative thread pool
-            return try await Task.detached { try c.callTool(name: name, arguments: arguments) }.value
+            // Run blocking stdio I/O on a real GCD thread (#431).
+            // Task.detached only drops context inheritance (priority,
+            // task-locals, cancellation) - it does NOT leave the cooperative
+            // pool, so the synchronous poll/read in sendAndReceive would
+            // park a cooperative worker for the entire exchange.
+            return try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    do {
+                        continuation.resume(returning: try c.callTool(name: name, arguments: arguments))
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+                }
+            }
         case .remote(let c):
             return try await c.callTool(name: name, arguments: arguments)
         }

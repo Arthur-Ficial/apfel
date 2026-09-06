@@ -506,6 +506,55 @@ func runMCPClientTests() {
         try assertEqual("\(err)", "Tool 'x' arguments are not valid JSON")
     }
 
+    // MARK: - GCD dispatch for blocking stdio I/O (#431)
+    // Task.detached does not leave the cooperative pool; blocking I/O must
+    // run on a real GCD thread so it does not stall unrelated async work.
+
+    testAsync("GCD dispatch propagates tool call results (#431)") {
+        let result: String = try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                continuation.resume(returning: "tool-result-42")
+            }
+        }
+        try assertEqual(result, "tool-result-42")
+    }
+
+    testAsync("GCD dispatch propagates errors from blocking work (#431)") {
+        do {
+            let _: String = try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    continuation.resume(throwing: MCPError.timedOut("tool 'slow' timed out after 5s"))
+                }
+            }
+            throw TestFailure("expected error to propagate")
+        } catch let e as MCPError {
+            guard case .timedOut(let msg) = e else {
+                throw TestFailure("expected MCPError.timedOut, got \(e)")
+            }
+            try assertTrue(msg.contains("timed out"))
+        }
+    }
+
+    testAsync("concurrent async work is not blocked by GCD dispatch (#431)") {
+        let blockingWork = Task {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    Thread.sleep(forTimeInterval: 0.3)
+                    continuation.resume()
+                }
+            }
+        }
+
+        let start = Date()
+        let heartbeat = await Task { "alive" }.value
+        let elapsed = Date().timeIntervalSince(start)
+
+        try assertEqual(heartbeat, "alive")
+        try assertTrue(elapsed < 0.15, "cooperative task delayed \(elapsed)s by GCD-dispatched work")
+
+        try await blockingWork.value
+    }
+
     test("Tool call detection works on object-argument format from #144 report") {
         // The #144 reporter showed the model producing arguments as a JSON object
         // (not an escaped string). Detection must handle both forms.

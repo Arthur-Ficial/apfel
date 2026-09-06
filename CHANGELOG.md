@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `AnyMCPConnection.callTool` no longer blocks the cooperative thread pool during stdio I/O (#431). `Task.detached` only drops context inheritance, not the executor; the blocking `poll`/`read` in `sendAndReceive` now runs on a real GCD thread via `DispatchQueue.global(qos: .userInitiated)`.
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed
