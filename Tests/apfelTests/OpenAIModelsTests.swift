@@ -124,6 +124,57 @@ func runOpenAIModelsTests() {
         try assertEqual(parsed?[1] as? String, "two")
         try assertEqual(parsed?[2] as? Bool, false)
     }
+
+    // MARK: - #455 AnyCodable rejects unrepresentable values
+
+    test("AnyCodable rejects unrepresentable number (1e999) instead of coercing to null (#455)") {
+        do {
+            _ = try decode(RawJSON.self, from: "1e999")
+            throw TestFailure("expected DecodingError for 1e999, none thrown")
+        } catch is TestFailure {
+            throw TestFailure("expected DecodingError for 1e999, none thrown")
+        } catch {
+            try assertTrue(error is DecodingError, "expected DecodingError, got \(type(of: error))")
+        }
+    }
+
+    test("AnyCodable rejects negative overflow number (-1e999) (#455)") {
+        do {
+            _ = try decode(RawJSON.self, from: "-1e999")
+            throw TestFailure("expected DecodingError for -1e999, none thrown")
+        } catch is TestFailure {
+            throw TestFailure("expected DecodingError for -1e999, none thrown")
+        } catch {
+            try assertTrue(error is DecodingError, "expected DecodingError, got \(type(of: error))")
+        }
+    }
+
+    test("AnyCodable preserves explicit JSON null (#455)") {
+        let raw = try decode(RawJSON.self, from: "null")
+        try assertEqual(raw.value, "null")
+    }
+
+    test("AnyCodable round-trips nested schema unchanged (#455)") {
+        let input = #"{"type":"object","properties":{"x":{"type":"number","maximum":100}}}"#
+        let raw = try decode(RawJSON.self, from: input)
+        let reparsed = try JSONSerialization.jsonObject(with: Data(raw.value.utf8)) as? [String: Any]
+        let props = reparsed?["properties"] as? [String: Any]
+        let x = props?["x"] as? [String: Any]
+        try assertEqual(x?["maximum"] as? Int, 100)
+        try assertEqual(x?["type"] as? String, "number")
+    }
+
+    test("Tool parameters with nested unrepresentable number reject at decode (#455)") {
+        let json = #"{"type":"function","function":{"name":"f","description":"d","parameters":{"type":"object","properties":{"x":{"type":"number","maximum":1e999}}}}}"#
+        do {
+            _ = try decode(OpenAITool.self, from: json)
+            throw TestFailure("expected DecodingError for nested 1e999, none thrown")
+        } catch is TestFailure {
+            throw TestFailure("expected DecodingError for nested 1e999, none thrown")
+        } catch {
+            try assertTrue(error is DecodingError, "expected DecodingError, got \(type(of: error))")
+        }
+    }
 }
 
 func runChatRequestValidatorTests() {

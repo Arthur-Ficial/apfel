@@ -152,6 +152,36 @@ def test_undecodable_tool_choice_object_returns_400():
 
 
 # ============================================================================
+# #455 - unrepresentable JSON numbers in tool parameters must be 400
+# ============================================================================
+
+def test_tool_parameters_with_unrepresentable_number_is_400():
+    """A number outside Double range (1e999) in tool parameters must be rejected, not silently nulled."""
+    payload = {
+        "model": MODEL,
+        "messages": [{"role": "user", "content": "hi"}],
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": "f",
+                    "description": "d",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "x": {"type": "number", "maximum": float("inf")},
+                        },
+                    },
+                },
+            }
+        ],
+    }
+    resp = _post(payload)
+    assert resp.status_code == 400, f"expected 400 for unrepresentable number, got {resp.status_code}: {resp.text}"
+    _assert_openai_error(resp, expected_type="invalid_request_error")
+
+
+# ============================================================================
 # #238a - stream_options.include_usage emits usage:null on non-final chunks
 # (model-dependent: needs Apple Intelligence, run by the controller)
 # ============================================================================

@@ -428,7 +428,9 @@ struct AnyCodable: Codable, Sendable {
             value = array
             return
         }
-        value = nil
+        throw DecodingError.dataCorruptedError(
+            in: container,
+            debugDescription: "Value is not representable as JSON (numbers must fit in a 64-bit float)")
     }
 
     func encode(to encoder: Encoder) throws {
