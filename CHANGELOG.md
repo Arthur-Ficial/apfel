@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Invalid-UTF-8 or unreadable stdin is now rejected with a non-zero exit and a diagnostic message instead of being silently treated as empty (#397). The `--messages -` path gets the same fix.
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed

@@ -66,8 +66,13 @@ func stdinIsPipe() -> Bool {
 }
 
 /// Read all of stdin as raw bytes — works for piped text and piped binary files alike.
-func readStdinData() -> Data {
-    (try? FileHandle.standardInput.readToEnd()) ?? Data()
+/// Throws `CLIParseError` when the read fails (e.g. stdin redirected from a directory).
+func readStdinData() throws -> Data {
+    do {
+        return try FileHandle.standardInput.readToEnd() ?? Data()
+    } catch {
+        throw CLIParseError("could not read stdin: \(error.localizedDescription)")
+    }
 }
 
 /// Turn piped stdin into prompt text: a piped PDF or image is extracted via lesbar
@@ -79,8 +84,10 @@ func stdinPromptText(_ data: Data) throws -> String {
     if let extracted = try LesbarFileReader.extractPipedIfBinary(data) {
         return extracted
     }
-    return (String(data: data, encoding: .utf8) ?? "")
-        .trimmingCharacters(in: .whitespacesAndNewlines)
+    guard let text = String(data: data, encoding: .utf8) else {
+        throw CLIParseError("stdin is not valid UTF-8 text (\(data.count) bytes read)")
+    }
+    return text.trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
 // MARK: - Argument Parsing
@@ -178,7 +185,17 @@ if parsed.messagesFromStdin {
         printError("--messages - requires a piped JSON conversation on stdin")
         exit(exitUsageError)
     }
-    let raw = String(data: readStdinData(), encoding: .utf8) ?? ""
+    let stdinData: Data
+    do {
+        stdinData = try readStdinData()
+    } catch let e as CLIParseError {
+        printError(e.message)
+        exit(exitUsageError)
+    }
+    guard let raw = String(data: stdinData, encoding: .utf8) else {
+        printError("--messages - requires UTF-8 JSON on stdin")
+        exit(exitUsageError)
+    }
     do {
         _ = try MessagesInput.decode(raw)
     } catch let e as MessagesInput.Error {
@@ -192,7 +209,7 @@ if parsed.messagesFromStdin {
 if messagesJSON == nil && parsed.mode.acceptsStdinInput && isatty(STDIN_FILENO) == 0 {
     let stdinContent: String
     do {
-        stdinContent = try stdinPromptText(readStdinData())
+        stdinContent = try stdinPromptText(try readStdinData())
     } catch let error as CLIParseError {
         printError(error.message)
         exit(exitUsageError)

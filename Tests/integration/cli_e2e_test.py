@@ -52,6 +52,29 @@ def run_cli(args, input_text=None, env=None, timeout=60):
     )
 
 
+def run_cli_bytes(args, input_bytes, env=None, timeout=60):
+    """Like run_cli but pipes raw bytes (no text encoding)."""
+    merged_env = os.environ.copy()
+    for key in [
+        "NO_COLOR",
+        "APFEL_SYSTEM_PROMPT",
+        "APFEL_HOST",
+        "APFEL_PORT",
+        "APFEL_TEMPERATURE",
+        "APFEL_MAX_TOKENS",
+    ]:
+        merged_env.pop(key, None)
+    if env:
+        merged_env.update(env)
+    return subprocess.run(
+        [str(BINARY), *args],
+        input=input_bytes,
+        capture_output=True,
+        env=merged_env,
+        timeout=timeout,
+    )
+
+
 def run_cli_tty(args, env=None, timeout=30):
     merged_env = os.environ.copy()
     for key in [
@@ -550,6 +573,48 @@ def test_empty_stdin_usage_error_keeps_stdout_empty():
     result = run_cli([], input_text="")
     assert result.returncode == 2
     assert result.stdout == "", f"stdout should be empty on usage error, got: {result.stdout!r}"
+
+
+def test_invalid_utf8_stdin_is_rejected():
+    """#397: invalid UTF-8 on stdin must exit non-zero, not silently discard."""
+    result = run_cli_bytes(
+        ["--count-tokens", "-o", "json", "Question"],
+        input_bytes=b"hello\xffworld",
+    )
+    assert result.returncode != 0, (
+        f"expected non-zero exit for invalid UTF-8 stdin, got {result.returncode}"
+    )
+    stderr = result.stderr.decode(errors="replace")
+    assert "empty" not in stderr.lower(), (
+        f"stderr must not claim input was empty: {stderr!r}"
+    )
+    assert "utf-8" in stderr.lower() or "utf8" in stderr.lower(), (
+        f"stderr should mention UTF-8: {stderr!r}"
+    )
+
+
+def test_invalid_utf8_stdin_messages_is_rejected():
+    """#397: --messages - with non-UTF-8 stdin must exit 2."""
+    result = run_cli_bytes(
+        ["--messages", "-"],
+        input_bytes=b'{"messages": [{"role":"user","content":"hi\xff"}]}',
+    )
+    assert result.returncode == 2, (
+        f"expected exit 2 for non-UTF-8 --messages stdin, got {result.returncode}"
+    )
+    stderr = result.stderr.decode(errors="replace")
+    assert "utf-8" in stderr.lower() or "utf8" in stderr.lower(), (
+        f"stderr should mention UTF-8: {stderr!r}"
+    )
+
+
+def test_empty_stdin_still_hints():
+    """#397: genuinely empty stdin still produces the existing hint."""
+    result = run_cli(["Question"], input_text="")
+    stderr = result.stderr
+    assert "piped input was empty" in stderr, (
+        f"empty stdin should still show the hint: {stderr!r}"
+    )
 
 
 def _run_no_args_tty_stdin(timeout=15):
