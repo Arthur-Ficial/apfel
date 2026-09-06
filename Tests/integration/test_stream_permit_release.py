@@ -17,11 +17,10 @@ Run: python3 -m pytest Tests/integration/test_stream_permit_release.py -v
 import httpx
 import pytest
 
-# Whole-suite marker: these tests drive real on-device generation (or, for
-# the permit/benchmark suites, need Apple Intelligence up); GitHub CI cannot
-# run them (CLAUDE.md "What GitHub CI CANNOT run"). Keeps -m "not model" a
-# complete, correct model-free selector for the fast preflight phase (#374).
-pytestmark = pytest.mark.model
+# NOT marked `model`: every request here fails validation and returns 400
+# before a LanguageModelSession is built, so these run on GitHub runners
+# without Apple Intelligence.  They guard the #213 permit leak - exactly
+# the kind of regression the per-PR gate should catch.
 
 
 BASE_URL = "http://localhost:11434"

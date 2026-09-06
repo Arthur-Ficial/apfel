@@ -19,7 +19,6 @@ MODEL_SUITES = [
     "mcp_remote_test.py",
     "openapi_conformance_test.py",
     "performance_test.py",
-    "test_stream_permit_release.py",
     "test_context_strict.py",
     "test_tdd_red.py",
 ]

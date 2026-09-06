@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The three #213 permit-leak regression tests (`test_stream_permit_release.py`) are no longer marked `@pytest.mark.model` (#434). Every request in the suite fails validation at 400 before a `LanguageModelSession` is constructed, so the marker was wrong - these are model-free tests that belong in the per-PR CI gate.
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed
