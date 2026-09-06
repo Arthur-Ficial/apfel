@@ -88,6 +88,13 @@ func runToolCallHandlerTests() {
     test("stripToolCallJSON leaves text without a tool-call marker unchanged") {
         try assertEqual(ToolCallHandler.stripToolCallJSON(from: "  plain answer  "), "plain answer")
     }
+
+    // MARK: - mcpRepromptCap (#435)
+
+    test("mcpRepromptCap is a positive integer shared by both paths") {
+        try assertTrue(ToolCallHandler.mcpRepromptCap > 0)
+        try assertEqual(ToolCallHandler.mcpRepromptCap, 3)
+    }
     test("parses arguments JSON string correctly") {
         let response = #"{"tool_calls": [{"id": "c3", "type": "function", "function": {"name": "fn", "arguments": "{\"key\":\"val\"}"}}]}"#
         let result = ToolCallHandler.detectToolCall(in: response)

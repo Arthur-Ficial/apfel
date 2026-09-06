@@ -408,15 +408,8 @@ func executeMCPToolCallsForCLI(
         options: options
     ).content
 
-    // The re-prompt answer may itself contain another tool_calls request. If we
-    // returned it verbatim that JSON would leak to the user as raw text. Run a
-    // bounded re-detection loop: execute any further tool calls and re-prompt
-    // again, with a hard cap so a model that keeps emitting tool_calls cannot
-    // spin forever. On cap exhaustion we strip the trailing tool-call JSON so no
-    // raw protocol text leaks.
-    let maxReprompts = 3
     var reprompts = 0
-    while reprompts < maxReprompts,
+    while reprompts < ToolCallHandler.mcpRepromptCap,
           let followUp = try await detectAndExecuteMCPTools(in: finalContent, mcpManager: mcpManager) {
         reprompts += 1
         aggregatedLog.append(contentsOf: followUp.toolLog)
@@ -428,20 +421,12 @@ func executeMCPToolCallsForCLI(
         ).content
     }
 
-    // Cap exhausted but the model is still emitting a tool call: strip the raw
-    // JSON so it never reaches the user as text.
     if ToolCallHandler.detectToolCall(in: finalContent) != nil {
-        finalContent = stripToolCallJSON(from: finalContent)
+        throw ApfelError.toolExecution(
+            "the model kept requesting tool calls after \(ToolCallHandler.mcpRepromptCap) rounds; no final answer was produced")
     }
 
     return (content: finalContent, toolLog: aggregatedLog)
-}
-
-/// Remove a `{"tool_calls": ...}` JSON block from model output so it never
-/// leaks to the user as raw protocol text. Implementation lives in ApfelCore
-/// (`ToolCallHandler.stripToolCallJSON`) so it is unit-testable (#358).
-func stripToolCallJSON(from text: String) -> String {
-    ToolCallHandler.stripToolCallJSON(from: text)
 }
 
 /// Token-budget each executed tool result for a server follow-up, given the
@@ -471,9 +456,9 @@ private func truncatedServerToolResults(
 ///
 /// Runs the same bounded re-detection loop as the CLI path (#240): if the model
 /// answers the tool-result follow-up with another `{"tool_calls": ...}` (common
-/// in tool chains), that round is executed and re-prompted, up to `maxReprompts`.
-/// On cap exhaustion any trailing tool-call JSON is stripped so it never leaks to
-/// the HTTP client as `message.content` with `finish_reason: "stop"`.
+/// in tool chains), that round is executed and re-prompted, up to
+/// `ToolCallHandler.mcpRepromptCap`. On cap exhaustion with a pending call,
+/// throws `ApfelError.toolExecution` (#435).
 func executeMCPToolCallsForServer(
     in content: String,
     mcpManager: MCPManager?,
@@ -491,9 +476,6 @@ func executeMCPToolCallsForServer(
     var currentExecuted = executed
     var finalContent = ""
 
-    // Mirror the CLI path's bounded loop: initial re-prompt plus up to
-    // maxReprompts further rounds when the model keeps emitting tool calls.
-    let maxReprompts = 3
     var reprompts = 0
     while true {
         let truncated = await truncatedServerToolResults(
@@ -512,10 +494,7 @@ func executeMCPToolCallsForServer(
         )
         finalContent = try await followUpSession.respond(to: followUpPrompt, options: options).content
 
-        // The re-prompt answer may itself request another tool call. Execute and
-        // re-prompt again with a hard cap so a model that keeps emitting
-        // tool_calls cannot spin forever.
-        guard reprompts < maxReprompts,
+        guard reprompts < ToolCallHandler.mcpRepromptCap,
               let next = try await detectAndExecuteMCPTools(in: finalContent, mcpManager: mcpManager) else {
             break
         }
@@ -525,10 +504,9 @@ func executeMCPToolCallsForServer(
         currentExecuted = next
     }
 
-    // Cap exhausted but the model is still emitting a tool call: strip the raw
-    // JSON so it never reaches the client as content with finish_reason stop.
     if ToolCallHandler.detectToolCall(in: finalContent) != nil {
-        finalContent = stripToolCallJSON(from: finalContent)
+        throw ApfelError.toolExecution(
+            "the model kept requesting tool calls after \(ToolCallHandler.mcpRepromptCap) rounds; no final answer was produced")
     }
 
     return (content: finalContent, toolLog: aggregatedLog)

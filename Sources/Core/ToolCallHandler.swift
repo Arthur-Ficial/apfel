@@ -51,6 +51,12 @@ public struct ParsedToolCall: Sendable {
 
 public enum ToolCallHandler {
 
+    // MARK: - MCP Re-prompt Cap
+
+    /// Hard cap on MCP tool re-prompt rounds. Shared by the CLI and server
+    /// paths so the policy is defined exactly once.
+    public static let mcpRepromptCap = 3
+
     // MARK: - System Prompt Building
 
     /// Build output format instructions only (no tool schemas).
