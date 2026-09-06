@@ -38,4 +38,25 @@ public enum ChatHistory {
         guard !trimmed.isEmpty else { return nil }
         return (trimmed as NSString).expandingTildeInPath
     }
+
+    /// Create the history file and its parent directories with restrictive
+    /// permissions BEFORE any content is written.
+    ///
+    /// libedit's `write_history` uses `fopen(path, "w")`, which creates new
+    /// files at `0666 & ~umask` (typically `0644`) and does not change the
+    /// mode of an existing file. Calling this first ensures the file exists
+    /// at `0600` and directories at `0700` so prompts are never exposed.
+    public static func prepareHistoryFile(at path: String) {
+        let fm = FileManager.default
+        let dir = (path as NSString).deletingLastPathComponent
+        if !dir.isEmpty {
+            try? fm.createDirectory(
+                atPath: dir, withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700])
+        }
+        if !fm.fileExists(atPath: path) {
+            fm.createFile(atPath: path, contents: nil,
+                          attributes: [.posixPermissions: 0o600])
+        }
+    }
 }
