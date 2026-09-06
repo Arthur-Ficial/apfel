@@ -262,3 +262,106 @@ class TestErrorConformance:
         data = resp.json()
         assert "error" in data
         assert "message" in data["error"]
+
+
+# ---------------------------------------------------------------------------
+# Responses streaming terminal event (#412)
+# ---------------------------------------------------------------------------
+
+def _parse_sse_events(lines):
+    """Parse raw SSE lines into (event_name, data_dict) pairs."""
+    events = []
+    current_event = None
+    for line in lines:
+        if line.startswith("event: "):
+            current_event = line[7:].strip()
+        elif line.startswith("data: "):
+            data = line[6:].strip()
+            if data and current_event:
+                events.append((current_event, json.loads(data)))
+                current_event = None
+    return events
+
+
+class TestResponsesStreamTerminalEvent:
+    """The terminal SSE event name must match the nested response.status (#412).
+
+    The OpenAI spec defines response.incomplete as a distinct event
+    (openapi.yaml:30544-30569). A truncated stream must end with
+    event: response.incomplete, not event: response.completed.
+    """
+
+    def test_responses_stream_truncated_emits_incomplete(self):
+        """A stream truncated by max_output_tokens ends with response.incomplete."""
+        with httpx.stream(
+            "POST",
+            f"{BASE_URL}/v1/responses",
+            json={
+                "model": MODEL,
+                "input": "List the numbers from one to one hundred.",
+                "stream": True,
+                "max_output_tokens": 1,
+            },
+            timeout=TIMEOUT,
+        ) as resp:
+            lines = list(resp.iter_lines())
+
+        events = _parse_sse_events(lines)
+        assert len(events) >= 1, "expected at least one SSE event"
+        terminal_name, terminal_data = events[-1]
+        assert terminal_name == "response.incomplete", (
+            f"truncated stream should end with response.incomplete, got {terminal_name}"
+        )
+        assert terminal_data["type"] == "response.incomplete"
+        assert terminal_data["response"]["status"] == "incomplete"
+        assert terminal_data["response"]["incomplete_details"]["reason"] == "max_output_tokens"
+
+    def test_responses_stream_complete_emits_completed(self):
+        """A stream that finishes normally ends with response.completed."""
+        with httpx.stream(
+            "POST",
+            f"{BASE_URL}/v1/responses",
+            json={
+                "model": MODEL,
+                "input": "Say hi.",
+                "stream": True,
+            },
+            timeout=TIMEOUT,
+        ) as resp:
+            lines = list(resp.iter_lines())
+
+        events = _parse_sse_events(lines)
+        assert len(events) >= 1, "expected at least one SSE event"
+        terminal_name, terminal_data = events[-1]
+        assert terminal_name == "response.completed", (
+            f"complete stream should end with response.completed, got {terminal_name}"
+        )
+        assert terminal_data["type"] == "response.completed"
+        assert terminal_data["response"]["status"] == "completed"
+
+    def test_responses_terminal_event_matches_status(self):
+        """The SSE event name and nested response.status always agree."""
+        for label, payload, expected_event, expected_status in [
+            (
+                "truncated",
+                {"model": MODEL, "input": "List numbers from one to one hundred.", "stream": True, "max_output_tokens": 1},
+                "response.incomplete",
+                "incomplete",
+            ),
+            (
+                "complete",
+                {"model": MODEL, "input": "Say hello.", "stream": True},
+                "response.completed",
+                "completed",
+            ),
+        ]:
+            with httpx.stream("POST", f"{BASE_URL}/v1/responses", json=payload, timeout=TIMEOUT) as resp:
+                lines = list(resp.iter_lines())
+            events = _parse_sse_events(lines)
+            terminal_name, terminal_data = events[-1]
+            assert terminal_name == expected_event, (
+                f"[{label}] event name mismatch: {terminal_name} != {expected_event}"
+            )
+            assert terminal_data["response"]["status"] == expected_status, (
+                f"[{label}] status mismatch: {terminal_data['response']['status']} != {expected_status}"
+            )

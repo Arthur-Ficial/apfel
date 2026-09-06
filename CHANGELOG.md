@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Truncated `/v1/responses` streams now emit `event: response.incomplete` instead of `event: response.completed` when `status` is `"incomplete"` (#412). Both the normal finish-reason path and the output-overflow path are corrected. The SSE event name and nested `response.status` now always agree, matching the OpenAI spec's `response.incomplete` event definition.
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed
