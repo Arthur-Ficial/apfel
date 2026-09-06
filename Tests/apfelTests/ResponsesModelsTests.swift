@@ -78,6 +78,15 @@ func runResponsesModelsTests() {
         try assertEqual(r.tools?[0].name, "add")
     }
 
+    test("decodes truncation field") {
+        let auto = try decodeResponses(#"{"model":"apple-foundationmodel","input":"x","truncation":"auto"}"#)
+        try assertEqual(auto.truncation, "auto")
+        let disabled = try decodeResponses(#"{"model":"apple-foundationmodel","input":"x","truncation":"disabled"}"#)
+        try assertEqual(disabled.truncation, "disabled")
+        let absent = try decodeResponses(#"{"model":"apple-foundationmodel","input":"x"}"#)
+        try assertEqual(absent.truncation, nil)
+    }
+
     test("decodes 501-relevant fields") {
         let r = try decodeResponses("""
         {"model":"apple-foundationmodel","input":"x",
@@ -258,6 +267,25 @@ func runResponsesModelsTests() {
           {"type":"function_call_output","call_id":"c1","output":"42"}]}
         """)
         try assertEqual(ResponsesRequestValidator.validate(r), .unsupported("input[].type=function_call_output"))
+    }
+
+    test("validator: unknown truncation value is a 400") {
+        let r = try decodeResponses(#"{"model":"apple-foundationmodel","input":"x","truncation":"none"}"#)
+        let f = ResponsesRequestValidator.validate(r)
+        try assertEqual(f, .invalidTruncation("none"))
+        try assertEqual(f?.httpStatusCode, 400)
+        try assertTrue(f?.message.contains("truncation") == true)
+        try assertTrue(f?.message.contains("none") == true)
+    }
+
+    test("validator: truncation auto passes validation") {
+        let r = try decodeResponses(#"{"model":"apple-foundationmodel","input":"x","truncation":"auto"}"#)
+        try assertEqual(ResponsesRequestValidator.validate(r), nil)
+    }
+
+    test("validator: truncation disabled passes validation") {
+        let r = try decodeResponses(#"{"model":"apple-foundationmodel","input":"x","truncation":"disabled"}"#)
+        try assertEqual(ResponsesRequestValidator.validate(r), nil)
     }
 
     test("validator: a plain valid request passes") {

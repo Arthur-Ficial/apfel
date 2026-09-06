@@ -293,3 +293,27 @@ def test_responses_error_object_has_null_param_and_code():
     err = r.json()["error"]
     assert "param" in err and err["param"] is None
     assert "code" in err and err["code"] is None
+
+
+def test_responses_unknown_truncation_is_400():
+    """Unknown truncation value must be rejected with a 400 naming the parameter (#391)."""
+    r = _responses({"model": "apple-foundationmodel", "input": "hi", "truncation": "none"})
+    assert r.status_code == 400
+    err = r.json()["error"]
+    assert "truncation" in err["message"]
+    assert "none" in err["message"]
+
+
+def test_responses_truncation_auto_accepted():
+    """truncation: auto is the default trimming behaviour and must not be rejected (#391)."""
+    r = _responses({"model": "apple-foundationmodel", "input": "hi", "truncation": "auto"})
+    # auto is valid - should not be a 400 (it reaches the model, so may be 200 or 500
+    # depending on whether Apple Intelligence is available, but never 400).
+    assert r.status_code != 400
+
+
+def test_responses_truncation_disabled_accepted():
+    """truncation: disabled is valid and must not be rejected as unknown (#391)."""
+    r = _responses({"model": "apple-foundationmodel", "input": "hi", "truncation": "disabled"})
+    # disabled is valid - should not be a 400.
+    assert r.status_code != 400

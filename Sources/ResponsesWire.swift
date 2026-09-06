@@ -156,6 +156,7 @@ struct ResponsesEnvelope: Encodable {
     let formatName: String?
     let formatSchemaJSON: String?
     let toolsEcho: [ResponsesToolEcho]
+    let truncation: String             // "auto" | "disabled"
     let usage: ResponsesUsage?
     let incompleteReason: String?
 
@@ -206,7 +207,7 @@ struct ResponsesEnvelope: Encodable {
         try c.encode("auto", forKey: .tool_choice)
         try c.encode(toolsEcho, forKey: .tools)
         try c.encode(topP, forKey: .top_p)
-        try c.encode("disabled", forKey: .truncation)
+        try c.encode(truncation, forKey: .truncation)
         if let usage { try c.encode(usage, forKey: .usage) } else { try c.encodeNil(forKey: .usage) }
         try c.encodeNil(forKey: .user)
     }

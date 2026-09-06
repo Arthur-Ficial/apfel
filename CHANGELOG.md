@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `/v1/responses` now honours the `truncation` field: `"disabled"` rejects oversized input with a 400 instead of silently trimming history, `"auto"` (and absent) keeps the existing trimming behaviour, and unknown values are rejected with a 400 naming the parameter. The response envelope echoes the value that was actually applied instead of hardcoding `"disabled"` (#391).
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed

@@ -40,13 +40,17 @@ public struct ResponsesRequest: Decodable, Sendable {
     public let background: Bool?
     public let store: Bool?
     public let include: [String]?
+    /// `"auto"` (default) trims oldest-first; `"disabled"` rejects oversized
+    /// input with a 400 rather than silently dropping history.
+    public let truncation: String?
     /// True when a `reasoning` object was present in the request.
     public let hasReasoning: Bool
 
     enum CodingKeys: String, CodingKey {
         case model, input, instructions, stream, temperature, top_p,
              max_output_tokens, metadata, text, tools, tool_choice,
-             previous_response_id, background, store, include, reasoning
+             previous_response_id, background, store, include, reasoning,
+             truncation
     }
 
     public init(from decoder: Decoder) throws {
@@ -72,6 +76,7 @@ public struct ResponsesRequest: Decodable, Sendable {
         background = try c.decodeIfPresent(Bool.self, forKey: .background)
         store = try c.decodeIfPresent(Bool.self, forKey: .store)
         include = try c.decodeIfPresent([String].self, forKey: .include)
+        truncation = try c.decodeIfPresent(String.self, forKey: .truncation)
         hasReasoning = c.contains(.reasoning)
     }
 }
@@ -178,6 +183,8 @@ public enum ResponsesRequestValidator {
     static let allowedRoles: Set<String> = ["system", "developer", "user", "assistant"]
     static let allowedFormats: Set<String> = ["text", "json_object", "json_schema"]
 
+    static let allowedTruncationValues: Set<String> = ["auto", "disabled"]
+
     public enum Failure: Equatable, Sendable {
         case missingModel
         case invalidModel(String)
@@ -188,6 +195,7 @@ public enum ResponsesRequestValidator {
         case invalidTextFormat(String)
         case missingSchema
         case invalidRange(String)
+        case invalidTruncation(String)
         /// A feature the on-device model / this stateless server does not
         /// support. Always a 501 with a plain-spoken message.
         case unsupported(String)
@@ -220,6 +228,8 @@ public enum ResponsesRequestValidator {
                 return "text.format json_schema requires a 'schema' object."
             case .invalidRange(let what):
                 return what
+            case .invalidTruncation(let value):
+                return "'truncation' must be 'auto' or 'disabled', got '\(value)'."
             case .unsupported(let feature):
                 switch feature {
                 case "previous_response_id":
@@ -268,6 +278,9 @@ public enum ResponsesRequestValidator {
         if r.hasReasoning { return .unsupported("reasoning") }
         if r.store == true { return .unsupported("store") }
         if let include = r.include, !include.isEmpty { return .unsupported("include") }
+        if let truncation = r.truncation, !allowedTruncationValues.contains(truncation) {
+            return .invalidTruncation(truncation)
+        }
         if let tools = r.tools {
             for tool in tools where tool.type != "function" {
                 return .unsupported("tools[].type=\(tool.type)")
