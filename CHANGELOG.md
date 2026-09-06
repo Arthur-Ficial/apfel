@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Exhausting the MCP re-prompt cap (3 rounds) with a tool call still pending now throws `ApfelError.toolExecution` instead of silently returning a stripped fragment as `finish_reason: stop`. CLI gets a non-zero exit; the server returns an error body. The cap is defined once (`ToolCallHandler.mcpRepromptCap`) and shared by both paths (#435).
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed

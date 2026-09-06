@@ -475,6 +475,48 @@ func runToolCallHandlerTests() {
         try assertEqual(a, b)
     }
 
+    // MARK: - mcpRepromptCap (#435)
+
+    test("mcpRepromptCap is defined once and equals 3") {
+        try assertEqual(ToolCallHandler.mcpRepromptCap, 3)
+    }
+
+    // MARK: - ensureToolLoopCompleted (#435)
+
+    test("ensureToolLoopCompleted passes when content has no tool call") {
+        try ToolCallHandler.ensureToolLoopCompleted(in: "The answer is 42.")
+    }
+
+    test("ensureToolLoopCompleted passes for empty content") {
+        try ToolCallHandler.ensureToolLoopCompleted(in: "")
+    }
+
+    test("ensureToolLoopCompleted throws toolExecution when a tool call is pending") {
+        let pending = #"Here is what I found. {"tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "add", "arguments": "{\"a\":1,\"b\":2}"}}]}"#
+        var thrown = false
+        do {
+            try ToolCallHandler.ensureToolLoopCompleted(in: pending)
+        } catch let e as ApfelError {
+            if case .toolExecution(let msg) = e {
+                thrown = true
+                try assertTrue(msg.contains("cap"), "message should mention the cap")
+                try assertTrue(msg.contains("pending"), "message should mention pending")
+            }
+        }
+        try assertTrue(thrown, "should have thrown ApfelError.toolExecution")
+    }
+
+    test("ensureToolLoopCompleted throws for unparseable tool-call JSON too") {
+        let broken = #"Sure! {"tool_calls": [{"id": "x", "function": {"name": "add", "arguments": {"a": "1"#
+        var thrown = false
+        do {
+            try ToolCallHandler.ensureToolLoopCompleted(in: broken)
+        } catch let e as ApfelError {
+            if case .toolExecution = e { thrown = true }
+        }
+        try assertTrue(thrown, "should throw for unparseable tool-call JSON")
+    }
+
     // MARK: - ProcessPromptResult
 
     test("ProcessPromptResult with empty toolLog") {

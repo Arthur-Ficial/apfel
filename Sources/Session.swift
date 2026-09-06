@@ -412,11 +412,9 @@ func executeMCPToolCallsForCLI(
     // returned it verbatim that JSON would leak to the user as raw text. Run a
     // bounded re-detection loop: execute any further tool calls and re-prompt
     // again, with a hard cap so a model that keeps emitting tool_calls cannot
-    // spin forever. On cap exhaustion we strip the trailing tool-call JSON so no
-    // raw protocol text leaks.
-    let maxReprompts = 3
+    // spin forever.
     var reprompts = 0
-    while reprompts < maxReprompts,
+    while reprompts < ToolCallHandler.mcpRepromptCap,
           let followUp = try await detectAndExecuteMCPTools(in: finalContent, mcpManager: mcpManager) {
         reprompts += 1
         aggregatedLog.append(contentsOf: followUp.toolLog)
@@ -428,11 +426,9 @@ func executeMCPToolCallsForCLI(
         ).content
     }
 
-    // Cap exhausted but the model is still emitting a tool call: strip the raw
-    // JSON so it never reaches the user as text.
-    if ToolCallHandler.detectToolCall(in: finalContent) != nil {
-        finalContent = stripToolCallJSON(from: finalContent)
-    }
+    // Cap exhausted but the model is still emitting a tool call: fail loudly
+    // instead of stripping the JSON and returning a fragment as success (#435).
+    try ToolCallHandler.ensureToolLoopCompleted(in: finalContent)
 
     return (content: finalContent, toolLog: aggregatedLog)
 }
@@ -492,8 +488,7 @@ func executeMCPToolCallsForServer(
     var finalContent = ""
 
     // Mirror the CLI path's bounded loop: initial re-prompt plus up to
-    // maxReprompts further rounds when the model keeps emitting tool calls.
-    let maxReprompts = 3
+    // mcpRepromptCap further rounds when the model keeps emitting tool calls.
     var reprompts = 0
     while true {
         let truncated = await truncatedServerToolResults(
@@ -515,7 +510,7 @@ func executeMCPToolCallsForServer(
         // The re-prompt answer may itself request another tool call. Execute and
         // re-prompt again with a hard cap so a model that keeps emitting
         // tool_calls cannot spin forever.
-        guard reprompts < maxReprompts,
+        guard reprompts < ToolCallHandler.mcpRepromptCap,
               let next = try await detectAndExecuteMCPTools(in: finalContent, mcpManager: mcpManager) else {
             break
         }
@@ -525,11 +520,9 @@ func executeMCPToolCallsForServer(
         currentExecuted = next
     }
 
-    // Cap exhausted but the model is still emitting a tool call: strip the raw
-    // JSON so it never reaches the client as content with finish_reason stop.
-    if ToolCallHandler.detectToolCall(in: finalContent) != nil {
-        finalContent = stripToolCallJSON(from: finalContent)
-    }
+    // Cap exhausted but the model is still emitting a tool call: fail loudly
+    // instead of stripping the JSON and returning a fragment as success (#435).
+    try ToolCallHandler.ensureToolLoopCompleted(in: finalContent)
 
     return (content: finalContent, toolLog: aggregatedLog)
 }
