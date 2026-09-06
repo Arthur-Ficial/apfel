@@ -180,6 +180,81 @@ func runResponsesModelsTests() {
         try assertEqual(ResponsesRequestValidator.validate(r), .missingSchema)
     }
 
+    test("decodes input_image part and flags hasNonTextPart") {
+        let r = try decodeResponses("""
+        {"model":"apple-foundationmodel","input":[
+          {"role":"user","content":[
+            {"type":"input_image","image_url":"data:image/png;base64,AA=="},
+            {"type":"input_text","text":"describe"}]}]}
+        """)
+        guard case .items(let items)? = r.input else { throw TestFailure("expected .items") }
+        try assertTrue(items[0].hasNonTextPart)
+        try assertEqual(items[0].textContent, "describe")
+    }
+
+    test("pure input_text parts do not flag hasNonTextPart") {
+        let r = try decodeResponses("""
+        {"model":"apple-foundationmodel","input":[
+          {"role":"user","content":[{"type":"input_text","text":"hi"}]}]}
+        """)
+        guard case .items(let items)? = r.input else { throw TestFailure("expected .items") }
+        try assertFalse(items[0].hasNonTextPart)
+    }
+
+    test("scalar content (not string, not array) throws a decode error") {
+        do {
+            _ = try decodeResponses("""
+            {"model":"apple-foundationmodel","input":[{"role":"user","content":37}]}
+            """)
+            throw TestFailure("expected decode error for scalar content")
+        } catch is DecodingError {
+            // expected
+        }
+    }
+
+    // ========================================================================
+    // MARK: - Validator: content quality (#409)
+    // ========================================================================
+
+    test("validator: empty string content in last user item is a 400") {
+        let r = try decodeResponses("""
+        {"model":"apple-foundationmodel","input":[{"role":"user","content":""}]}
+        """)
+        let f = ResponsesRequestValidator.validate(r)
+        try assertEqual(f, .emptyLastUserContent)
+        try assertEqual(f?.httpStatusCode, 400)
+    }
+
+    test("validator: text part without text in last user item is a 400") {
+        let r = try decodeResponses("""
+        {"model":"apple-foundationmodel","input":[
+          {"role":"user","content":[{"type":"input_text"}]}]}
+        """)
+        try assertEqual(ResponsesRequestValidator.validate(r), .emptyLastUserContent)
+    }
+
+    test("validator: image part is rejected as a 400") {
+        let r = try decodeResponses("""
+        {"model":"apple-foundationmodel","input":[
+          {"role":"user","content":[
+            {"type":"input_image","image_url":"data:image/png;base64,AA=="},
+            {"type":"input_text","text":"describe"}]}]}
+        """)
+        let f = ResponsesRequestValidator.validate(r)
+        try assertEqual(f, .imageContent)
+        try assertEqual(f?.httpStatusCode, 400)
+        try assertTrue(f?.message.contains("Image content") == true)
+    }
+
+    test("validator: image-only part is also rejected") {
+        let r = try decodeResponses("""
+        {"model":"apple-foundationmodel","input":[
+          {"role":"user","content":[
+            {"type":"input_image","image_url":"data:image/png;base64,AA=="}]}]}
+        """)
+        try assertEqual(ResponsesRequestValidator.validate(r), .imageContent)
+    }
+
     test("validator: out-of-range sampling params are 400s") {
         for json in [
             #"{"model":"apple-foundationmodel","input":"x","temperature":3}"#,

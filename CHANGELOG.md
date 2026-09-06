@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `/v1/responses` now returns 400 (not 500) for empty, scalar, or text-part-without-text content in the last user input item, and rejects `input_image` parts with a 400 instead of silently dropping them (#409).
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed

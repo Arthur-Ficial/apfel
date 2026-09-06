@@ -293,3 +293,51 @@ def test_responses_error_object_has_null_param_and_code():
     err = r.json()["error"]
     assert "param" in err and err["param"] is None
     assert "code" in err and err["code"] is None
+
+
+# ============================================================================
+# #409 - Responses content validation: empty/scalar/image -> 400, not 500
+# ============================================================================
+
+
+def test_responses_empty_content_is_400():
+    """Empty string content must be a 400, not a downstream 500."""
+    r = _responses({"model": MODEL, "input": [{"role": "user", "content": ""}]})
+    assert r.status_code == 400, (r.status_code, r.text)
+    err = _assert_openai_error(r, expected_type="invalid_request_error")
+    assert "non-empty" in err["message"].lower() or "content" in err["message"].lower()
+
+
+def test_responses_scalar_content_is_400():
+    """A non-string, non-array content (e.g. integer) must be a 400."""
+    r = _responses({"model": MODEL, "input": [{"role": "user", "content": 37}]})
+    assert r.status_code == 400, (r.status_code, r.text)
+
+
+def test_responses_text_part_without_text_is_400():
+    """A text part with no text field must be a 400, not a downstream 500."""
+    r = _responses({"model": MODEL, "input": [
+        {"role": "user", "content": [{"type": "input_text"}]}
+    ]})
+    assert r.status_code == 400, (r.status_code, r.text)
+    _assert_openai_error(r, expected_type="invalid_request_error")
+
+
+def test_responses_image_part_is_400():
+    """An input_image part must be rejected, not silently dropped."""
+    r = _responses({"model": MODEL, "input": [
+        {"role": "user", "content": [
+            {"type": "input_image", "image_url": "data:image/png;base64,AA=="},
+            {"type": "input_text", "text": "Say OK"},
+        ]}
+    ]})
+    assert r.status_code == 400, (r.status_code, r.text)
+    err = _assert_openai_error(r, expected_type="invalid_request_error")
+    assert "image" in err["message"].lower()
+
+
+def test_responses_and_chat_agree_on_malformed_content():
+    """Both endpoints return 400 for empty string content - not 500."""
+    chat_r = _post({"model": MODEL, "messages": [{"role": "user", "content": ""}]})
+    resp_r = _responses({"model": MODEL, "input": [{"role": "user", "content": ""}]})
+    assert chat_r.status_code == resp_r.status_code == 400

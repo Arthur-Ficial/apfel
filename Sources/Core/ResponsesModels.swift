@@ -85,6 +85,8 @@ public struct ResponsesInputItem: Decodable, Sendable {
     /// Flattened text of the content (string form, or `input_text` /
     /// `output_text` parts joined with newlines).
     public let textContent: String?
+    /// True when content contains a non-text part (e.g. `input_image`).
+    public let hasNonTextPart: Bool
 
     enum CodingKeys: String, CodingKey { case type, role, content }
 
@@ -93,16 +95,24 @@ public struct ResponsesInputItem: Decodable, Sendable {
         let text: String?
     }
 
+    private static let textPartTypes: Set<String> = ["input_text", "output_text"]
+
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         type = try c.decodeIfPresent(String.self, forKey: .type)
         role = try c.decodeIfPresent(String.self, forKey: .role)
         if let s = try? c.decodeIfPresent(String.self, forKey: .content) {
             textContent = s
-        } else if let parts = try? c.decodeIfPresent([Part].self, forKey: .content) {
+            hasNonTextPart = false
+        } else if let parts = try c.decodeIfPresent([Part].self, forKey: .content) {
             textContent = parts.compactMap(\.text).joined(separator: "\n")
+            hasNonTextPart = parts.contains { part in
+                guard let t = part.type else { return false }
+                return !Self.textPartTypes.contains(t)
+            }
         } else {
             textContent = nil
+            hasNonTextPart = false
         }
     }
 }
@@ -185,6 +195,8 @@ public enum ResponsesRequestValidator {
         case emptyInput
         case unknownRole(String)
         case invalidLastRole(String)
+        case emptyLastUserContent
+        case imageContent
         case invalidTextFormat(String)
         case missingSchema
         case invalidRange(String)
@@ -214,6 +226,10 @@ public enum ResponsesRequestValidator {
                 return "Unknown input role '\(r)' (allowed: system, developer, user, assistant)."
             case .invalidLastRole(let r):
                 return "The last input item must be a user turn, got role '\(r)'."
+            case .emptyLastUserContent:
+                return "The last input item must have non-empty text content."
+            case .imageContent:
+                return "Image content is not supported by the Apple on-device model."
             case .invalidTextFormat(let t):
                 return "Unsupported text.format.type '\(t)' (supported: text, json_object, json_schema)."
             case .missingSchema:
@@ -295,6 +311,9 @@ public enum ResponsesRequestValidator {
                 }
             }
             if last.role != "user" { return .invalidLastRole(last.role ?? "none") }
+            if items.contains(where: \.hasNonTextPart) { return .imageContent }
+            let lastText = last.textContent?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if lastText.isEmpty { return .emptyLastUserContent }
         }
 
         // Output format.
