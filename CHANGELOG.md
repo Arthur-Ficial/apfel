@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `AnyCodable` now rejects JSON nesting deeper than 64 levels with a 400 instead of crashing the server with a stack overflow (#462). Applies to `tools[].function.parameters`, `response_format.json_schema.schema`, and `text.format.schema`.
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed

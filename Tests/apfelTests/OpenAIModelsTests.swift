@@ -124,6 +124,28 @@ func runOpenAIModelsTests() {
         try assertEqual(parsed?[1] as? String, "two")
         try assertEqual(parsed?[2] as? Bool, false)
     }
+
+    // MARK: - AnyCodable nesting depth cap (#462)
+
+    test("AnyCodable rejects excessive nesting depth (#462)") {
+        let depth = 200
+        let nested = String(repeating: #"{"a":"#, count: depth) + "1" + String(repeating: "}", count: depth)
+        let json = #"{"model":"apple-foundationmodel","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"t","parameters":"# + nested + #"}}]}"#
+        do {
+            _ = try decode(ChatCompletionRequest.self, from: json)
+            throw TestFailure("expected DecodingError for 200-level nesting, but decoding succeeded")
+        } catch is DecodingError {
+            // expected
+        }
+    }
+
+    test("AnyCodable accepts realistic nesting depth (#462)") {
+        let schema = #"{"type":"object","properties":{"a":{"type":"object","properties":{"b":{"type":"object","properties":{"c":{"type":"object","properties":{"d":{"type":"string"}}}}}}}}}"#
+        let json = #"{"model":"apple-foundationmodel","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"t","parameters":"# + schema + #"}}]}"#
+        let request = try decode(ChatCompletionRequest.self, from: json)
+        let params = try unwrap(request.tools?.first?.function.parameters, "missing parameters")
+        try assertTrue(params.value.contains("\"d\""))
+    }
 }
 
 func runChatRequestValidatorTests() {

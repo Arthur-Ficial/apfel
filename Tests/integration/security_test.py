@@ -547,6 +547,73 @@ def test_cors_preflight_echoes_requested_headers():
     assert "x-stainless-lang" in allowed.lower()
 
 
+def test_deeply_nested_schema_is_rejected_not_fatal():
+    """A 200-level nested JSON schema must return 400, not crash the server (#462)."""
+    import json as _json
+
+    depth = 200
+    nest = '{"a":' * depth + '1' + '}' * depth
+
+    # tools[].function.parameters
+    tools_payload = _json.dumps({
+        "model": "apple-foundationmodel",
+        "messages": [{"role": "user", "content": "hi"}],
+        "tools": [{"type": "function", "function": {"name": "t"}}],
+    })
+    # Inject the raw nested JSON into the parameters field.
+    tools_payload = tools_payload.replace(
+        '"name": "t"',
+        f'"name": "t", "parameters": {nest}',
+    )
+    resp = httpx.post(
+        f"{BASE_URL}/v1/chat/completions",
+        content=tools_payload.encode(),
+        headers={"Content-Type": "application/json"},
+        timeout=10,
+    )
+    assert resp.status_code == 400, f"expected 400, got {resp.status_code}"
+
+    # response_format.json_schema.schema
+    fmt_payload = _json.dumps({
+        "model": "apple-foundationmodel",
+        "messages": [{"role": "user", "content": "hi"}],
+        "response_format": {"type": "json_schema", "json_schema": {"name": "s"}},
+    })
+    fmt_payload = fmt_payload.replace(
+        '"name": "s"',
+        f'"name": "s", "schema": {nest}',
+    )
+    resp = httpx.post(
+        f"{BASE_URL}/v1/chat/completions",
+        content=fmt_payload.encode(),
+        headers={"Content-Type": "application/json"},
+        timeout=10,
+    )
+    assert resp.status_code == 400, f"expected 400 for response_format schema, got {resp.status_code}"
+
+    # text.format.schema on /v1/responses
+    responses_payload = _json.dumps({
+        "model": "apple-foundationmodel",
+        "input": "hi",
+        "text": {"format": {"type": "json_schema", "name": "s"}},
+    })
+    responses_payload = responses_payload.replace(
+        '"name": "s"',
+        f'"name": "s", "schema": {nest}',
+    )
+    resp = httpx.post(
+        f"{BASE_URL}/v1/responses",
+        content=responses_payload.encode(),
+        headers={"Content-Type": "application/json"},
+        timeout=10,
+    )
+    assert resp.status_code == 400, f"expected 400 for /v1/responses schema, got {resp.status_code}"
+
+    # Server must still be alive
+    health = httpx.get(f"{BASE_URL}/health", timeout=5)
+    assert health.status_code == 200, "server crashed after deeply nested payload"
+
+
 def test_default_preflight_still_works_without_cors():
     """Without --cors flag, OPTIONS should return 204 but no CORS headers."""
     resp = httpx.options(
