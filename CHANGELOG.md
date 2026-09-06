@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `--count-tokens --mcp` now includes the prompt in `total`, `fits`, and `--strict` verdicts. The MCP branch of `countTokens()` assigned raw entries from `ContextManager.makeSession()` without wrapping them via `sessionInputEntries()`, so the final prompt was never counted - making `total` constant regardless of prompt length and allowing over-budget prompts to false-pass `--strict` (#399).
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed
