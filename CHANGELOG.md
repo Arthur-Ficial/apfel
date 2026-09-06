@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Repeated `--messages` now follows last-flag-wins (#416). Previously `--messages - --messages file.json` kept the stdin flag set and ignored the file; each branch now clears the other source so the last `--messages` argument wins, consistent with every other repeated flag.
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed
