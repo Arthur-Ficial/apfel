@@ -401,6 +401,23 @@ def test_default_server_has_no_origin_warning():
     assert "Any website can access this server" not in banner
 
 
+def test_wildcard_allowed_origins_warns_like_no_origin_check():
+    """--allowed-origins '*' must fire the same warning as --no-origin-check (#465)."""
+    with running_server("--allowed-origins", "*") as (_, log_path):
+        banner = read_log(log_path)
+    assert "WARNING" in banner
+    assert "Any website can access this server" in banner
+    assert "localhost only" not in banner
+
+
+def test_normal_allowed_origins_shows_no_warning():
+    """--allowed-origins with a real origin must not fire the warning (#465)."""
+    with running_server("--allowed-origins", "http://localhost:5173") as (_, log_path):
+        banner = read_log(log_path)
+    assert "Any website can access this server" not in banner
+    assert "localhost only" in banner
+
+
 def test_non_loopback_bind_without_token_warns_loudly():
     """0.0.0.0 with no token must fire a loud red banner pointing at --token (#228)."""
     with running_server(bind_host="0.0.0.0") as (_, log_path):
