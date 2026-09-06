@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `ToolCallHandler.detectToolCall` no longer aborts the process when model output contains scalar `arguments` (a number or bool instead of a string or object). `JSONSerialization.data(withJSONObject:)` raises an uncatchable ObjC `NSInvalidArgumentException` on scalars; the fix adds `.fragmentsAllowed` and an `NSNull` guard so scalars are wrapped via `ensureJSONArguments` and nulls fall through to `{}` (#388).
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed

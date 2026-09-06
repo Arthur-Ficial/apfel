@@ -455,6 +455,53 @@ func runToolCallHandlerTests() {
         try assertTrue(instr.contains("search"), "must list tool names")
     }
 
+    // MARK: - Scalar arguments do not crash (#388)
+
+    test("scalar number arguments do not crash and return non-nil (#388)") {
+        let response = #"{"tool_calls": [{"id": "x", "type": "function", "function": {"name": "add", "arguments": 7}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.count, 1)
+        try assertEqual(result!.first?.name, "add")
+    }
+
+    test("scalar bool arguments do not crash and return non-nil (#388)") {
+        let response = #"{"tool_calls": [{"id": "x", "type": "function", "function": {"name": "toggle", "arguments": true}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "toggle")
+    }
+
+    test("null arguments do not crash and default to empty object (#388)") {
+        let response = #"{"tool_calls": [{"id": "x", "type": "function", "function": {"name": "ping", "arguments": null}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.argumentsString, "{}")
+    }
+
+    test("scalar arguments produce valid JSON object (#388)") {
+        let response = #"{"tool_calls": [{"id": "x", "type": "function", "function": {"name": "add", "arguments": 7}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        let argsStr = result!.first!.argumentsString
+        let parsed = try? JSONSerialization.jsonObject(with: Data(argsStr.utf8)) as? [String: Any]
+        try assertNotNil(parsed)
+    }
+
+    test("object arguments unchanged after scalar fix (#388)") {
+        let response = #"{"tool_calls": [{"id": "c1", "type": "function", "function": {"name": "fn", "arguments": {"city": "Vienna"}}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertTrue(result!.first!.argumentsString.contains("Vienna"))
+    }
+
+    test("string arguments unchanged after scalar fix (#388)") {
+        let response = #"{"tool_calls": [{"id": "c1", "type": "function", "function": {"name": "fn", "arguments": "{\"key\":\"val\"}"}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.argumentsString, #"{"key":"val"}"#)
+    }
+
     // MARK: - ToolLogEntry
 
     test("ToolLogEntry stores tool execution result") {
