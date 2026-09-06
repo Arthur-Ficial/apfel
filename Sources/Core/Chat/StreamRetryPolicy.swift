@@ -26,6 +26,9 @@
 
 import Foundation
 
+/// POSIX-conventional exit status when stdout's consumer closes the pipe (128 + SIGPIPE).
+public let brokenPipeExitCode: Int32 = 141
+
 public actor StreamPrintSink {
     /// Number of characters already emitted (the high-water mark across retries).
     private var emittedCount = 0
@@ -48,7 +51,17 @@ public actor StreamPrintSink {
     }
 
     /// Default emit: write to stdout and flush so streaming output is live.
+    ///
+    /// Uses the throwing `write(contentsOf:)` instead of the legacy
+    /// `write(_:)`. With SIGPIPE ignored process-wide (main.swift), EPIPE
+    /// surfaces as a throwing error here rather than an uncatchable
+    /// NSFileHandleOperationException. A closed consumer is normal for a
+    /// UNIX filter, so we exit the way SIGPIPE would have - quietly (#389).
     public static let printAndFlush: @Sendable (String) -> Void = { suffix in
-        FileHandle.standardOutput.write(Data(suffix.utf8))
+        do {
+            try FileHandle.standardOutput.write(contentsOf: Data(suffix.utf8))
+        } catch {
+            exit(brokenPipeExitCode)
+        }
     }
 }

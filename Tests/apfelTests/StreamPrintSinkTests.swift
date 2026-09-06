@@ -80,6 +80,42 @@ func runStreamPrintSinkTests() {
     testAsync("StreamPrintSink conforms to Sendable") {
         let _: any Sendable = StreamPrintSink(emit: { _ in })
     }
+
+    test("brokenPipeExitCode is 141 (128 + SIGPIPE)") {
+        try assertEqual(brokenPipeExitCode, 141,
+            "POSIX convention: 128 + signal number (SIGPIPE = 13)")
+    }
+
+    testAsync("feed with a failing emitter does not propagate an uncatchable exception (#389)") {
+        let recorder = FailingSinkRecorder(failOn: "boom")
+        let sink = StreamPrintSink(emit: { recorder.receive($0) })
+        await sink.feed(cumulative: "Hello")
+        await sink.feed(cumulative: "Hello boom")
+        await sink.feed(cumulative: "Hello boom ignored")
+        try assertEqual(recorder.joined, "Hello",
+            "only output before the simulated failure is recorded")
+    }
+}
+
+/// Thread-safe recorder that stops recording once a trigger substring is seen.
+final class FailingSinkRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _chunks: [String] = []
+    private var _failed = false
+    private let trigger: String
+
+    init(failOn trigger: String) { self.trigger = trigger }
+
+    func receive(_ s: String) {
+        lock.lock(); defer { lock.unlock() }
+        guard !_failed else { return }
+        if s.contains(trigger) { _failed = true; return }
+        _chunks.append(s)
+    }
+    var joined: String {
+        lock.lock(); defer { lock.unlock() }
+        return _chunks.joined()
+    }
 }
 
 /// Thread-safe recorder for the suffixes the sink emits.

@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `apfel --stream ... | head -1` no longer crashes with an uncaught `NSFileHandleOperationException` (#389). The default stream emitter now uses the throwing `write(contentsOf:)` instead of the legacy `write(_:)`, so a closed stdout pipe exits cleanly with status 141 (the POSIX convention for SIGPIPE) instead of aborting.
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed
