@@ -1024,16 +1024,18 @@ def test_tool_result_not_logged_without_debug():
 
 
 def test_tool_result_logged_truncated_with_debug():
-    """With --debug, tool args and results appear in stderr (#464)."""
+    """With --debug, tool args and results appear but large results are truncated (#464)."""
     require_model()
-    mcp_script = ROOT / "mcp" / "calculator" / "server.py"
-    with _running_mcp_server_with_log(mcp_script, debug=True) as (api_url, read_log):
+    with _running_mcp_server_with_log(
+        FIXTURES / "huge_output_mcp_server.py", debug=True
+    ) as (api_url, read_log):
         post_chat_rotating_seeds(f"{api_url}/chat/completions", {
             "model": MODEL,
             "messages": [
                 {"role": "user",
-                 "content": "Use the add function to add 100 and 200. Reply with just the number."}
+                 "content": "Call the fetch_document tool, then summarize the document in one sentence."}
             ],
+            "max_tokens": 200,
         }, TIMEOUT)
         time.sleep(0.5)
         log = read_log()
@@ -1041,3 +1043,5 @@ def test_tool_result_logged_truncated_with_debug():
         assert mcp_lines, "Expected at least one 'mcp tool:' event in debug log"
         assert any("(" in l for l in mcp_lines), \
             f"Debug log should show tool args in parens: {mcp_lines}"
+        assert any("...[truncated]" in l for l in mcp_lines), \
+            f"Large tool result should be truncated in debug log: {mcp_lines}"
