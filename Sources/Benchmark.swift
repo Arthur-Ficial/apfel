@@ -85,7 +85,7 @@ private func benchmarkReport() async throws -> BenchmarkReport {
     let streamDebugCapture = await benchmarkStreamDebugCaptureDisabled()
     let contextManager = try await benchmarkContextManager(options: options)
     let requestPipeline = try await benchmarkRequestPipeline(options: options)
-    let requestDecode = await benchmarkRequestDecode()
+    let requestDecode = try await benchmarkRequestDecode()
     let toolDetection = await benchmarkToolDetection()
     let responseEncode = await benchmarkResponseEncode()
 
@@ -239,14 +239,16 @@ private func benchmarkContextManager(options: SessionOptions) async throws -> Be
     let messages = benchmarkMessages()
 
     let iterations = 12
-    let timing = await measure(iterations: iterations) {
-        _ = try? await ContextManager.makeSession(
+    var lastPrompt = ""
+    let timing = try await measure(iterations: iterations) {
+        let (_, prompt, _) = try await ContextManager.makeSession(
             messages: messages,
             tools: tools,
             options: options,
             jsonMode: true,
             toolChoice: .auto
         )
+        lastPrompt = prompt
     }
 
     return BenchmarkCaseResult(
@@ -255,7 +257,7 @@ private func benchmarkContextManager(options: SessionOptions) async throws -> Be
         baseline_avg_ms: nil,
         current_avg_ms: timing.avgMilliseconds,
         speedup_ratio: nil,
-        validated: true,
+        validated: !lastPrompt.isEmpty,
         notes: "End-to-end session assembly with tools, JSON mode, and transcript trimming."
     )
 }
@@ -339,11 +341,11 @@ private func benchmarkStreamDebugCaptureDisabled() async -> BenchmarkCaseResult 
 private func benchmarkRequestPipeline(options: SessionOptions) async throws -> BenchmarkCaseResult {
     let requestJSON = makeRequestJSON()
     let request = try JSONDecoder().decode(ChatCompletionRequest.self, from: requestJSON)
-    let validation = try await benchmarkRequestPipelineResult(request: request, options: options)
 
     let iterations = 40
-    let timing = await measure(iterations: iterations) {
-        _ = try? await benchmarkRequestPipelineResult(request: request, options: options)
+    var lastResult: (finalPrompt: String, promptTokens: Int, responseBytes: Int) = ("", 0, 0)
+    let timing = try await measure(iterations: iterations) {
+        lastResult = try await benchmarkRequestPipelineResult(request: request, options: options)
     }
 
     return BenchmarkCaseResult(
@@ -352,16 +354,17 @@ private func benchmarkRequestPipeline(options: SessionOptions) async throws -> B
         baseline_avg_ms: nil,
         current_avg_ms: timing.avgMilliseconds,
         speedup_ratio: nil,
-        validated: !validation.finalPrompt.isEmpty && validation.promptTokens > 0 && validation.responseBytes > 0,
+        validated: !lastResult.finalPrompt.isEmpty && lastResult.promptTokens > 0 && lastResult.responseBytes > 0,
         notes: "Decode + context build + token counting + response encode, excluding model inference."
     )
 }
 
-private func benchmarkRequestDecode() async -> BenchmarkCaseResult {
+private func benchmarkRequestDecode() async throws -> BenchmarkCaseResult {
     let requestJSON = makeRequestJSON()
     let iterations = 500
-    let timing = await measure(iterations: iterations) {
-        _ = try? JSONDecoder().decode(ChatCompletionRequest.self, from: requestJSON)
+    var lastDecoded: ChatCompletionRequest?
+    let timing = try await measure(iterations: iterations) {
+        lastDecoded = try JSONDecoder().decode(ChatCompletionRequest.self, from: requestJSON)
     }
 
     return BenchmarkCaseResult(
@@ -370,7 +373,7 @@ private func benchmarkRequestDecode() async -> BenchmarkCaseResult {
         baseline_avg_ms: nil,
         current_avg_ms: timing.avgMilliseconds,
         speedup_ratio: nil,
-        validated: true,
+        validated: lastDecoded != nil && !(lastDecoded!.messages.isEmpty),
         notes: "OpenAI-compatible request decoding throughput."
     )
 }
@@ -433,18 +436,18 @@ private func benchmarkResponseEncode() async -> BenchmarkCaseResult {
 private func measure(
     iterations: Int,
     warmup: Int = 2,
-    operation: @escaping () async -> Void
-) async -> BenchmarkTiming {
+    operation: @escaping () async throws -> Void
+) async rethrows -> BenchmarkTiming {
     guard iterations > 0 else { return BenchmarkTiming(avgMilliseconds: 0) }
 
     for _ in 0..<warmup {
-        await operation()
+        try await operation()
     }
 
     var totalNanoseconds: UInt64 = 0
     for _ in 0..<iterations {
         let start = DispatchTime.now().uptimeNanoseconds
-        await operation()
+        try await operation()
         totalNanoseconds += DispatchTime.now().uptimeNanoseconds - start
     }
 
