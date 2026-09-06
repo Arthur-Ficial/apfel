@@ -152,6 +152,31 @@ def test_undecodable_tool_choice_object_returns_400():
 
 
 # ============================================================================
+# #455 - unrepresentable JSON numbers must be rejected, not silently rewritten
+# ============================================================================
+
+def test_tool_parameters_with_unrepresentable_number_is_400():
+    """Tool parameters containing a number outside Double range (1e999) must
+    return 400 invalid_request_error, not silently rewrite it to null (#455)."""
+    raw_body = (
+        '{"model":"' + MODEL + '","max_tokens":20,'
+        '"messages":[{"role":"user","content":"Say OK"}],'
+        '"tools":[{"type":"function","function":{"name":"f","description":"d",'
+        '"parameters":{"type":"object","properties":{"x":{"type":"number","maximum":1e999}}}}}]}'
+    )
+    resp = httpx.post(
+        f"{BASE_URL}/v1/chat/completions",
+        content=raw_body,
+        headers={"Content-Type": "application/json"},
+        timeout=15,
+    )
+    assert resp.status_code == 400, (
+        f"unrepresentable number in tool parameters must 400, got {resp.status_code}: {resp.text}"
+    )
+    _assert_openai_error(resp, expected_type="invalid_request_error")
+
+
+# ============================================================================
 # #238a - stream_options.include_usage emits usage:null on non-final chunks
 # (model-dependent: needs Apple Intelligence, run by the controller)
 # ============================================================================
