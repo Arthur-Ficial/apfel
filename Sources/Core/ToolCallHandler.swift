@@ -51,6 +51,22 @@ public struct ParsedToolCall: Sendable {
 
 public enum ToolCallHandler {
 
+    // MARK: - MCP Re-prompt Cap
+
+    /// Maximum number of follow-up re-prompts when the model keeps emitting
+    /// tool calls. Both CLI and HTTP paths use this single constant.
+    public static let mcpRepromptCap = 3
+
+    /// After the MCP tool loop exits, verify the model is not still requesting
+    /// a tool call. If it is, the cap was exhausted with work still pending -
+    /// returning a stripped fragment as `finish_reason: stop` would be dishonest,
+    /// so this throws `.toolExecution` instead (#435).
+    public static func ensureToolLoopCompleted(in content: String) throws {
+        guard detectToolCall(in: content) != nil else { return }
+        throw ApfelError.toolExecution(
+            "MCP tool loop hit its \(mcpRepromptCap)-round cap with a tool call still pending; no final answer was produced")
+    }
+
     // MARK: - System Prompt Building
 
     /// Build output format instructions only (no tool schemas).
