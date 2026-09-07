@@ -211,6 +211,8 @@ func runApfelCorePublicAPIUsageTests() {
         let _: StreamOptions?      = req.stream_options
         let _: Double?             = req.temperature
         let _: Int?                = req.max_tokens
+        let _: Int?                = req.max_completion_tokens
+        let _: Int?                = req.effectiveMaxTokens
         let _: Int?                = req.seed
         let _: [OpenAITool]?       = req.tools
         let _: ToolChoice?         = req.tool_choice
