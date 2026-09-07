@@ -32,7 +32,13 @@ enum ContextManager {
         jsonMode: Bool = false,
         toolChoice: ToolChoice? = nil
     ) async throws -> (session: LanguageModelSession, finalPrompt: String, inputEntries: [Transcript.Entry]) {
-        let conversation = messages.filter { $0.role != "system" }
+        // Instruction roles never take a conversation turn -- they are folded
+        // into the instructions block below. `developer` used to survive this
+        // filter, then get dropped by historyEntry's nil return, which is the
+        // silent history loss #405 is about.
+        let conversation = messages.filter {
+            ![OpenAIMessage].instructionRoles.contains($0.role)
+        }
         let effectiveTools: [OpenAITool]?
         if case .some(.none) = toolChoice {
             effectiveTools = nil
@@ -124,9 +130,9 @@ enum ContextManager {
             parts.append("You must respond with valid JSON only. No markdown code fences, no explanation text, no preamble. Output raw JSON.")
         }
 
-        // System prompt - all system messages, not just the first (#390)
-        if let sys = messages.joinedSystemContent {
-            parts.append(sys)
+        // Every system/developer message, in order - not just the first (#390, #405)
+        if let instructions = messages.joinedInstructionContent {
+            parts.append(instructions)
         }
 
         if case .some(.none) = toolChoice {

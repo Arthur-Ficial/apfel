@@ -125,66 +125,79 @@ func runOpenAIModelsTests() {
         try assertEqual(parsed?[2] as? Bool, false)
     }
 
-    // MARK: - joinedSystemContent (#390)
+    // MARK: - joinedInstructionContent (#390)
 
-    test("joinedSystemContent returns nil when no system messages exist") {
+    test("joinedInstructionContent returns nil when no system messages exist") {
         let messages: [OpenAIMessage] = [
             OpenAIMessage(role: "user", content: .text("hello")),
         ]
-        try assertNil(messages.joinedSystemContent)
+        try assertNil(messages.joinedInstructionContent)
     }
 
-    test("joinedSystemContent returns single system message text") {
+    test("joinedInstructionContent returns single system message text") {
         let messages: [OpenAIMessage] = [
             OpenAIMessage(role: "system", content: .text("Be concise.")),
             OpenAIMessage(role: "user", content: .text("hello")),
         ]
-        try assertEqual(messages.joinedSystemContent, "Be concise.")
+        try assertEqual(messages.joinedInstructionContent, "Be concise.")
     }
 
-    test("joinedSystemContent joins multiple system messages with double newlines (#390)") {
+    test("joinedInstructionContent joins multiple system messages with double newlines (#390)") {
         let messages: [OpenAIMessage] = [
             OpenAIMessage(role: "system", content: .text("Be concise.")),
             OpenAIMessage(role: "system", content: .text("Always answer in JSON.")),
             OpenAIMessage(role: "user", content: .text("hello")),
         ]
-        try assertEqual(messages.joinedSystemContent, "Be concise.\n\nAlways answer in JSON.")
+        try assertEqual(messages.joinedInstructionContent, "Be concise.\n\nAlways answer in JSON.")
     }
 
-    test("joinedSystemContent skips system messages with empty text") {
+    test("joinedInstructionContent skips system messages with empty text") {
         let messages: [OpenAIMessage] = [
             OpenAIMessage(role: "system", content: .text("Be concise.")),
             OpenAIMessage(role: "system", content: .text("")),
             OpenAIMessage(role: "system", content: .text("Answer in English.")),
             OpenAIMessage(role: "user", content: .text("hello")),
         ]
-        try assertEqual(messages.joinedSystemContent, "Be concise.\n\nAnswer in English.")
+        try assertEqual(messages.joinedInstructionContent, "Be concise.\n\nAnswer in English.")
     }
 
-    test("joinedSystemContent returns nil when all system messages are empty") {
+    test("joinedInstructionContent folds developer messages in too (#405)") {
+        // `developer` is an instruction channel, not a conversation turn. It
+        // used to survive the system filter and then be dropped silently by
+        // historyEntry, deleting the turn with no error.
+        let messages: [OpenAIMessage] = [
+            OpenAIMessage(role: "system", content: .text("Be concise.")),
+            OpenAIMessage(role: "developer", content: .text("Prefer metric units.")),
+            OpenAIMessage(role: "user", content: .text("hello")),
+        ]
+        try assertEqual(messages.joinedInstructionContent,
+                        "Be concise.\n\nPrefer metric units.")
+    }
+
+    test("joinedInstructionContent returns nil when all system messages are empty") {
         let messages: [OpenAIMessage] = [
             OpenAIMessage(role: "system", content: .text("")),
             OpenAIMessage(role: "user", content: .text("hello")),
         ]
-        try assertNil(messages.joinedSystemContent)
+        try assertNil(messages.joinedInstructionContent)
     }
 
-    test("joinedSystemContent returns nil for nil content system message") {
+    test("joinedInstructionContent returns nil for nil content system message") {
         let messages: [OpenAIMessage] = [
             OpenAIMessage(role: "system", content: nil),
             OpenAIMessage(role: "user", content: .text("hello")),
         ]
-        try assertNil(messages.joinedSystemContent)
+        try assertNil(messages.joinedInstructionContent)
     }
 
-    test("joinedSystemContent preserves order of system messages") {
+    test("joinedInstructionContent preserves order of system messages") {
         let messages: [OpenAIMessage] = [
             OpenAIMessage(role: "system", content: .text("First.")),
             OpenAIMessage(role: "user", content: .text("middle")),
             OpenAIMessage(role: "system", content: .text("Second.")),
             OpenAIMessage(role: "user", content: .text("hello")),
         ]
-        try assertEqual(messages.joinedSystemContent, "First.\n\nSecond.")
+        try assertEqual(messages.joinedInstructionContent, "First.\n\nSecond.")
     }
 }
 
@@ -609,6 +622,65 @@ func runChatRequestValidatorTests() {
             ChatRequestValidator.validate(request),
             .invalidParameterValue("'x_context_max_turns' must be a positive integer, got 0")
         )
+    }
+
+    // --- Unknown role validation (#405) ---
+
+    test("validator rejects unknown role in history (#405)") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"bogus","content":"ctx"},{"role":"user","content":"hi"}]}"#
+        )
+        try assertEqual(ChatRequestValidator.validate(request), .unknownRole("bogus"))
+    }
+
+    test("validator rejects case-sensitive role mismatch (#405)") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"User","content":"ctx"},{"role":"user","content":"hi"}]}"#
+        )
+        try assertEqual(ChatRequestValidator.validate(request), .unknownRole("User"))
+    }
+
+    test("validator accepts all known roles in history (#405)") {
+        for role in ["system", "developer", "assistant"] {
+            let request = try decode(
+                ChatCompletionRequest.self,
+                from: #"{"model":"\#(M)","messages":[{"role":"\#(role)","content":"ctx"},{"role":"user","content":"hi"}]}"#
+            )
+            try assertNil(ChatRequestValidator.validate(request))
+        }
+    }
+
+    test("unknownRole failure has correct metadata (#405)") {
+        let failure = ChatRequestValidationFailure.unknownRole("bogus")
+        try assertEqual(failure.httpStatusCode, 400)
+        try assertEqual(failure.errorParam, "messages")
+        try assertNil(failure.errorCode)
+        try assertTrue(failure.message.contains("bogus"))
+        try assertTrue(failure.message.contains("Supported roles"))
+        try assertTrue(failure.event.contains("unknown role bogus"))
+    }
+
+    test("knownRoles matches historyEntry handled roles plus system and developer (#405)") {
+        let expected: Set<String> = ["system", "developer", "user", "assistant", "tool"]
+        try assertEqual(ChatRequestValidator.knownRoles, expected)
+    }
+
+    test("validator prioritizes invalid last role before unknown role in history (#405)") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"bogus","content":"ctx"},{"role":"assistant","content":"hi"}]}"#
+        )
+        try assertEqual(ChatRequestValidator.validate(request), .invalidLastRole)
+    }
+
+    test("validator prioritizes unknown role before image content (#405)") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"bogus","content":"ctx"},{"role":"user","content":[{"type":"image_url"}]}]}"#
+        )
+        try assertEqual(ChatRequestValidator.validate(request), .unknownRole("bogus"))
     }
 }
 

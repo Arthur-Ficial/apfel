@@ -75,6 +75,8 @@ public enum ChatRequestValidationFailure: Sendable, Equatable, Hashable, CustomS
     case unsupportedParameter(UnsupportedChatParameter)
     /// The final message role was not `user` or `tool`.
     case invalidLastRole
+    /// A message carried a role the server does not understand.
+    case unknownRole(String)
     /// The final non-tool message had empty or null content.
     case emptyLastMessageContent
     /// The request included image content.
@@ -93,6 +95,8 @@ public enum ChatRequestValidationFailure: Sendable, Equatable, Hashable, CustomS
             return parameter.message
         case .invalidLastRole:
             return "Last message must have role 'user' or 'tool'"
+        case .unknownRole(let role):
+            return "Unknown message role '\(role)'. Supported roles: system, developer, user, assistant, tool"
         case .emptyLastMessageContent:
             return "The last message must have non-empty 'content'"
         case .imageContent:
@@ -113,6 +117,8 @@ public enum ChatRequestValidationFailure: Sendable, Equatable, Hashable, CustomS
             return "validation failed: unsupported parameter \(parameter.name)"
         case .invalidLastRole:
             return "validation failed: last role != user/tool"
+        case .unknownRole(let role):
+            return "validation failed: unknown role \(role)"
         case .emptyLastMessageContent:
             return "validation failed: empty last message content"
         case .imageContent:
@@ -150,6 +156,8 @@ public enum ChatRequestValidationFailure: Sendable, Equatable, Hashable, CustomS
         switch self {
         case .invalidModel:
             return "model"
+        case .unknownRole:
+            return "messages"
         default:
             return nil
         }
@@ -163,6 +171,9 @@ public enum ChatRequestValidationFailure: Sendable, Equatable, Hashable, CustomS
 public enum ChatRequestValidator {
     /// The only model name this server accepts.
     public static let validModel = "apple-foundationmodel"
+    /// Roles the server understands. Must stay in sync with
+    /// `ContextManager.historyEntry` and `buildInstructions`.
+    public static let knownRoles: Set<String> = ["system", "developer", "user", "assistant", "tool"]
 
     /// Validates a decoded chat-completions request.
     ///
@@ -183,6 +194,10 @@ public enum ChatRequestValidator {
 
         guard let lastRole = request.messages.last?.role, ["user", "tool"].contains(lastRole) else {
             return .invalidLastRole
+        }
+
+        if let unknown = request.messages.first(where: { !knownRoles.contains($0.role) }) {
+            return .unknownRole(unknown.role)
         }
 
         if request.messages.contains(where: \.containsImageContent) {

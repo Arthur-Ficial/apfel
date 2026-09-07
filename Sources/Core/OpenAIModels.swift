@@ -199,11 +199,21 @@ public struct OpenAIMessage: Codable, Sendable, Equatable, Hashable {
 }
 
 extension Array where Element == OpenAIMessage {
-    /// Text content of every system-role message, joined with double newlines.
-    /// Returns nil when no system messages carry non-empty text.
-    public var joinedSystemContent: String? {
+    /// Roles that address the model rather than take a turn in the
+    /// conversation. FoundationModels has a single instructions slot, so both
+    /// are folded into it (#390, #405).
+    public static var instructionRoles: Set<String> { ["system", "developer"] }
+
+    /// Text content of every instruction-role message, in order, joined with
+    /// double newlines. Returns nil when none carries non-empty text.
+    ///
+    /// Every one of them, not just the first: SDKs and agent frameworks
+    /// routinely stack a base prompt and a task-specific one, and dropping the
+    /// rest answered against instructions the caller believed were in force
+    /// (#390).
+    public var joinedInstructionContent: String? {
         let parts = self
-            .filter { $0.role == "system" }
+            .filter { Self.instructionRoles.contains($0.role) }
             .compactMap(\.textContent)
             .filter { !$0.isEmpty }
         return parts.isEmpty ? nil : parts.joined(separator: "\n\n")
