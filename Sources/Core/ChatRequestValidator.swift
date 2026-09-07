@@ -243,6 +243,12 @@ public enum ChatRequestValidator {
         if case .invalid(let raw) = request.tool_choice {
             return .invalidParameterValue("Invalid 'tool_choice' value: \(raw). Must be 'auto', 'none', 'required', or a {\"type\":\"function\",\"function\":{\"name\":\"...\"}} object.")
         }
+        if case .specific(let name) = request.tool_choice,
+           let tools = request.tools, !tools.isEmpty {
+            if !tools.contains(where: { $0.function.name == name }) {
+                return .invalidParameterValue("tool_choice function name '\(name)' does not match any tool in the 'tools' array. Available: \(tools.map(\.function.name).joined(separator: ", "))")
+            }
+        }
 
         return nil
     }

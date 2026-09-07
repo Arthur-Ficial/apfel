@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `ChatCompletionRequest` now decodes `parallel_tool_calls` (previously silently ignored). A named `tool_choice` referencing a function not present in the `tools` array is now rejected with a 400 instead of reaching the model with an impossible constraint (#480).
+
 ## [1.10.0] - 2026-09-07
 
 ### Fixed
