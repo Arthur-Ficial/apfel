@@ -19,8 +19,10 @@ public struct ChatCompletionRequest: Decodable, Sendable, Equatable, Hashable {
     public let temperature: Double?
     /// Nucleus (top-p) sampling threshold override.
     public let top_p: Double?
-    /// Maximum completion tokens requested by the client.
+    /// Legacy maximum completion tokens requested by the client.
     public let max_tokens: Int?
+    /// Modern maximum completion tokens requested by the client (OpenAI 2024+).
+    public let max_completion_tokens: Int?
     /// Optional deterministic seed request.
     public let seed: Int?
     /// Client-supplied tool definitions.
@@ -48,6 +50,12 @@ public struct ChatCompletionRequest: Decodable, Sendable, Equatable, Hashable {
     /// Requested token reserve for the model's output.
     public let x_context_output_reserve: Int?
 
+    /// The effective positive output-token limit after resolving `max_tokens`
+    /// and `max_completion_tokens`. `nil` when neither field was provided.
+    public var effectiveMaxTokens: Int? {
+        max_completion_tokens ?? max_tokens
+    }
+
     /// Creates a chat-completions request value.
     public init(
         model: String,
@@ -57,6 +65,7 @@ public struct ChatCompletionRequest: Decodable, Sendable, Equatable, Hashable {
         temperature: Double? = nil,
         top_p: Double? = nil,
         max_tokens: Int? = nil,
+        max_completion_tokens: Int? = nil,
         seed: Int? = nil,
         tools: [OpenAITool]? = nil,
         tool_choice: ToolChoice? = nil,
@@ -78,6 +87,7 @@ public struct ChatCompletionRequest: Decodable, Sendable, Equatable, Hashable {
         self.temperature = temperature
         self.top_p = top_p
         self.max_tokens = max_tokens
+        self.max_completion_tokens = max_completion_tokens
         self.seed = seed
         self.tools = tools
         self.tool_choice = tool_choice

@@ -199,6 +199,74 @@ func runOpenAIModelsTests() {
         ]
         try assertEqual(messages.joinedInstructionContent, "First.\n\nSecond.")
     }
+
+    // MARK: - max_completion_tokens (#478)
+
+    test("ChatCompletionRequest decodes max_completion_tokens") {
+        let json = #"{"model":"apple-foundationmodel","messages":[{"role":"user","content":"hi"}],"max_completion_tokens":64}"#
+        let req = try decode(ChatCompletionRequest.self, from: json)
+        try assertEqual(req.max_completion_tokens, 64)
+        try assertNil(req.max_tokens)
+    }
+
+    test("ChatCompletionRequest max_completion_tokens is nil when absent") {
+        let json = #"{"model":"apple-foundationmodel","messages":[{"role":"user","content":"hi"}]}"#
+        let req = try decode(ChatCompletionRequest.self, from: json)
+        try assertNil(req.max_completion_tokens)
+    }
+
+    test("ChatCompletionRequest decodes both max_tokens and max_completion_tokens") {
+        let json = #"{"model":"apple-foundationmodel","messages":[{"role":"user","content":"hi"}],"max_tokens":100,"max_completion_tokens":100}"#
+        let req = try decode(ChatCompletionRequest.self, from: json)
+        try assertEqual(req.max_tokens, 100)
+        try assertEqual(req.max_completion_tokens, 100)
+    }
+
+    test("effectiveMaxTokens prefers max_completion_tokens over max_tokens (#478)") {
+        let both = ChatCompletionRequest(
+            model: "apple-foundationmodel",
+            messages: [OpenAIMessage(role: "user", content: .text("hi"))],
+            max_tokens: 200,
+            max_completion_tokens: 200
+        )
+        try assertEqual(both.effectiveMaxTokens, 200)
+    }
+
+    test("effectiveMaxTokens falls back to max_tokens when max_completion_tokens absent (#478)") {
+        let legacy = ChatCompletionRequest(
+            model: "apple-foundationmodel",
+            messages: [OpenAIMessage(role: "user", content: .text("hi"))],
+            max_tokens: 150
+        )
+        try assertEqual(legacy.effectiveMaxTokens, 150)
+    }
+
+    test("effectiveMaxTokens uses max_completion_tokens when max_tokens absent (#478)") {
+        let modern = ChatCompletionRequest(
+            model: "apple-foundationmodel",
+            messages: [OpenAIMessage(role: "user", content: .text("hi"))],
+            max_completion_tokens: 64
+        )
+        try assertEqual(modern.effectiveMaxTokens, 64)
+    }
+
+    test("effectiveMaxTokens is nil when both fields absent (#478)") {
+        let neither = ChatCompletionRequest(
+            model: "apple-foundationmodel",
+            messages: [OpenAIMessage(role: "user", content: .text("hi"))]
+        )
+        try assertNil(neither.effectiveMaxTokens)
+    }
+
+    test("ChatCompletionRequest init preserves max_completion_tokens (#478)") {
+        let req = ChatCompletionRequest(
+            model: "apple-foundationmodel",
+            messages: [OpenAIMessage(role: "user", content: .text("hi"))],
+            max_completion_tokens: 42
+        )
+        try assertEqual(req.max_completion_tokens, 42)
+        try assertNil(req.max_tokens)
+    }
 }
 
 func runChatRequestValidatorTests() {
@@ -681,6 +749,125 @@ func runChatRequestValidatorTests() {
             from: #"{"model":"\#(M)","messages":[{"role":"bogus","content":"ctx"},{"role":"user","content":[{"type":"image_url"}]}]}"#
         )
         try assertEqual(ChatRequestValidator.validate(request), .unknownRole("bogus"))
+    }
+
+    // --- max_completion_tokens validation (#478) ---
+
+    test("validator rejects max_completion_tokens <= 0 (#478)") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"max_completion_tokens":0}"#
+        )
+        guard case .invalidParameterValue(let detail) = ChatRequestValidator.validate(request) else {
+            throw TestFailure("expected .invalidParameterValue for max_completion_tokens=0")
+        }
+        try assertTrue(detail.contains("max_completion_tokens"))
+    }
+
+    test("validator rejects negative max_completion_tokens (#478)") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"max_completion_tokens":-5}"#
+        )
+        guard case .invalidParameterValue(let detail) = ChatRequestValidator.validate(request) else {
+            throw TestFailure("expected .invalidParameterValue for max_completion_tokens=-5")
+        }
+        try assertTrue(detail.contains("max_completion_tokens"))
+        try assertTrue(detail.contains("-5"))
+    }
+
+    test("validator accepts positive max_completion_tokens (#478)") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"max_completion_tokens":64}"#
+        )
+        try assertNil(ChatRequestValidator.validate(request))
+    }
+
+    test("validator rejects conflicting max_tokens and max_completion_tokens (#478)") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"max_tokens":100,"max_completion_tokens":200}"#
+        )
+        try assertEqual(
+            ChatRequestValidator.validate(request),
+            .conflictingMaxTokens(legacy: 100, modern: 200)
+        )
+    }
+
+    test("validator accepts identical max_tokens and max_completion_tokens (#478)") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"max_tokens":100,"max_completion_tokens":100}"#
+        )
+        try assertNil(ChatRequestValidator.validate(request))
+    }
+
+    test("validator accepts max_completion_tokens alone (#478)") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"max_completion_tokens":256}"#
+        )
+        try assertNil(ChatRequestValidator.validate(request))
+    }
+
+    test("validator accepts max_tokens alone backward compatibility (#478)") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"max_tokens":256}"#
+        )
+        try assertNil(ChatRequestValidator.validate(request))
+    }
+
+    test("conflictingMaxTokens failure has correct metadata (#478)") {
+        let failure = ChatRequestValidationFailure.conflictingMaxTokens(legacy: 100, modern: 200)
+        try assertEqual(failure.httpStatusCode, 400)
+        try assertEqual(failure.errorParam, "max_completion_tokens")
+        try assertNil(failure.errorCode)
+        try assertTrue(failure.message.contains("100"))
+        try assertTrue(failure.message.contains("200"))
+        try assertTrue(failure.message.contains("max_completion_tokens"))
+        try assertTrue(failure.event.contains("conflicting"))
+    }
+
+    test("validator reports max_tokens=0 before conflicting tokens check (#478)") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"max_tokens":0,"max_completion_tokens":100}"#
+        )
+        guard case .invalidParameterValue(let detail) = ChatRequestValidator.validate(request) else {
+            throw TestFailure("expected .invalidParameterValue for max_tokens=0")
+        }
+        try assertTrue(detail.contains("max_tokens"))
+    }
+
+    test("validator reports max_completion_tokens=0 before conflicting tokens check (#478)") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"max_tokens":100,"max_completion_tokens":0}"#
+        )
+        guard case .invalidParameterValue(let detail) = ChatRequestValidator.validate(request) else {
+            throw TestFailure("expected .invalidParameterValue for max_completion_tokens=0")
+        }
+        try assertTrue(detail.contains("max_completion_tokens"))
+    }
+
+    test("LangChain request shape with max_completion_tokens decodes and validates (#478)") {
+        let langchainJSON = #"{"model":"apple-foundationmodel","messages":[{"role":"system","content":"You are a helpful assistant."},{"role":"user","content":"Explain pipes briefly."}],"max_completion_tokens":64,"stream":false,"temperature":0.7}"#
+        let req = try decode(ChatCompletionRequest.self, from: langchainJSON)
+        try assertEqual(req.max_completion_tokens, 64)
+        try assertNil(req.max_tokens)
+        try assertEqual(req.effectiveMaxTokens, 64)
+        try assertNil(ChatRequestValidator.validate(req))
+    }
+
+    test("openai-python request shape with max_completion_tokens decodes and validates (#478)") {
+        let openaiJSON = #"{"model":"apple-foundationmodel","messages":[{"role":"user","content":"Say hello."}],"max_completion_tokens":128,"stream":true,"stream_options":{"include_usage":true}}"#
+        let req = try decode(ChatCompletionRequest.self, from: openaiJSON)
+        try assertEqual(req.max_completion_tokens, 128)
+        try assertEqual(req.stream, true)
+        try assertEqual(req.effectiveMaxTokens, 128)
+        try assertNil(ChatRequestValidator.validate(req))
     }
 }
 
