@@ -558,6 +558,7 @@ extension CLIArguments {
                 if messagesPath == "-" {
                     // Conversation JSON arrives on stdin; the executable reads
                     // and validates it (parse() must stay free of I/O).
+                    result.messagesJSON = nil
                     result.messagesFromStdin = true
                 } else {
                     let messagesText: String
@@ -573,6 +574,7 @@ extension CLIArguments {
                     } catch let e as MessagesInput.Error {
                         throw CLIParseError("invalid --messages JSON in \(messagesPath): \(e.message)")
                     }
+                    result.messagesFromStdin = false
                     result.messagesJSON = messagesText
                 }
 
