@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- CI installs Python test dependencies into a venv instead of `pip3 install --break-system-packages` into the runner's brew-managed system prefix. brew's `typing_extensions` ships no `RECORD` file, so pip could not uninstall it to satisfy a transitive dependency and aborted the job - non-deterministically, on roughly a third of runs, regardless of the diff under test. Every red check in the PR queue had become meaningless as a result. Guarded by `Tests/integration/test_ci_python_env.py` (#477).
+
 ## [1.9.1] - 2026-08-05
 
 ### Changed

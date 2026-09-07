@@ -36,7 +36,15 @@ jobs:
         run: swift run apfel-tests
 
       - name: Install Python test dependencies
-        run: pip3 install --break-system-packages pytest pytest-xdist httpx jsonschema pyyaml
+        # Into a venv, never the runner's brew-managed system prefix (#477).
+        # brew's typing_extensions ships no RECORD file, so pip cannot uninstall
+        # it to satisfy a transitive dep that wants a newer one -- that killed
+        # roughly a third of runs at this step regardless of the diff. A venv
+        # owns its own site-packages, so there is nothing of brew's to remove.
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/venv/bin/pip" install pytest pytest-xdist httpx jsonschema pyyaml
 
       - name: Integration tests (model-free subset)
         run: |
@@ -196,7 +204,11 @@ jobs:
           fi
 
       - name: Install Python test dependencies
-        run: pip3 install --break-system-packages pytest httpx
+        # Same venv rationale as build-and-test above (#477).
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/venv/bin/pip" install pytest httpx
 
       - name: Downstream consumer smoke test
         run: python3 -m pytest Tests/integration/test_apfelcore_package.py -v --tb=short
