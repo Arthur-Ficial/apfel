@@ -110,8 +110,8 @@ public struct ChatCompletionRequest: Decodable, Sendable, Equatable, Hashable {
     }
 
     /// Backward-compatible initializer preserved for ABI stability.
-    /// Existing consumers that do not pass `max_completion_tokens` continue
-    /// to resolve to this overload without a source or binary break.
+    /// Existing consumers that do not pass `max_completion_tokens` or
+    /// `parallel_tool_calls` continue to resolve to this overload.
     public init(
         model: String,
         messages: [OpenAIMessage],
