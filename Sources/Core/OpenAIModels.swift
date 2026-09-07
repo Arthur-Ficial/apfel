@@ -464,7 +464,18 @@ struct AnyCodable: Codable, Sendable {
             value = array
             return
         }
-        value = nil
+        // Every JSON value is null, bool, int, double, string, object or array,
+        // and `null` was handled by decodeNil() above -- so reaching here means
+        // the input is not representable, in practice a number outside Double's
+        // range. The old unconditional `value = nil` fallback re-encoded it as
+        // the literal `null`, so `{"maximum": 1e999}` silently became
+        // `{"maximum": null}`: the schema apfel applied was not the schema the
+        // caller sent, and nothing in the request or response said so. Fail
+        // loudly instead (#455).
+        throw DecodingError.dataCorruptedError(
+            in: container,
+            debugDescription: "Value is not representable as JSON (numbers must fit in a Double)"
+        )
     }
 
     private static func nestingLimitError(codingPath: [any CodingKey]) -> DecodingError {

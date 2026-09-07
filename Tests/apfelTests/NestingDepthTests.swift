@@ -91,6 +91,46 @@ func runNestingDepthTests() {
             "the schema must survive decoding, not be truncated to nil")
     }
 
+    test("an unrepresentable JSON number is rejected, not rewritten to null (#455)") {
+        // AnyCodable ended with an unconditional `value = nil` fallback, so a
+        // number outside Double's range became the JSON literal `null`:
+        // {"maximum": 1e999} silently became {"maximum": null}. The schema
+        // apfel applied was then not the schema the caller sent, and nothing
+        // in the request or the response said so.
+        let body = chatRequest(parameters: #"{"type":"number","maximum":1e999}"#)
+        var threw = false
+        do {
+            _ = try JSONDecoder().decode(ChatCompletionRequest.self, from: body)
+        } catch is DecodingError {
+            threw = true
+        }
+        try assertTrue(threw, """
+            expected a DecodingError for an out-of-Double-range number, but \
+            decoding SUCCEEDED -- the constraint was silently rewritten to null (#455)
+            """)
+    }
+
+    test("an unrepresentable number nested in a schema is rejected (#455)") {
+        let deep = #"{"type":"object","properties":{"x":{"type":"number","maximum":1e999}}}"#
+        let body = chatRequest(parameters: deep)
+        var threw = false
+        do {
+            _ = try JSONDecoder().decode(ChatCompletionRequest.self, from: body)
+        } catch is DecodingError {
+            threw = true
+        }
+        try assertTrue(threw, "a nested unrepresentable number must be rejected too (#455)")
+    }
+
+    test("an explicit JSON null is still a legitimate value (#455)") {
+        // The fix must reject only what cannot be represented. `null` is a
+        // perfectly good JSON value and decodeNil() handles it before the
+        // fallback is ever reached.
+        let body = chatRequest(parameters: #"{"type":"object","default":null}"#)
+        let decoded = try? JSONDecoder().decode(ChatCompletionRequest.self, from: body)
+        try assertNotNil(decoded, "an explicit null must still decode (#455)")
+    }
+
     test("a schema exactly at the depth limit still decodes (#462)") {
         let body = chatRequest(parameters: nestedJSON(depth: 32))
         let decoded = try? JSONDecoder().decode(ChatCompletionRequest.self, from: body)
