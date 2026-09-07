@@ -1002,7 +1002,6 @@ def _running_mcp_server_with_log(mcp_script, debug=False):
 
 def test_tool_result_not_logged_without_debug():
     """Without --debug, stderr shows tool name and ok/error but not args or result (#464)."""
-    require_model()
     mcp_script = ROOT / "mcp" / "calculator" / "server.py"
     with _running_mcp_server_with_log(mcp_script, debug=False) as (api_url, read_log):
         post_chat_rotating_seeds(f"{api_url}/chat/completions", {
@@ -1025,7 +1024,6 @@ def test_tool_result_not_logged_without_debug():
 
 def test_tool_result_logged_truncated_with_debug():
     """With --debug, tool args and results appear but large results are truncated (#464)."""
-    require_model()
     with _running_mcp_server_with_log(
         FIXTURES / "huge_output_mcp_server.py", debug=True
     ) as (api_url, read_log):

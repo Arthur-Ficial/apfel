@@ -158,7 +158,7 @@ def test_undecodable_tool_choice_object_returns_400():
 MCP_BASE_URL = "http://localhost:11435"
 
 
-def _post_mcp(payload, headers=None, timeout=15):
+def _post_mcp(payload, headers=None, timeout=120):
     return httpx.post(
         f"{MCP_BASE_URL}/v1/chat/completions",
         json=payload,
@@ -219,6 +219,7 @@ def test_json_schema_with_mcp_rejected_streaming():
     assert err["param"] == "response_format", err
 
 
+@pytest.mark.model
 def test_json_object_with_mcp_still_accepted():
     """json_object mode must NOT be rejected when --mcp is active (#392)."""
     payload = {
@@ -231,6 +232,7 @@ def test_json_object_with_mcp_still_accepted():
         f"json_object should not be rejected: {resp.text}"
 
 
+@pytest.mark.model
 def test_no_response_format_with_mcp_still_accepted():
     """Requests without response_format must still work with --mcp (#392)."""
     payload = {
@@ -241,6 +243,7 @@ def test_no_response_format_with_mcp_still_accepted():
     assert resp.status_code != 400, f"No response_format should not be rejected: {resp.text}"
 
 
+@pytest.mark.model
 def test_json_schema_without_mcp_still_accepted():
     """json_schema on the plain (non-MCP) server must not be rejected (#392)."""
     payload = {
