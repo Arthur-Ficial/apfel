@@ -311,7 +311,11 @@ private func mcpAutoExecuteResponse(
             options: genOpts
         ) {
             for log in executed.toolLog {
-                events.append("mcp tool: \(log.name)(\(log.args)) = \(log.isError ? "error: " : "")\(log.result)")
+                if serverState.config.debug {
+                    events.append("mcp tool: \(log.name)(\(truncateForLog(log.args, limit: 512))) = \(log.isError ? "error: " : "")\(truncateForLog(log.result, limit: 512))")
+                } else {
+                    events.append("mcp tool: \(log.name) \(log.isError ? "error" : "ok") result_chars=\(log.result.count)")
+                }
             }
             content = executed.content
             events.append("mcp: auto-executed, final response chars=\(content.count)")
