@@ -41,4 +41,89 @@ func runChatHistoryTests() {
     test("history bound matches the in-memory stifle limit") {
         try assertEqual(ChatHistory.maxEntries, 500)
     }
+
+    // -- File-preparation security tests (#473) -------------------------
+
+    test("prepareHistoryFile creates file at 0600 before any content is written") {
+        let tmp = NSTemporaryDirectory() + "apfel-test-hist-\(UUID().uuidString)"
+        defer { try? FileManager.default.removeItem(atPath: tmp) }
+        let path = tmp + "/sub/history"
+
+        ChatHistory.prepareHistoryFile(at: path)
+
+        let fm = FileManager.default
+        try assertTrue(fm.fileExists(atPath: path), "file should exist")
+        let attrs = try fm.attributesOfItem(atPath: path)
+        let mode = (attrs[.posixPermissions] as? Int) ?? -1
+        try assertEqual(mode, 0o600, "file mode should be 0600")
+    }
+
+    test("prepareHistoryFile creates parent directories at 0700") {
+        let tmp = NSTemporaryDirectory() + "apfel-test-hist-\(UUID().uuidString)"
+        defer { try? FileManager.default.removeItem(atPath: tmp) }
+        let path = tmp + "/nested/dir/history"
+
+        ChatHistory.prepareHistoryFile(at: path)
+
+        let fm = FileManager.default
+        for dir in [tmp, tmp + "/nested", tmp + "/nested/dir"] {
+            let attrs = try fm.attributesOfItem(atPath: dir)
+            let mode = (attrs[.posixPermissions] as? Int) ?? -1
+            try assertEqual(mode, 0o700, "directory \(dir) mode should be 0700")
+        }
+    }
+
+    test("prepareHistoryFile tightens an existing world-readable file (#473)") {
+        // The bug left history at 0644 for good whenever write_history failed,
+        // because the chmod came after. A file that has already drifted wide
+        // must be corrected, not left alone.
+        let tmp = NSTemporaryDirectory() + "apfel-test-hist-\(UUID().uuidString)"
+        defer { try? FileManager.default.removeItem(atPath: tmp) }
+        let path = tmp + "/history"
+        let fm = FileManager.default
+        try fm.createDirectory(atPath: tmp, withIntermediateDirectories: true)
+        fm.createFile(atPath: path, contents: Data("my secret prompt\n".utf8),
+                      attributes: [.posixPermissions: 0o644])
+
+        ChatHistory.prepareHistoryFile(at: path)
+
+        let mode = (try fm.attributesOfItem(atPath: path)[.posixPermissions] as? Int) ?? -1
+        try assertEqual(mode, 0o600, "an existing 0644 history file must be tightened to 0600")
+    }
+
+    test("prepareHistoryFile does not change mode of an existing file") {
+        let tmp = NSTemporaryDirectory() + "apfel-test-hist-\(UUID().uuidString)"
+        defer { try? FileManager.default.removeItem(atPath: tmp) }
+        let path = tmp + "/history"
+
+        let fm = FileManager.default
+        try fm.createDirectory(atPath: tmp, withIntermediateDirectories: true)
+        fm.createFile(atPath: path, contents: Data("existing\n".utf8),
+                      attributes: [.posixPermissions: 0o600])
+
+        ChatHistory.prepareHistoryFile(at: path)
+
+        let content = try String(contentsOfFile: path, encoding: .utf8)
+        try assertEqual(content, "existing\n", "existing content must be preserved")
+        let attrs = try fm.attributesOfItem(atPath: path)
+        let mode = (attrs[.posixPermissions] as? Int) ?? -1
+        try assertEqual(mode, 0o600, "mode must stay 0600")
+    }
+
+    test("prepareHistoryFile corrects mode of an existing file to 0600") {
+        let tmp = NSTemporaryDirectory() + "apfel-test-hist-\(UUID().uuidString)"
+        defer { try? FileManager.default.removeItem(atPath: tmp) }
+        let path = tmp + "/history"
+
+        let fm = FileManager.default
+        try fm.createDirectory(atPath: tmp, withIntermediateDirectories: true)
+        fm.createFile(atPath: path, contents: Data("data\n".utf8),
+                      attributes: [.posixPermissions: 0o644])
+
+        ChatHistory.prepareHistoryFile(at: path)
+
+        let attrs = try fm.attributesOfItem(atPath: path)
+        let mode = (attrs[.posixPermissions] as? Int) ?? -1
+        try assertEqual(mode, 0o600, "mode must be corrected to 0600")
+    }
 }
