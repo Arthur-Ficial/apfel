@@ -1037,9 +1037,20 @@ def test_tool_result_logged_truncated_with_debug():
         }, TIMEOUT)
         time.sleep(0.5)
         log = read_log()
-        mcp_lines = [l for l in log.splitlines() if "mcp tool:" in l]
-        assert mcp_lines, "Expected at least one 'mcp tool:' event in debug log"
-        assert any("(" in l for l in mcp_lines), \
-            f"Debug log should show tool args in parens: {mcp_lines}"
-        assert any("...[truncated]" in l for l in mcp_lines), \
-            f"Large tool result should be truncated in debug log: {mcp_lines}"
+        lines = log.splitlines()
+        idxs = [i for i, l in enumerate(lines) if "mcp tool:" in l]
+        assert idxs, "Expected at least one 'mcp tool:' event in debug log"
+        assert any("(" in lines[i] for i in idxs), \
+            f"Debug log should show tool args in parens: {[lines[i] for i in idxs]}"
+
+        # truncateForLog appends "\n...[truncated]", so the marker lands on the
+        # line AFTER the event, not inside it. Assert on the event's own line
+        # plus the one following it -- scanning the whole log would pass on a
+        # marker left by --debug request/response body capture, which is a
+        # different code path and not what this test is about.
+        i = idxs[-1]
+        window = "\n".join(lines[i:i + 2])
+        assert "...[truncated]" in window, (
+            "Large tool result should be truncated in the debug log; event line "
+            f"and its successor were: {window!r}"
+        )
