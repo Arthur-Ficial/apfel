@@ -94,9 +94,9 @@ cat > ~/Library/LaunchAgents/com.arthurficial.apfel.plist << 'EOF'
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>/tmp/apfel.log</string>
+    <string>/Users/YOUR_USERNAME/Library/Logs/apfel.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/apfel.log</string>
+    <string>/Users/YOUR_USERNAME/Library/Logs/apfel.log</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>HOME</key>
@@ -119,3 +119,7 @@ launchctl print gui/$(id -u)/com.arthurficial.apfel
 ```
 
 Use `/opt/homebrew/opt/apfel/bin/apfel` (not the Cellar path) so it survives `brew upgrade`.
+
+**Keep the log out of `/tmp`.** `/private/tmp` is mode `1777` - world-writable with the sticky bit - and launchd creates the log with the process umask (`0644`) and follows symlinks when opening it. Any local user can read it, and can pre-create the path as a symlink before the service first starts. That matters here because this is the same file the server's request errors land in, and with `--mcp` it is also where MCP tool activity is logged. `~/Library/Logs` is the macOS-conventional location for a user agent's log and is not world-writable.
+
+Replace `YOUR_USERNAME` with your short username (`id -un`) - launchd does not expand `~` or `$HOME` in path keys.
