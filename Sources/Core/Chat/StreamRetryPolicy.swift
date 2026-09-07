@@ -26,6 +26,33 @@
 
 import Foundation
 
+/// Exit status a UNIX filter reports when stdout's consumer closed the pipe:
+/// 128 + SIGPIPE (13). apfel ignores SIGPIPE process-wide (#215), so it has to
+/// reproduce that status itself rather than inherit it from the signal.
+public let brokenPipeExitStatus: Int32 = 141
+
+/// Write `text` to `handle`, tolerating a consumer that has gone away.
+///
+/// The legacy non-throwing `FileHandle.write(_:)` converts EPIPE into an
+/// Objective-C `NSFileHandleOperationException`. Swift cannot catch an ObjC
+/// exception, so that call aborts the process -- which is how the #215 SIGPIPE
+/// hardening turned a clean pipe death into a SIGABRT and a stack trace on the
+/// user's terminal (#389). The throwing `write(contentsOf:)` overload surfaces
+/// the same condition as an ordinary Swift error.
+///
+/// - Returns: `false` when the write failed, so each caller can choose: stdout
+///   is apfel's product and a vanished reader means the work is done, while a
+///   lost diagnostic on stderr must never change the exit status.
+@discardableResult
+public func writeTolerantly(_ text: String, to handle: FileHandle) -> Bool {
+    do {
+        try handle.write(contentsOf: Data(text.utf8))
+        return true
+    } catch {
+        return false
+    }
+}
+
 public actor StreamPrintSink {
     /// Number of characters already emitted (the high-water mark across retries).
     private var emittedCount = 0
@@ -48,7 +75,14 @@ public actor StreamPrintSink {
     }
 
     /// Default emit: write to stdout and flush so streaming output is live.
+    ///
+    /// When the consumer closes the pipe (`apfel --stream ... | head -1`) there
+    /// is nothing left to stream to, so exit the way SIGPIPE would have --
+    /// quietly, with status 141. That is what a UNIX filter does, and apfel's
+    /// golden goal leads with being one (#389).
     public static let printAndFlush: @Sendable (String) -> Void = { suffix in
-        FileHandle.standardOutput.write(Data(suffix.utf8))
+        if !writeTolerantly(suffix, to: FileHandle.standardOutput) {
+            exit(brokenPipeExitStatus)
+        }
     }
 }

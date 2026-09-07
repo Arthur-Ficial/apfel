@@ -65,13 +65,22 @@ func styledErr(_ text: String, _ colors: ANSIColor...) -> String {
 let stderr = FileHandle.standardError
 
 /// Print a message to stderr with a trailing newline.
+///
+/// A diagnostic that cannot be delivered is dropped rather than fatal: the
+/// legacy non-throwing `FileHandle.write(_:)` used here aborted the process on
+/// a closed stderr (`apfel --serve 2>&1 | head -1`), the same uncatchable
+/// ObjC exception as #389. Unlike stdout there is no data to lose, so the
+/// write is best-effort and the exit status is left alone.
 func printStderr(_ message: String) {
-    stderr.write(Data("\(message)\n".utf8))
+    writeTolerantly("\(message)\n", to: stderr)
 }
 
 /// Print a styled error message to stderr. Format: "error: <message>"
+///
+/// Best-effort for the same reason as `printStderr` -- an unreportable error
+/// must still exit with its own status, not with a broken-pipe one (#389).
 func printError(_ message: String) {
-    stderr.write(Data("\(styledErr("error:", .red, .bold)) \(message)\n".utf8))
+    writeTolerantly("\(styledErr("error:", .red, .bold)) \(message)\n", to: stderr)
 }
 
 // MARK: - Debug Output

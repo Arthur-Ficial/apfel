@@ -38,7 +38,10 @@ public func withRetry<T: Sendable>(
             // Exponential backoff
             let delay = attempt < delays.count ? delays[attempt] : delays.last ?? 2.0
             let msg = ApfelError.classify(error).cliLabel
-            FileHandle.standardError.write(Data("  retry \(attempt + 1)/\(maxRetries) after \(delay)s: \(msg)\n".utf8))
+            // Swallowed on a closed stderr: losing a retry banner must never
+            // abort the run or change the exit status (#389).
+            writeTolerantly("  retry \(attempt + 1)/\(maxRetries) after \(delay)s: \(msg)\n",
+                            to: FileHandle.standardError)
             try await Task.sleep(for: .seconds(delay))
         }
     }

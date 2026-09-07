@@ -1745,3 +1745,55 @@ def test_demo_cmd_and_oneliner_scripts_work(tmp_path):
         assert proc.returncode == 0, f"{script} failed: {proc.stderr}"
         assert proc.stdout.strip(), f"{script} produced no output"
         assert "```" not in proc.stdout, f"{script} leaked a fence: {proc.stdout!r}"
+
+
+# ---------------------------------------------------------------------------
+# Broken stdout pipe (#389)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.model
+def test_streaming_to_closed_stdout_pipe_exits_141_without_crashing():
+    """`apfel --stream ... | head -1` must finish like a UNIX filter.
+
+    apfel ignores SIGPIPE process-wide (#215), so a vanished reader surfaces as
+    EPIPE on the write instead of killing us by signal. The stream sink used the
+    legacy non-throwing FileHandle.write(_:), which converts EPIPE into an
+    Objective-C NSFileHandleOperationException that Swift cannot catch -- so the
+    process aborted with SIGABRT and dumped a stack trace on the user's
+    terminal. Exit 141 (128 + SIGPIPE) is what the signal would have produced.
+    """
+    read_fd, write_fd = os.pipe()
+    os.close(read_fd)  # the consumer is already gone, as after `head -1`
+    proc = subprocess.Popen(
+        [str(BINARY), "--stream", "--max-tokens", "32", "List three fruits."],
+        stdin=subprocess.DEVNULL,
+        stdout=write_fd,
+        stderr=subprocess.PIPE,
+    )
+    os.close(write_fd)
+    _, err = proc.communicate(timeout=120)
+    stderr = err.decode()
+
+    assert proc.returncode == 141, (
+        f"expected 141 (128 + SIGPIPE), got {proc.returncode}; stderr: {stderr[:400]}"
+    )
+    assert "NSFileHandleOperationException" not in stderr, (
+        f"the uncatchable ObjC exception is back: {stderr[:400]}"
+    )
+    assert "Terminating app" not in stderr, (
+        f"process aborted instead of exiting cleanly: {stderr[:400]}"
+    )
+
+
+@pytest.mark.model
+def test_streaming_through_head_prints_first_line_cleanly():
+    """The user-facing shape of #389: one clean line, no stack trace."""
+    proc = subprocess.run(
+        f"{BINARY} --stream --max-tokens 120 "
+        "'Write a numbered list of 12 fruits, one per line.' | head -1",
+        shell=True, capture_output=True, text=True, timeout=120,
+    )
+    assert proc.stdout.strip(), "head -1 should still receive the first line"
+    assert "Terminating app" not in proc.stderr, proc.stderr[:400]
+    assert "NSFileHandleOperationException" not in proc.stderr, proc.stderr[:400]
