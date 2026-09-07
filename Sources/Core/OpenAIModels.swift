@@ -198,6 +198,18 @@ public struct OpenAIMessage: Codable, Sendable, Equatable, Hashable {
     }
 }
 
+extension Array where Element == OpenAIMessage {
+    /// Text content of every system-role message, joined with double newlines.
+    /// Returns nil when no system messages carry non-empty text.
+    public var joinedSystemContent: String? {
+        let parts = self
+            .filter { $0.role == "system" }
+            .compactMap(\.textContent)
+            .filter { !$0.isEmpty }
+        return parts.isEmpty ? nil : parts.joined(separator: "\n\n")
+    }
+}
+
 /// OpenAI-compatible message content.
 public enum MessageContent: Codable, Sendable, Equatable, Hashable {
     /// Plain text content.

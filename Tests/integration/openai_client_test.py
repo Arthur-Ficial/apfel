@@ -790,3 +790,41 @@ def test_responses_metadata_echoed():
         model=MODEL, input="Say ok.", metadata={"trace_id": "t-123"},
     )
     assert resp.metadata == {"trace_id": "t-123"}
+
+
+# ---------------------------------------------------------------------------
+# Multiple system messages (#390)
+# ---------------------------------------------------------------------------
+
+
+def test_second_system_message_reaches_the_model():
+    """Every system message must reach the model, not just the first (#390).
+
+    makeSession strips all system messages from the conversation and
+    buildInstructions copied only the first one back, so everything in between
+    was gone with no warning, no error and no token accounting. SDKs and
+    agent frameworks routinely stack a base system prompt and a task-specific
+    one, so apfel answered while ignoring instructions the caller believed were
+    in force -- silently, detectable only by counting tokens.
+
+    Token accounting is the assertion: a ~400-word system message that
+    contributes zero prompt tokens never reached the model.
+    """
+    base = [{"role": "system", "content": "Be concise."},
+            {"role": "user", "content": "Say OK."}]
+    extra = [{"role": "system", "content": "Be concise."},
+             {"role": "system", "content": "Additional instruction. " * 100},
+             {"role": "user", "content": "Say OK."}]
+
+    def prompt_tokens(messages):
+        resp = httpx.post(f"{BASE_URL}/chat/completions",
+                          json={"model": MODEL, "messages": messages, "max_tokens": 8},
+                          timeout=120)
+        assert resp.status_code == 200, resp.text[:300]
+        return resp.json()["usage"]["prompt_tokens"]
+
+    one, two = prompt_tokens(base), prompt_tokens(extra)
+    assert two > one + 100, (
+        f"a ~400-word second system message added {two - one} prompt tokens; "
+        "it is still being discarded (#390)"
+    )
