@@ -96,6 +96,44 @@ public struct ChatCompletionRequest: Decodable, Sendable, Equatable, Hashable {
         self.x_context_max_turns = x_context_max_turns
         self.x_context_output_reserve = x_context_output_reserve
     }
+
+    /// Backwards-compatible overload preserving the pre-#480 init signature.
+    public init(
+        model: String,
+        messages: [OpenAIMessage],
+        stream: Bool? = nil,
+        stream_options: StreamOptions? = nil,
+        temperature: Double? = nil,
+        top_p: Double? = nil,
+        max_tokens: Int? = nil,
+        seed: Int? = nil,
+        tools: [OpenAITool]? = nil,
+        tool_choice: ToolChoice? = nil,
+        response_format: ResponseFormat? = nil,
+        logprobs: Bool? = nil,
+        n: Int? = nil,
+        stop: RawJSON? = nil,
+        presence_penalty: Double? = nil,
+        frequency_penalty: Double? = nil,
+        user: String? = nil,
+        x_context_strategy: String? = nil,
+        x_context_max_turns: Int? = nil,
+        x_context_output_reserve: Int? = nil
+    ) {
+        self.init(
+            model: model, messages: messages, stream: stream,
+            stream_options: stream_options, temperature: temperature,
+            top_p: top_p, max_tokens: max_tokens, seed: seed,
+            tools: tools, tool_choice: tool_choice,
+            parallel_tool_calls: nil,
+            response_format: response_format, logprobs: logprobs,
+            n: n, stop: stop, presence_penalty: presence_penalty,
+            frequency_penalty: frequency_penalty, user: user,
+            x_context_strategy: x_context_strategy,
+            x_context_max_turns: x_context_max_turns,
+            x_context_output_reserve: x_context_output_reserve
+        )
+    }
 }
 
 /// OpenAI `stream_options` payload.
