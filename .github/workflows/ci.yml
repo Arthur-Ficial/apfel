@@ -124,6 +124,16 @@ jobs:
             Tests/integration/openapi_spec_test.py \
             Tests/integration/server_validation_test.py \
             -m "not model" -n auto --dist loadfile -v --tb=short || STATUS=$?
+
+          # The #213 permit-leak regression, serially and on its own (#434).
+          # Model-free -- every request 400s before a session is built -- but it
+          # asserts /health's *global* active_requests == 0, so it cannot share
+          # the servers with the parallel workers above.
+          if [ "$STATUS" -eq 0 ]; then
+            APFEL_MODELFREE_ONLY=1 python3 -m pytest \
+              Tests/integration/test_stream_permit_release.py \
+              -v --tb=short || STATUS=$?
+          fi
           kill "$(cat /tmp/apfel-server.pid)" "$(cat /tmp/apfel-mcp.pid)" 2>/dev/null || true
           rm -f /tmp/apfel-server.pid /tmp/apfel-mcp.pid
           exit $STATUS

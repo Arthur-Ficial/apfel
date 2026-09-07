@@ -19,14 +19,19 @@ MODEL_SUITES = [
     "mcp_remote_test.py",
     "openapi_conformance_test.py",
     "performance_test.py",
-    "test_stream_permit_release.py",
     "test_context_strict.py",
     "test_tdd_red.py",
 ]
 
 # Suites that mutate machine-global state and must stay out of the
 # parallel phase.
-SERIAL_SUITES = ["test_brew_service.py"]
+SERIAL_SUITES = [
+    "test_brew_service.py",
+    # Not model (every request 400s before a session is built) but it asserts
+    # /health's global active_requests == 0 on the shared server, so any other
+    # suite with a request in flight fails it. Serial, not parallel (#434).
+    "test_stream_permit_release.py",
+]
 
 
 def _suite_files():

@@ -17,11 +17,16 @@ Run: python3 -m pytest Tests/integration/test_stream_permit_release.py -v
 import httpx
 import pytest
 
-# Whole-suite marker: these tests drive real on-device generation (or, for
-# the permit/benchmark suites, need Apple Intelligence up); GitHub CI cannot
-# run them (CLAUDE.md "What GitHub CI CANNOT run"). Keeps -m "not model" a
-# complete, correct model-free selector for the fast preflight phase (#374).
-pytestmark = pytest.mark.model
+# NOT `model`: every request here fails validation and returns 400 before a
+# LanguageModelSession is constructed, so these run fine on a GitHub runner
+# without Apple Intelligence. The old `model` marker kept the #213 permit-leak
+# regression out of the per-PR gate entirely -- exactly the kind of regression
+# that gate exists to catch (#434).
+#
+# `serial` because the assertions read /health's *global* active_requests
+# counter on the shared server: any other suite with a request in flight makes
+# it non-zero. This must not run in the parallel phase.
+pytestmark = pytest.mark.serial
 
 
 BASE_URL = "http://localhost:11434"
