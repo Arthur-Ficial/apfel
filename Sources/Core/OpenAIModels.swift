@@ -443,7 +443,7 @@ struct AnyCodable: Codable, Sendable {
 
     init(from decoder: Decoder) throws {
         if decoder.codingPath.count > Self.maxNestingDepth {
-            throw depthError(codingPath: decoder.codingPath)
+            throw Self.depthError(codingPath: decoder.codingPath)
         }
         let container = try decoder.singleValueContainer()
         if container.decodeNil()                                    { value = nil; return }
