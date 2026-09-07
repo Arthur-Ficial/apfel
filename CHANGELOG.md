@@ -7,6 +7,8 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-09-07
+
 ### Fixed
 
 - An MCP server can no longer hang apfel forever. `--mcp-timeout` bounded only the read side; `send` did a blocking `write(2)` with no deadline at all. The amplifier was the ping path: `classifyIncoming` echoes the server's `id` back verbatim, so the server chose how many bytes apfel had to write - a ping carrying a 256 KiB id forces a ~256 KiB reply into a ~64 KiB pipe, and if the server then stops reading its stdin apfel blocks in `write(2)` and never returns. The whole process wedged and had to be SIGKILLed, `Ctrl-C` never ran, and in `--serve` mode one misbehaving MCP server took the model endpoint down for every client. Writes are now non-blocking and bounded by `poll` against the same deadline, and an oversized ping id is refused rather than echoed (#418).
