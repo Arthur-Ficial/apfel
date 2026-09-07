@@ -265,6 +265,54 @@ func runToolCallHandlerTests() {
         try assertEqual(result!.first?.argumentsString, "{}")
     }
 
+    // MARK: - Scalar arguments do not crash (#388)
+
+    test("scalar number arguments do not crash and produce valid JSON (#388)") {
+        let response = #"{"tool_calls": [{"id": "c1", "type": "function", "function": {"name": "add", "arguments": 7}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.count, 1)
+        try assertEqual(result!.first?.name, "add")
+        let args = result!.first!.argumentsString
+        let parsed = try? JSONSerialization.jsonObject(with: Data(args.utf8)) as? [String: Any]
+        try assertNotNil(parsed, "scalar number arguments must produce parseable JSON, got: \(args)")
+    }
+
+    test("scalar boolean arguments do not crash and produce valid JSON (#388)") {
+        let response = #"{"tool_calls": [{"id": "c1", "type": "function", "function": {"name": "toggle", "arguments": true}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "toggle")
+        let args = result!.first!.argumentsString
+        let parsed = try? JSONSerialization.jsonObject(with: Data(args.utf8)) as? [String: Any]
+        try assertNotNil(parsed, "scalar boolean arguments must produce parseable JSON, got: \(args)")
+    }
+
+    test("null arguments fall through to empty object (#388)") {
+        let response = #"{"tool_calls": [{"id": "c1", "type": "function", "function": {"name": "ping", "arguments": null}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "ping")
+        try assertEqual(result!.first?.argumentsString, "{}")
+    }
+
+    test("object arguments unchanged after scalar fix (#388)") {
+        let response = #"{"tool_calls": [{"id": "c1", "type": "function", "function": {"name": "fn", "arguments": {"a": 1}}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        let args = result!.first!.argumentsString
+        let parsed = try? JSONSerialization.jsonObject(with: Data(args.utf8)) as? [String: Any]
+        try assertNotNil(parsed)
+        try assertEqual(parsed?["a"] as? Int, 1)
+    }
+
+    test("string arguments unchanged after scalar fix (#388)") {
+        let response = #"{"tool_calls": [{"id": "c1", "type": "function", "function": {"name": "fn", "arguments": "{\"key\":\"val\"}"}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.argumentsString, #"{"key":"val"}"#)
+    }
+
     // MARK: - Synthesized id for calls missing "id" (#244)
 
     test("synthesizes an id when the tool call omits \"id\" (#244)") {

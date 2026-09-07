@@ -9,6 +9,7 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ### Fixed
 
+- Scalar tool-call `arguments` (a number or a bool, e.g. `"arguments": 7`) no longer abort the process. `JSONSerialization.data(withJSONObject:)` raises an Objective-C `NSInvalidArgumentException` on a non-container top-level value, which `try?` cannot catch, so any client able to steer the model into emitting that shape could kill the server and every in-flight request with it. The write now uses `.fragmentsAllowed`, excludes `NSNull`, and routes the result through `ensureJSONArguments`, so a bare scalar is wrapped exactly as a bare string already was. Object and string arguments are unchanged (#388).
 - CI installs Python test dependencies into a venv instead of `pip3 install --break-system-packages` into the runner's brew-managed system prefix. brew's `typing_extensions` ships no `RECORD` file, so pip could not uninstall it to satisfy a transitive dependency and aborted the job - non-deterministically, on roughly a third of runs, regardless of the diff under test. Every red check in the PR queue had become meaningless as a result. Guarded by `Tests/integration/test_ci_python_env.py` (#477).
 
 ## [1.9.1] - 2026-08-05
