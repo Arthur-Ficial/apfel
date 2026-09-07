@@ -29,6 +29,8 @@ public struct ChatCompletionRequest: Decodable, Sendable, Equatable, Hashable {
     public let tools: [OpenAITool]?
     /// How the client wants tool choice resolved.
     public let tool_choice: ToolChoice?
+    /// Whether the model may return multiple tool calls in one response.
+    public let parallel_tool_calls: Bool?
     /// Requested response-format contract.
     public let response_format: ResponseFormat?
     /// OpenAI logprobs request flag.
@@ -71,6 +73,7 @@ public struct ChatCompletionRequest: Decodable, Sendable, Equatable, Hashable {
         seed: Int? = nil,
         tools: [OpenAITool]? = nil,
         tool_choice: ToolChoice? = nil,
+        parallel_tool_calls: Bool? = nil,
         response_format: ResponseFormat? = nil,
         logprobs: Bool? = nil,
         n: Int? = nil,
@@ -93,6 +96,7 @@ public struct ChatCompletionRequest: Decodable, Sendable, Equatable, Hashable {
         self.seed = seed
         self.tools = tools
         self.tool_choice = tool_choice
+        self.parallel_tool_calls = parallel_tool_calls
         self.response_format = response_format
         self.logprobs = logprobs
         self.n = n
@@ -135,6 +139,7 @@ public struct ChatCompletionRequest: Decodable, Sendable, Equatable, Hashable {
             stream_options: stream_options, temperature: temperature,
             top_p: top_p, max_tokens: max_tokens, max_completion_tokens: nil,
             seed: seed, tools: tools, tool_choice: tool_choice,
+            parallel_tool_calls: nil,
             response_format: response_format, logprobs: logprobs, n: n,
             stop: stop, presence_penalty: presence_penalty,
             frequency_penalty: frequency_penalty, user: user,
