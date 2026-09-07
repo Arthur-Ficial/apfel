@@ -566,4 +566,41 @@ func runMCPClientTests() {
         try assertEqual(calls!.first?.id, "call_001")
         try assertTrue(calls!.first!.argumentsString.contains("CLAUDE.md"), "arguments must contain the file path")
     }
+
+    // MARK: - Oversized ping id rejection (#418)
+
+    test("classifyIncoming ignores a ping with an oversized string id (#418)") {
+        let bigId = String(repeating: "x", count: 262_144)
+        let json: [String: Any] = ["jsonrpc": "2.0", "id": bigId, "method": "ping"]
+        let data = try JSONSerialization.data(withJSONObject: json, options: [])
+        let line = String(data: data, encoding: .utf8)!
+        try assertEqual(MCPProtocol.classifyIncoming(line, awaitingId: 7), .unrelated)
+    }
+
+    test("classifyIncoming still echoes a ping with a 4096-byte string id (#418)") {
+        let okId = String(repeating: "a", count: 4096)
+        let json: [String: Any] = ["jsonrpc": "2.0", "id": okId, "method": "ping"]
+        let data = try JSONSerialization.data(withJSONObject: json, options: [])
+        let line = String(data: data, encoding: .utf8)!
+        guard case .pingRequest = MCPProtocol.classifyIncoming(line, awaitingId: 7) else {
+            throw TestFailure("expected .pingRequest for a 4096-byte id")
+        }
+    }
+
+    test("classifyIncoming ignores a ping with a 4097-byte string id (#418)") {
+        let bigId = String(repeating: "b", count: 4097)
+        let json: [String: Any] = ["jsonrpc": "2.0", "id": bigId, "method": "ping"]
+        let data = try JSONSerialization.data(withJSONObject: json, options: [])
+        let line = String(data: data, encoding: .utf8)!
+        try assertEqual(MCPProtocol.classifyIncoming(line, awaitingId: 7), .unrelated)
+    }
+
+    test("classifyIncoming still echoes a ping with a numeric id (#418)") {
+        let line = #"{"jsonrpc":"2.0","id":99999,"method":"ping"}"#
+        guard case .pingRequest(let reply) = MCPProtocol.classifyIncoming(line, awaitingId: 7) else {
+            throw TestFailure("expected .pingRequest for a numeric id")
+        }
+        let obj = try JSONSerialization.jsonObject(with: Data(reply.utf8)) as! [String: Any]
+        try assertEqual(obj["id"] as! Int, 99999)
+    }
 }
