@@ -218,6 +218,12 @@ public enum ChatRequestValidator {
         if let maxTokens = request.max_tokens, maxTokens <= 0 {
             return .invalidParameterValue("'max_tokens' must be a positive integer, got \(maxTokens)")
         }
+        if let maxCompletionTokens = request.max_completion_tokens, maxCompletionTokens <= 0 {
+            return .invalidParameterValue("'max_completion_tokens' must be a positive integer, got \(maxCompletionTokens)")
+        }
+        if let legacy = request.max_tokens, let modern = request.max_completion_tokens, legacy != modern {
+            return .invalidParameterValue("'max_tokens' (\(legacy)) and 'max_completion_tokens' (\(modern)) are both present with different values. Use 'max_completion_tokens' only, or pass the same value for both.")
+        }
         if let temp = request.temperature, temp < 0 {
             return .invalidParameterValue("'temperature' must be non-negative, got \(temp)")
         }

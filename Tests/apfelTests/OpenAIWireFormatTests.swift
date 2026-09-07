@@ -209,6 +209,7 @@ func runOpenAIWireFormatTests() {
           "stream_options": {"include_usage": true},
           "temperature": 0.7,
           "max_tokens": 256,
+          "max_completion_tokens": 128,
           "seed": 42,
           "tools": [],
           "tool_choice": "auto",
@@ -230,6 +231,7 @@ func runOpenAIWireFormatTests() {
         try assertEqual(req.stream_options?.include_usage, true)
         try assertEqual(req.temperature, 0.7)
         try assertEqual(req.max_tokens, 256)
+        try assertEqual(req.max_completion_tokens, 128)
         try assertEqual(req.seed, 42)
         try assertNotNil(req.tools)
         try assertEqual(req.tools?.count, 0)
@@ -253,6 +255,7 @@ func runOpenAIWireFormatTests() {
         try assertNil(req.stream)
         try assertNil(req.temperature)
         try assertNil(req.max_tokens)
+        try assertNil(req.max_completion_tokens)
         try assertNil(req.seed)
         try assertNil(req.tools)
         try assertNil(req.tool_choice)

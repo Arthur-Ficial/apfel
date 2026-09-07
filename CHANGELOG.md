@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The OpenAI-compatible server now honors `max_completion_tokens` in chat completion requests. The modern field name, used by LangChain and the current openai-python SDK, was silently ignored because `ChatCompletionRequest` only decoded the legacy `max_tokens`. Either field now sets the output-token limit; both together are accepted when equal and rejected with a 400 when they conflict (#478).
+
 ## [1.10.0] - 2026-09-07
 
 ### Fixed
