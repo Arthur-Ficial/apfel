@@ -660,3 +660,65 @@ def test_realistic_nested_schema_still_accepted():
     assert resp.status_code == 200, (
         f"a 10-level-deep realistic schema was rejected: {resp.status_code} {resp.text[:300]}"
     )
+
+
+# ---------------------------------------------------------------------------
+# HTTP idle timeout — stalled request body permit leak (#463)
+# ---------------------------------------------------------------------------
+
+IDLE_TIMEOUT_SECONDS = 30
+
+
+def test_stalled_request_bodies_do_not_wedge_the_server():
+    """A client that sends headers then stalls must not hold its permit (#463).
+
+    The route handler takes the concurrency permit before the body is read, and
+    the Application was built with no server channel configuration, so
+    HTTP1Channel's idleTimeout defaulted to nil -- no idle, read, or connection
+    timeout anywhere in the stack. `--max-concurrent` connections carrying
+    ~150 bytes each took the server out of service for as long as they were
+    held, and every legitimate request then blocked for the full 30-second
+    semaphore wait and returned 429.
+
+    This needs no attacker: a client that dies or loses its network mid-upload
+    leaked a permit until the OS reaped the half-open connection, so a
+    long-lived `brew services` server degraded on its own.
+
+    Model-free: it asserts permit accounting via /health, not generation.
+    """
+    max_concurrent = 2
+    with running_server("--max-concurrent", str(max_concurrent)) as (base_url, _):
+        port = int(base_url.rsplit(":", 1)[1])
+        socks = []
+        try:
+            for _ in range(max_concurrent):
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.connect(("127.0.0.1", port))
+                s.sendall(
+                    b"POST /v1/chat/completions HTTP/1.1\r\n"
+                    b"Host: 127.0.0.1\r\n"
+                    b"Content-Type: application/json\r\n"
+                    b"Content-Length: 5000\r\n"
+                    b"\r\n"
+                    b'{"model":"apple-foundationmodel","mess'
+                )
+                socks.append(s)
+
+            time.sleep(2)
+            held = httpx.get(f"{base_url}/health", timeout=10).json()
+            assert held["active_requests"] == max_concurrent, (
+                "precondition: the stalled connections should be holding every "
+                f"permit, got active_requests={held['active_requests']}"
+            )
+
+            time.sleep(IDLE_TIMEOUT_SECONDS + 6)
+
+            resp = httpx.get(f"{base_url}/health", timeout=10)
+            assert resp.status_code == 200
+            assert resp.json()["active_requests"] == 0, (
+                "permits were not released after the idle timeout; the server "
+                f"is still wedged: {resp.json()} (#463)"
+            )
+        finally:
+            for s in socks:
+                s.close()

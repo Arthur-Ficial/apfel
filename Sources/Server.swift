@@ -288,6 +288,7 @@ func startServer(config: ServerConfig, mcpManager: MCPManager? = nil) async thro
 
     let app = Application(
         router: router,
+        server: .http1(configuration: .init(idleTimeout: .seconds(30))),
         configuration: .init(
             address: .hostname(config.host, port: config.port)
         )
