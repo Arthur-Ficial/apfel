@@ -411,24 +411,80 @@ public struct JSONSchemaSpec: Decodable, Sendable, Equatable, Hashable {
 // MARK: - Type-erased Codable for raw JSON schemas
 
 struct AnyCodable: Codable, Sendable {
+    /// Maximum JSON nesting depth accepted for a caller-supplied raw JSON value.
+    ///
+    /// `init(from:)` recurses once per level, and the server decodes request
+    /// bodies on a cooperative-pool thread whose stack is far smaller than the
+    /// ~512-level limit Foundation's own JSON scanner enforces. Depths in
+    /// between passed the scanner and then exhausted the stack, aborting the
+    /// whole process with SIGBUS on a ~1.3 KB unauthenticated POST. 64 levels
+    /// is well beyond any real JSON Schema (#462).
+    static let maxNestingDepth = 64
+
+    /// Marker carried in the thrown `DecodingError`'s `underlyingError`.
+    ///
+    /// The container probes below swallow "this value is not that type"
+    /// failures, which is what makes them probes. They must not swallow a
+    /// depth failure: doing so truncates the caller's schema to `null` and
+    /// answers 200 instead of 400, turning a crash into silent data loss. The
+    /// thrown error stays a real `DecodingError` so every existing
+    /// `catch is DecodingError` -- ours and downstream consumers' -- still
+    /// sees it and still produces a 400 (#462).
+    private struct NestingLimitExceeded: Error {}
+
     let value: (any Sendable)?
 
     init(from decoder: Decoder) throws {
+        guard decoder.codingPath.count <= Self.maxNestingDepth else {
+            throw Self.nestingLimitError(codingPath: decoder.codingPath)
+        }
         let container = try decoder.singleValueContainer()
         if container.decodeNil()                                    { value = nil; return }
         if let bool = try? container.decode(Bool.self)              { value = bool; return }
         if let int = try? container.decode(Int.self)                { value = int; return }
         if let double = try? container.decode(Double.self)          { value = double; return }
         if let string = try? container.decode(String.self)          { value = string; return }
-        if let object = try? container.decode([String: AnyCodable].self) {
+        if let object = try Self.probe([String: AnyCodable].self, in: container) {
             value = object
             return
         }
-        if let array = try? container.decode([AnyCodable].self) {
+        if let array = try Self.probe([AnyCodable].self, in: container) {
             value = array
             return
         }
         value = nil
+    }
+
+    private static func nestingLimitError(codingPath: [any CodingKey]) -> DecodingError {
+        DecodingError.dataCorrupted(
+            DecodingError.Context(
+                codingPath: codingPath,
+                debugDescription:
+                    "JSON nesting exceeds the maximum supported depth of \(maxNestingDepth)",
+                underlyingError: NestingLimitExceeded()
+            )
+        )
+    }
+
+    private static func isNestingLimit(_ error: any Error) -> Bool {
+        guard case .dataCorrupted(let context)? = error as? DecodingError else { return false }
+        return context.underlyingError is NestingLimitExceeded
+    }
+
+    /// Decode `type`, returning `nil` when the value simply is not that type
+    /// but re-throwing a depth failure so it reaches the caller as a decoding
+    /// error instead of a silently null-ed subtree.
+    private static func probe<T: Decodable & Sendable>(
+        _ type: T.Type,
+        in container: any SingleValueDecodingContainer
+    ) throws -> T? {
+        do {
+            return try container.decode(type)
+        } catch where isNestingLimit(error) {
+            throw error
+        } catch {
+            return nil
+        }
     }
 
     func encode(to encoder: Encoder) throws {

@@ -560,3 +560,86 @@ def test_default_preflight_still_works_without_cors():
     )
     assert resp.status_code == 204
     assert "access-control-allow-headers" not in resp.headers
+
+
+# ---------------------------------------------------------------------------
+# JSON nesting depth (#462)
+# ---------------------------------------------------------------------------
+
+
+def _nested(depth):
+    """`{"a": {"a": ... 1 ... }}` nested `depth` levels deep."""
+    import json as _json
+    return _json.loads('{"a":' * depth + "1" + "}" * depth)
+
+
+@pytest.mark.parametrize("depth", [200, 400])
+def test_deeply_nested_schema_is_rejected_not_fatal(depth):
+    """An over-nested caller schema must be a 400, never a dead process (#462).
+
+    AnyCodable recursed once per nesting level with no cap. Foundation's JSON
+    scanner only rejects at ~512 levels, far deeper than the stack of the
+    cooperative-pool thread the handler decodes on, so depths in between
+    exhausted the stack and aborted the whole process with SIGBUS. A ~1.3 KB
+    POST killed the server and every in-flight request with it -- and because
+    the crash happened during body decoding, before the handler ran, `--token`
+    did not protect against it.
+
+    Asserting 400 rather than merely "still alive" is deliberate: a bare depth
+    guard stops the crash but lets the `try?` container probes swallow the
+    error, answering 200 with the caller's schema silently truncated to null.
+    """
+    messages = [{"role": "user", "content": "hi"}]
+    bodies = {
+        "tools[].function.parameters": (
+            "/v1/chat/completions",
+            {"model": "apple-foundationmodel", "messages": messages,
+             "tools": [{"type": "function",
+                        "function": {"name": "t", "parameters": _nested(depth)}}]},
+        ),
+        "response_format.json_schema.schema": (
+            "/v1/chat/completions",
+            {"model": "apple-foundationmodel", "messages": messages,
+             "response_format": {"type": "json_schema",
+                                 "json_schema": {"name": "s", "schema": _nested(depth)}}},
+        ),
+        "text.format.schema": (
+            "/v1/responses",
+            {"model": "apple-foundationmodel", "input": "hi",
+             "text": {"format": {"type": "json_schema", "name": "s",
+                                 "schema": _nested(depth)}}},
+        ),
+    }
+
+    for field, (path, payload) in bodies.items():
+        resp = httpx.post(f"{BASE_URL}{path}", json=payload, timeout=30)
+        assert resp.status_code == 400, (
+            f"{field} at depth {depth} returned {resp.status_code}, expected 400. "
+            "A 200 here means the depth error was swallowed and the caller's "
+            "schema was silently truncated (#462)."
+        )
+        health = httpx.get(f"{BASE_URL}/health", timeout=10)
+        assert health.status_code == 200, (
+            f"server died after {field} at depth {depth} (#462)"
+        )
+
+
+@pytest.mark.model
+def test_realistic_nested_schema_still_accepted():
+    """The cap must not touch schemas anyone actually writes (#462)."""
+    resp = httpx.post(
+        f"{BASE_URL}/v1/chat/completions",
+        json={"model": "apple-foundationmodel", "messages": [{"role": "user", "content": "hi"}],
+              "tools": [{"type": "function", "function": {
+                  "name": "get_weather", "description": "Get weather",
+                  "parameters": {"type": "object", "properties": {"location": {
+                      "type": "object", "properties": {
+                          "city": {"type": "string"},
+                          "units": {"type": "string", "enum": ["c", "f"]}}}},
+                      "required": ["location"]}}}],
+              "max_tokens": 1},
+        timeout=120,
+    )
+    assert resp.status_code == 200, (
+        f"a 10-level-deep realistic schema was rejected: {resp.status_code} {resp.text[:300]}"
+    )
