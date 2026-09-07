@@ -267,10 +267,12 @@ func countTokens(
         msgs.append(OpenAIMessage(role: "user", content: .text(mergedPrompt)))
         let (_, _, withTools) = try await ContextManager.makeSession(
             messages: msgs, tools: mcpTools, options: options, jsonMode: false, toolChoice: nil)
-        inputEntries = withTools
+        inputEntries = sessionInputEntries(
+            builtEntries: withTools, finalPrompt: mergedPrompt, options: options)
         let (_, _, withoutTools) = try await ContextManager.makeSession(
             messages: msgs, tools: nil, options: options, jsonMode: false, toolChoice: nil)
-        noToolEntries = withoutTools
+        noToolEntries = sessionInputEntries(
+            builtEntries: withoutTools, finalPrompt: mergedPrompt, options: options)
     } else {
         var builtEntries: [Transcript.Entry] = []
         if let sys = systemPrompt, !sys.isEmpty {
