@@ -52,6 +52,8 @@ public struct ChatCompletionRequest: Decodable, Sendable, Equatable, Hashable {
 
     /// The effective positive output-token limit after resolving `max_tokens`
     /// and `max_completion_tokens`. `nil` when neither field was provided.
+    /// On the server path the validator rejects conflicting values, so the
+    /// precedence matters only for direct `ApfelCore` library consumers.
     public var effectiveMaxTokens: Int? {
         max_completion_tokens ?? max_tokens
     }
