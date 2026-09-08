@@ -682,6 +682,69 @@ func runChatRequestValidatorTests() {
         )
         try assertEqual(ChatRequestValidator.validate(request), .unknownRole("bogus"))
     }
+
+    // --- parallel_tool_calls decoding (#480) ---
+
+    test("ChatCompletionRequest decodes parallel_tool_calls=true (#480)") {
+        let json = #"{"model":"apple-foundationmodel","messages":[{"role":"user","content":"hi"}],"parallel_tool_calls":true}"#
+        let req = try decode(ChatCompletionRequest.self, from: json)
+        try assertEqual(req.parallel_tool_calls, true)
+    }
+
+    test("ChatCompletionRequest decodes parallel_tool_calls=false (#480)") {
+        let json = #"{"model":"apple-foundationmodel","messages":[{"role":"user","content":"hi"}],"parallel_tool_calls":false}"#
+        let req = try decode(ChatCompletionRequest.self, from: json)
+        try assertEqual(req.parallel_tool_calls, false)
+    }
+
+    test("ChatCompletionRequest parallel_tool_calls is nil when absent (#480)") {
+        let json = #"{"model":"apple-foundationmodel","messages":[{"role":"user","content":"hi"}]}"#
+        let req = try decode(ChatCompletionRequest.self, from: json)
+        try assertNil(req.parallel_tool_calls)
+    }
+
+    // --- Named tool_choice validation against tools array (#480) ---
+
+    test("validator rejects named tool_choice when name not in tools (#480)") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"bar","description":"d"}}],"tool_choice":{"type":"function","function":{"name":"foo"}}}"#
+        )
+        guard case .invalidParameterValue(let detail) = ChatRequestValidator.validate(request) else {
+            throw TestFailure("expected .invalidParameterValue for tool_choice naming unknown tool")
+        }
+        try assertTrue(detail.contains("foo"))
+        try assertTrue(detail.contains("bar"))
+    }
+
+    test("validator accepts named tool_choice when name matches a tool (#480)") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"lookup","description":"d"}}],"tool_choice":{"type":"function","function":{"name":"lookup"}}}"#
+        )
+        try assertNil(ChatRequestValidator.validate(request))
+    }
+
+    test("validator skips named tool_choice check when tools array is empty (#480)") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"tool_choice":{"type":"function","function":{"name":"f"}}}"#
+        )
+        try assertNil(ChatRequestValidator.validate(request))
+    }
+
+    test("validator rejects named tool_choice among multiple tools when none match (#480)") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"a","description":"d"}},{"type":"function","function":{"name":"b","description":"d"}}],"tool_choice":{"type":"function","function":{"name":"c"}}}"#
+        )
+        guard case .invalidParameterValue(let detail) = ChatRequestValidator.validate(request) else {
+            throw TestFailure("expected .invalidParameterValue for tool_choice naming unknown tool among multiple")
+        }
+        try assertTrue(detail.contains("c"))
+        try assertTrue(detail.contains("a"))
+        try assertTrue(detail.contains("b"))
+    }
 }
 
 private func unwrap<T>(_ value: T?, _ message: String) throws -> T {

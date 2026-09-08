@@ -214,6 +214,7 @@ func runApfelCorePublicAPIUsageTests() {
         let _: Int?                = req.seed
         let _: [OpenAITool]?       = req.tools
         let _: ToolChoice?         = req.tool_choice
+        let _: Bool?               = req.parallel_tool_calls
         let _: ResponseFormat?     = req.response_format
         let _: Bool?               = req.logprobs
         let _: Int?                = req.n
