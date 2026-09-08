@@ -211,6 +211,8 @@ func runApfelCorePublicAPIUsageTests() {
         let _: StreamOptions?      = req.stream_options
         let _: Double?             = req.temperature
         let _: Int?                = req.max_tokens
+        let _: Int?                = req.max_completion_tokens
+        let _: Int?                = req.effectiveMaxTokens
         let _: Int?                = req.seed
         let _: [OpenAITool]?       = req.tools
         let _: ToolChoice?         = req.tool_choice
@@ -261,6 +263,7 @@ func runApfelCorePublicAPIUsageTests() {
             .invalidLastRole,
             .imageContent,
             .invalidParameterValue("why"),
+            .conflictingMaxTokens(legacy: 100, modern: 200),
             .invalidModel("gpt-5"),
         ]
         for f in failures {

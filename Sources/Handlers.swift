@@ -140,7 +140,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
     let sessionOpts = SessionOptions(
         temperature: chatRequest.temperature,
         topP: chatRequest.top_p,
-        maxTokens: chatRequest.max_tokens,
+        maxTokens: chatRequest.effectiveMaxTokens,
         seed: chatRequest.seed.map { UInt64($0) },
         permissive: serverState.config.permissive,
         contextConfig: contextConfig,
