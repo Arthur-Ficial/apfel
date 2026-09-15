@@ -1,9 +1,9 @@
 # WWDC 2026 on-device AI - what it means for apfel
 
-> Knowledge page. Last researched 2026-06-09 against Apple's docs:
+> Knowledge page. Last researched 2026-06-09; beta flags re-verified 2026-09-15 against GA docs.
 > [developer.apple.com/documentation/updates/foundationmodels](https://developer.apple.com/documentation/updates/foundationmodels)
 > (FoundationModels OS 27 updates) and
-> [developer.apple.com/documentation/coreai](https://developer.apple.com/documentation/coreai/) (Core AI, beta).
+> [developer.apple.com/documentation/coreai](https://developer.apple.com/documentation/coreai/) (Core AI).
 > Tracking epic: [#189](https://github.com/Arthur-Ficial/apfel/issues/189).
 > Updated 2026-07-22: OS 27 on-device context window confirmed as 8192 on real hardware (#192).
 
@@ -102,8 +102,8 @@ Key symbols: `AIModel`, `AIModelAsset`, `InferenceFunction`, `InferenceFunctionD
 `InferenceValue`, `NDArray`, `NDArrayDescriptor`, `ComputeStream`, `ComputeUnitKind`,
 `SpecializationOptions`, `AIModelCache`, `ImageDescriptor`, `AssetError`. Import is `import CoreAI`.
 
-**Availability:** iOS / iPadOS / macOS / tvOS / visionOS / watchOS **27.0+, all Beta.** Announced at
-WWDC 2026 (keynote 2026-06-08), shipping with the iOS 27 / macOS 27 generation. Building
+**Availability:** iOS / iPadOS / macOS / tvOS / visionOS / watchOS **27.0+.** Announced at
+WWDC 2026 (keynote 2026-06-08), shipped GA with macOS 27.0 (2026-09-14). Building
 `.aimodel` files needs the Xcode **Metal Toolchain** component.
 
 ## What Core AI is NOT
@@ -232,7 +232,7 @@ Recommendation: **do not** put Core AI into apfel core. Track it, write a spike 
 
 ## Sources
 
-Primary (live beta JSON docs, fetched 2026-06-09):
+Primary (JSON docs, originally fetched 2026-06-09; beta flags cleared at GA 2026-09-14):
 
 - [developer.apple.com/documentation/coreai](https://developer.apple.com/documentation/coreai/) - framework root
 - `coreai/integrating-on-device-ai-models-in-your-app-with-core-ai` - getting-started article
