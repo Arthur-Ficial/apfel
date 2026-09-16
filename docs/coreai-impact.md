@@ -1,6 +1,6 @@
 # WWDC 2026 on-device AI - what it means for apfel
 
-> Knowledge page. Last researched 2026-06-09; beta flags re-verified 2026-09-15 against GA docs.
+> Knowledge page. Last researched 2026-06-09; beta flags re-verified 2026-09-15 (GA shipped 2026-09-14).
 > [developer.apple.com/documentation/updates/foundationmodels](https://developer.apple.com/documentation/updates/foundationmodels)
 > (FoundationModels OS 27 updates) and
 > [developer.apple.com/documentation/coreai](https://developer.apple.com/documentation/coreai/) (Core AI).
