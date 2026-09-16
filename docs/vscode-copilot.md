@@ -10,7 +10,12 @@ apfel --serve
 
 ## Copilot configuration
 
-Add this to your VSCode settings (`customendpoint` BYOK provider, chat-completions):
+The on-device window is **input and output combined**, not one budget each, and apfel reserves 512
+tokens for the response by default (`--context-output-reserve`). So `maxInputTokens` and
+`maxOutputTokens` have to *sum* to the window - setting both to the full window asks for twice what
+exists. Run `apfel --model-info` to see your window, then use the matching block below.
+
+On **macOS 26** (4096-token window), add this to your VSCode settings:
 
 ```json
 [
@@ -25,15 +30,39 @@ Add this to your VSCode settings (`customendpoint` BYOK provider, chat-completio
         "url": "http://127.0.0.1:11434/v1/chat/completions",
         "toolCalling": false,
         "vision": false,
-        "maxInputTokens": 4096,
-        "maxOutputTokens": 4096
+        "maxInputTokens": 3584,
+        "maxOutputTokens": 512
       }
     ]
   }
 ]
 ```
 
-The `4096` token limits match the macOS 26 on-device window; on macOS 27 the window is 8192 - `apfel --model-info` prints the live value.
+On **macOS 27** (8192-token window), use this instead:
+
+```json
+[
+  {
+    "name": "Apfel",
+    "vendor": "customendpoint",
+    "apiType": "chat-completions",
+    "models": [
+      {
+        "id": "apple-foundationmodel",
+        "name": "Apple Foundation Model",
+        "url": "http://127.0.0.1:11434/v1/chat/completions",
+        "toolCalling": false,
+        "vision": false,
+        "maxInputTokens": 7680,
+        "maxOutputTokens": 512
+      }
+    ]
+  }
+]
+```
+
+If you raise `maxOutputTokens`, lower `maxInputTokens` by the same amount and raise apfel's reserve
+to match (`apfel --serve --context-output-reserve <n>`), so the two sides still agree on the split.
 
 Select **Apple Foundation Model** in the Copilot Chat model picker. Chat requests are served on-device.
 
