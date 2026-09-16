@@ -12,10 +12,11 @@ actor TokenCounter {
     static let shared = TokenCounter()
     private let model = SystemLanguageModel.default
 
-    /// Highest positive value ever observed from model.contextSize.
-    /// Guards against SDK regressions where contextSize flips back to 0
-    /// after reporting the real window (observed on macOS 27 cold start).
-    private var _highWaterContextSize: Int = 0
+    /// Tracks the largest context size the model has reported, and whether a
+    /// real reading has arrived at all. Guards against SDK regressions where
+    /// contextSize flips back to 0 after reporting the real window (observed
+    /// on macOS 27 cold start). See ApfelCore.ContextWindowTracker.
+    private var _windowTracker = ContextWindowTracker()
 
     /// True when any count call in this process actually fell back to chars/4
     /// at runtime - tokenCount(for:) threw, or availability flipped after the
@@ -52,24 +53,28 @@ actor TokenCounter {
         }
     }
 
-    /// Context window size from the model, with a floor of 4096.
+    /// Context window from the model, carrying whether it was actually read.
     ///
     /// On macOS 27, model.contextSize returns 0 during SDK initialization
-    /// (observed for 80+ seconds on cold start). This property uses the
-    /// highest value ever observed (high-water mark) and falls back to
-    /// 4096 - the known minimum for any Apple Intelligence model - when
-    /// the SDK has not yet reported a positive value. Prevents the
-    /// deadlock where inputBudget returns -512, generation is rejected,
+    /// (observed for 80+ seconds on cold start). This uses the highest value
+    /// ever observed (high-water mark) and falls back to an assumed floor
+    /// when the SDK has not yet reported a positive value. The floor prevents
+    /// the deadlock where inputBudget returns -512, generation is rejected,
     /// and the model never warms up (#192).
+    ///
+    /// The fallback is flagged `isMeasured == false` so callers that show the
+    /// number to a user or put it on the wire do not present a guess as a
+    /// measurement - on macOS 27 the floor under-reports the real window (#491).
+    var contextWindow: ContextWindow {
+        _windowTracker.observe(model.contextSize)
+    }
+
+    /// Context window size in tokens. Always positive.
+    ///
+    /// Callers that need to know whether this is a real reading or the
+    /// assumed floor should use `contextWindow` instead (#491).
     var contextSize: Int {
-        let raw = model.contextSize
-        if raw > _highWaterContextSize {
-            _highWaterContextSize = raw
-        }
-        if _highWaterContextSize > 0 {
-            return _highWaterContextSize
-        }
-        return 4096
+        contextWindow.tokens
     }
 
     /// Tokens available for model input given a reserved output budget.

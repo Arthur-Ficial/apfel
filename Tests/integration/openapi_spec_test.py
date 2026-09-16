@@ -617,6 +617,37 @@ def test_models_context_window_positive():
     )
 
 
+def test_health_context_window_measured_flag():
+    """/health must say whether context_window was measured or assumed (#491).
+
+    The 4096 floor keeps clients working during the macOS 27 cold start, but
+    on macOS 27 it under-reports the real 8192 window. A client that sizes
+    max_tokens from /health needs to know it is holding a guess. Additive
+    field: context_window stays a positive integer (#192 still holds).
+    Model-free: the flag is present regardless of model availability.
+    """
+    resp = httpx.get(f"{BASE_URL}/health", timeout=10)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "context_window_measured" in data, (
+        "/health must expose context_window_measured so clients can tell a "
+        "real reading from the assumed floor (#491)"
+    )
+    assert isinstance(data["context_window_measured"], bool)
+    assert data["context_window"] > 0, "the #192 floor must still hold"
+
+
+def test_models_context_window_measured_flag():
+    """/v1/models must carry the same measured/assumed flag as /health (#491)."""
+    resp = httpx.get(f"{BASE_URL}/v1/models", timeout=10)
+    assert resp.status_code == 200
+    model_entry = resp.json()["data"][0]
+    assert "context_window_measured" in model_entry, (
+        "/v1/models must expose context_window_measured (#491)"
+    )
+    assert isinstance(model_entry["context_window_measured"], bool)
+
+
 def test_completion_not_context_length_exceeded():
     """A minimal completion must never fail with context_length_exceeded (#192).
 

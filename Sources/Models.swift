@@ -214,6 +214,10 @@ struct ModelsListResponse: Encodable, Sendable {
         let created: Int
         let owned_by: String
         let context_window: Int
+        /// False when `context_window` is the assumed floor rather than a
+        /// reading from the model (#491). Additive: `context_window` itself
+        /// stays a positive integer (#192).
+        let context_window_measured: Bool
         let supported_parameters: [String]
         let unsupported_parameters: [String]
         let notes: String
