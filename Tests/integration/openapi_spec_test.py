@@ -212,10 +212,11 @@ ERROR_RESPONSE_SCHEMA = {
 
 HEALTH_SCHEMA = {
     "type": "object",
-    "required": ["model", "context_window", "model_available"],
+    "required": ["model", "context_window", "context_window_measured", "model_available"],
     "properties": {
         "model": {"type": "string"},
         "context_window": {"type": "integer"},
+        "context_window_measured": {"type": "boolean"},
         "model_available": {"type": "boolean"},
     },
     "additionalProperties": True,
@@ -600,6 +601,25 @@ def test_health_context_window_positive():
     )
 
 
+def test_health_context_window_measured_present():
+    """/health must include context_window_measured boolean (#491).
+
+    When the SDK has not reported a positive contextSize (model unavailable
+    or cold-starting), context_window is the assumed 4096 floor and
+    context_window_measured must be false. When the SDK has reported a
+    real value, it must be true.
+    """
+    resp = httpx.get(f"{BASE_URL}/health", timeout=10)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "context_window_measured" in data, (
+        "context_window_measured missing from /health response (#491)"
+    )
+    assert isinstance(data["context_window_measured"], bool), (
+        f"context_window_measured should be boolean, got {type(data['context_window_measured'])}"
+    )
+
+
 def test_models_context_window_positive():
     """/v1/models context_window must never be 0 (#192).
 
@@ -614,6 +634,25 @@ def test_models_context_window_positive():
     model_entry = data["data"][0]
     assert model_entry.get("context_window", 0) > 0, (
         f"context_window is {model_entry.get('context_window')}; expected > 0 (#192)"
+    )
+
+
+def test_models_context_window_measured_present():
+    """/v1/models must include context_window_measured boolean (#491).
+
+    Same provenance signal as /health: lets clients distinguish a
+    measured SDK reading from the assumed 4096 floor.
+    """
+    resp = httpx.get(f"{BASE_URL}/v1/models", timeout=10)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["data"]) > 0
+    model_entry = data["data"][0]
+    assert "context_window_measured" in model_entry, (
+        "context_window_measured missing from /v1/models response (#491)"
+    )
+    assert isinstance(model_entry["context_window_measured"], bool), (
+        f"context_window_measured should be boolean, got {type(model_entry['context_window_measured'])}"
     )
 
 

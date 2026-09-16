@@ -369,6 +369,17 @@ func runApfelCorePublicAPIUsageTests() {
         let _ = BufferedLineReader(fileDescriptor: -1, bufferSize: 16)
     }
 
+    // MARK: - ContextWindow
+
+    test("ContextWindow public surface compiles") {
+        let cw = ContextWindow(size: 4096, measured: false)
+        let _: Int = cw.size
+        let _: Bool = cw.measured
+        let _ = requireSendable(cw)
+        let _: Bool = cw == ContextWindow(size: 4096, measured: false)
+        try assertTrue(true)
+    }
+
     // MARK: - ModelAvailability
 
     test("ModelAvailability public surface compiles") {

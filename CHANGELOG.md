@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `--model-info`, `/health`, and `/v1/models` now distinguish a measured context window from the assumed 4096 floor. When the SDK has not yet reported a positive `contextSize` (model unavailable or cold-starting on macOS 27), the CLI shows `(assumed - model not ready)` and the wire endpoints include `context_window_measured: false`. Previously the floor was presented indistinguishably from a measurement, reporting half the real capacity on macOS 27 where the window is 8192 (#491).
+
 ## [1.10.0] - 2026-09-07
 
 ### Fixed

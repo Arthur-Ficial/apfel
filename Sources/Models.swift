@@ -214,6 +214,7 @@ struct ModelsListResponse: Encodable, Sendable {
         let created: Int
         let owned_by: String
         let context_window: Int
+        let context_window_measured: Bool
         let supported_parameters: [String]
         let unsupported_parameters: [String]
         let notes: String

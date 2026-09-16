@@ -598,19 +598,22 @@ func truncateTranscript(_ transcript: Transcript, budget: Int, config: ContextCo
 func printModelInfo() async {
     let tc = TokenCounter.shared
     let availability = await tc.availability
-    let contextSize = await tc.contextSize
+    let cw = await tc.contextWindow
     let languages = await tc.supportedLanguages
 
     let availabilityLine = availability.isAvailable
         ? styled(availability.shortLabel, .green)
         : styled(availability.shortLabel, .red)
+    let contextLabel = cw.measured
+        ? "\(cw.size) tokens"
+        : "\(cw.size) tokens (assumed - model not ready)"
 
     print("""
     \(styled("apfel", .cyan, .bold)) v\(version) — model info
     \(styled("├", .dim)) model:      \(modelName)
     \(styled("├", .dim)) on-device:  true (always)
     \(styled("├", .dim)) available:  \(availabilityLine)
-    \(styled("├", .dim)) context:    \(contextSize) tokens
+    \(styled("├", .dim)) context:    \(contextLabel)
     \(styled("├", .dim)) languages:  \(languages.joined(separator: ", "))
     \(styled("└", .dim)) framework:  FoundationModels (macOS 26+)
     """)

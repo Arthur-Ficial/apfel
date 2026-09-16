@@ -87,13 +87,14 @@ func startServer(config: ServerConfig, mcpManager: MCPManager? = nil) async thro
     router.get("/health") { _, _ -> Response in
         let active = await serverState.logStore.activeRequests
         let available = await TokenCounter.shared.isAvailable
-        let contextWindow = await TokenCounter.shared.contextSize
+        let cw = await TokenCounter.shared.contextWindow
         let health: [String: Any] = [
             "status": available ? "ok" : "model_unavailable",
             "model": modelName,
             "version": version,
             "active_requests": active,
-            "context_window": contextWindow,
+            "context_window": cw.size,
+            "context_window_measured": cw.measured,
             "model_available": available,
             "prewarmed": prewarmed,
             "supported_languages": cachedLangs
@@ -109,12 +110,13 @@ func startServer(config: ServerConfig, mcpManager: MCPManager? = nil) async thro
     // supportedLanguages cached from startup (crash safety, apfel-gui#4).
     // contextSize read per-request via TokenCounter (high-water + floor, #192).
     router.get("/v1/models") { _, _ -> Response in
-        let contextWindow = await TokenCounter.shared.contextSize
+        let cw = await TokenCounter.shared.contextWindow
         return jsonResponse(jsonString(ModelsListResponse(
             object: "list",
             data: [.init(
                 id: modelName, object: "model", created: 1719792000, owned_by: "apple",
-                context_window: contextWindow,
+                context_window: cw.size,
+                context_window_measured: cw.measured,
                 supported_parameters: ["temperature", "max_tokens", "seed", "stream", "tools", "tool_choice", "response_format", "x_context_strategy", "x_context_max_turns", "x_context_output_reserve"],
                 unsupported_parameters: ["logprobs", "n", "stop", "presence_penalty", "frequency_penalty"],
                 notes: "Apple on-device model via FoundationModels framework. Unsupported parameters are rejected with 400 when present (except n=1 and logprobs=false). Supported languages: \(cachedLangs.joined(separator: ", "))"

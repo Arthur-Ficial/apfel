@@ -52,7 +52,7 @@ actor TokenCounter {
         }
     }
 
-    /// Context window size from the model, with a floor of 4096.
+    /// Context window with measurement provenance (#491).
     ///
     /// On macOS 27, model.contextSize returns 0 during SDK initialization
     /// (observed for 80+ seconds on cold start). This property uses the
@@ -61,16 +61,22 @@ actor TokenCounter {
     /// the SDK has not yet reported a positive value. Prevents the
     /// deadlock where inputBudget returns -512, generation is rejected,
     /// and the model never warms up (#192).
-    var contextSize: Int {
+    ///
+    /// The `measured` flag lets reporting surfaces (--model-info, /health,
+    /// /v1/models) distinguish a real SDK reading from the assumed floor.
+    var contextWindow: ContextWindow {
         let raw = model.contextSize
         if raw > _highWaterContextSize {
             _highWaterContextSize = raw
         }
         if _highWaterContextSize > 0 {
-            return _highWaterContextSize
+            return ContextWindow(size: _highWaterContextSize, measured: true)
         }
-        return 4096
+        return ContextWindow(size: 4096, measured: false)
     }
+
+    /// Context window size in tokens (convenience for budget math).
+    var contextSize: Int { contextWindow.size }
 
     /// Tokens available for model input given a reserved output budget.
     func inputBudget(reservedForOutput: Int = 512) -> Int {
