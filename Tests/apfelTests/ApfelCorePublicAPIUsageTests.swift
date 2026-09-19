@@ -372,6 +372,24 @@ func runApfelCorePublicAPIUsageTests() {
         let _ = BufferedLineReader(fileDescriptor: -1, bufferSize: 16)
     }
 
+    // MARK: - ContextWindow / ContextWindowTracker (#491)
+
+    test("ContextWindow public surface compiles") {
+        let cw = ContextWindow(tokens: 4096, isMeasured: false)
+        let _: Int = cw.tokens
+        let _: Bool = cw.isMeasured
+        let _: String = cw.displayText
+        let _ = requireSendable(cw)
+        let _: Bool = cw == ContextWindow(tokens: 4096, isMeasured: false)
+    }
+
+    test("ContextWindowTracker public surface compiles") {
+        var tracker = ContextWindowTracker()
+        let _: Int = ContextWindowTracker.assumedTokens
+        let _: ContextWindow = tracker.observe(0)
+        let _ = requireSendable(tracker)
+    }
+
     // MARK: - ModelAvailability
 
     test("ModelAvailability public surface compiles") {
