@@ -407,6 +407,23 @@ def test_model_info_rejects_tuning_flag():
     assert "seed" in result.stderr.lower()
 
 
+def test_env_prompt_defaults_do_not_block_input_ignoring_modes():
+    """Exported APFEL_* prompt defaults must not turn --model-info / --serve into
+    a usage error (#496). The flag form is rejected (tests above); the env form
+    is a standing default for prompt modes and is dropped with a warning.
+    --model-info runs validate() and exits 0 with or without the model."""
+    result = run_cli(
+        ["--model-info"],
+        env={"APFEL_CONTEXT_OUTPUT_RESERVE": "1024", "APFEL_TEMPERATURE": "0.7"},
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "does not accept" not in result.stderr.lower()
+    assert "ignoring apfel_context_output_reserve" in result.stderr.lower()
+    assert "ignoring apfel_temperature" in result.stderr.lower()
+    assert "--model-info" in result.stderr
+
+
 def test_context_status_rejected_outside_chat():
     result = run_cli(["--context-status", "hi"], timeout=15)
     assert result.returncode == 2
