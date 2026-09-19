@@ -7,6 +7,8 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-09-19
+
 ### Fixed
 
 - Exported `APFEL_SYSTEM_PROMPT`, `APFEL_TEMPERATURE`, `APFEL_MAX_TOKENS`, `APFEL_CONTEXT_STRATEGY`, `APFEL_CONTEXT_MAX_TURNS` or `APFEL_CONTEXT_OUTPUT_RESERVE` no longer make `apfel --serve` (and `--benchmark`, `--model-info`, `--update`) exit 2 with an error about a flag the user never passed. The #370 guard rejected env-derived prompt defaults exactly like explicit flags; those variables are standing defaults for prompt modes, so they are now dropped in input-ignoring modes with a one-line stderr notice `apfel: ignoring APFEL_... in --serve mode`. Explicit flags keep the hard error (#496).
