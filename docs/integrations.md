@@ -43,7 +43,7 @@ Full setup, the verified config, a real transcript, and every gotcha are on the 
 }
 ```
 
-`max_tokens: 4096` matches the macOS 26 on-device window; on macOS 27 the window is 8192 - `apfel --model-info` prints the live value.
+`max_tokens` is the context window, covering input and output combined. `4096` is the **macOS 26** value; on **macOS 27** set `max_tokens: 8192`, or you give up half the window. `apfel --model-info` prints the live value for your machine.
 
 Start apfel:
 
