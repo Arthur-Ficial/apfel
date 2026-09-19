@@ -61,8 +61,11 @@ On **macOS 27** (8192-token window), use this instead:
 ]
 ```
 
-If you raise `maxOutputTokens`, lower `maxInputTokens` by the same amount and raise apfel's reserve
-to match (`apfel --serve --context-output-reserve <n>`), so the two sides still agree on the split.
+If you raise `maxOutputTokens`, lower `maxInputTokens` by the same amount so the two still sum to
+the window. apfel's own 512-token reserve needs no change: it only caps how much input the server
+keeps per request, and a lowered `maxInputTokens` already stays under that cap. (`--context-output-reserve`
+is a prompt-mode flag; `apfel --serve` rejects it. Clients that can add body fields set the reserve per
+request with `x_context_output_reserve`, which Copilot cannot.)
 
 Select **Apple Foundation Model** in the Copilot Chat model picker. Chat requests are served on-device.
 
