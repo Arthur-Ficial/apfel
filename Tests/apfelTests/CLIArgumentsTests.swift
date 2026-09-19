@@ -941,6 +941,75 @@ func runCLIArgumentsTests() {
     }
 
     // ========================================================================
+    // MARK: - Env prompt defaults in input-ignoring modes (#496)
+    // ========================================================================
+
+    test("APFEL_CONTEXT_OUTPUT_RESERVE does not block --serve (#496)") {
+        let args = try CLIArguments.parse(["--serve"], env: ["APFEL_CONTEXT_OUTPUT_RESERVE": "1024"])
+        try assertEqual(args.mode, .serve)
+        try assertNil(args.contextOutputReserve)
+        try assertEqual(args.warnings.count, 1)
+        try assertTrue(args.warnings[0].contains("APFEL_CONTEXT_OUTPUT_RESERVE"))
+        try assertTrue(args.warnings[0].contains("--serve"))
+    }
+
+    test("every env prompt default is dropped with a warning in --serve (#496)") {
+        let env = ["APFEL_SYSTEM_PROMPT": "be brief", "APFEL_TEMPERATURE": "0.2",
+                   "APFEL_MAX_TOKENS": "50", "APFEL_CONTEXT_STRATEGY": "strict",
+                   "APFEL_CONTEXT_MAX_TURNS": "3", "APFEL_CONTEXT_OUTPUT_RESERVE": "256"]
+        let args = try CLIArguments.parse(["--serve"], env: env)
+        try assertNil(args.systemPrompt)
+        try assertNil(args.temperature)
+        try assertNil(args.maxTokens)
+        try assertNil(args.contextStrategy)
+        try assertNil(args.contextMaxTurns)
+        try assertNil(args.contextOutputReserve)
+        try assertEqual(args.warnings.count, 6)
+        for name in env.keys {
+            try assertTrue(args.warnings.contains { $0.contains(name) }, "missing warning for \(name)")
+        }
+    }
+
+    test("env prompt defaults are dropped in --benchmark, --model-info and --update too (#496)") {
+        for flag in ["--benchmark", "--model-info", "--update"] {
+            let args = try CLIArguments.parse([flag], env: ["APFEL_TEMPERATURE": "0.7"])
+            try assertNil(args.temperature, "\(flag) should drop APFEL_TEMPERATURE")
+            try assertEqual(args.warnings.count, 1, "\(flag) should warn once")
+            try assertTrue(args.warnings[0].contains(flag))
+        }
+    }
+
+    test("explicit --temperature still hard-errors in --serve when env is also set (#496)") {
+        do {
+            _ = try CLIArguments.parse(["--serve", "--temperature", "0.5"], env: ["APFEL_TEMPERATURE": "0.2"])
+            try assertTrue(false, "should have thrown")
+        } catch let e as CLIParseError {
+            try assertTrue(e.message.contains("--temperature"))
+        }
+    }
+
+    test("explicit -s still hard-errors in --serve when APFEL_SYSTEM_PROMPT is set (#496)") {
+        do {
+            _ = try CLIArguments.parse(["--serve", "-s", "x"], env: ["APFEL_SYSTEM_PROMPT": "y"])
+            try assertTrue(false, "should have thrown")
+        } catch let e as CLIParseError {
+            try assertTrue(e.message.contains("--system"))
+        }
+    }
+
+    test("env prompt defaults still apply and never warn in prompt modes (#496)") {
+        let env = ["APFEL_SYSTEM_PROMPT": "be brief", "APFEL_TEMPERATURE": "0.2",
+                   "APFEL_CONTEXT_OUTPUT_RESERVE": "256"]
+        for args in [["hi"], ["--chat"], ["--stream", "hi"]] {
+            let parsed = try CLIArguments.parse(args, env: env)
+            try assertEqual(parsed.systemPrompt, "be brief")
+            try assertEqual(parsed.temperature, 0.2)
+            try assertEqual(parsed.contextOutputReserve, 256)
+            try assertTrue(parsed.warnings.isEmpty)
+        }
+    }
+
+    // ========================================================================
     // MARK: - Invalid env value warnings (#254)
     // ========================================================================
 

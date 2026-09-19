@@ -147,6 +147,22 @@ public struct CLIArguments: Sendable, Equatable {
 
     public init() {}
 
+    /// Modes that never read prompt input or generation tuning. An explicit
+    /// flag for either is a usage error there (#370); an APFEL_* env default
+    /// is dropped with a warning instead (#496).
+    static let inputIgnoringModes: Set<Mode> = [.serve, .benchmark, .modelInfo, .update]
+
+    /// Env-var prompt defaults and the flags that would override them.
+    /// Used to tell an exported default apart from an explicit flag (#496).
+    private static let envPromptDefaults: [(env: String, flags: [String])] = [
+        ("APFEL_SYSTEM_PROMPT", ["-s", "--system", "--system-file"]),
+        ("APFEL_TEMPERATURE", ["--temperature"]),
+        ("APFEL_MAX_TOKENS", ["--max-tokens"]),
+        ("APFEL_CONTEXT_STRATEGY", ["--context-strategy"]),
+        ("APFEL_CONTEXT_MAX_TURNS", ["--context-max-turns"]),
+        ("APFEL_CONTEXT_OUTPUT_RESERVE", ["--context-output-reserve"]),
+    ]
+
     /// Every flag spelling the parser recognizes. Single source of truth for
     /// "is this token a known flag" checks (currently the #255 warning that a
     /// flag placed after the prompt is swallowed into the prompt text). Keep in
@@ -294,8 +310,7 @@ extension CLIArguments {
         // tuning flag was parsed and then silently ignored. Reject it loudly
         // rather than pretend it took effect. (.serve still honors --permissive,
         // --retry, --mcp, and the server flags - those are consumed.)
-        let inputIgnoringModes: Set<Mode> = [.serve, .benchmark, .modelInfo, .update]
-        if inputIgnoringModes.contains(mode) {
+        if Self.inputIgnoringModes.contains(mode) {
             var offender: String? = nil
             if !prompt.isEmpty { offender = "a positional prompt" }
             else if !fileContents.isEmpty || !fileAttachments.isEmpty { offender = "-f/--file content" }
@@ -484,7 +499,11 @@ extension CLIArguments {
         }
 
         var i = 0
+        var explicitFlags: Set<String> = []
         while i < args.count {
+            if Self.envPromptDefaults.contains(where: { $0.flags.contains(args[i]) }) {
+                explicitFlags.insert(args[i])
+            }
             switch args[i] {
 
             // -- Immediate-exit modes (no conflict detection) --
@@ -864,6 +883,30 @@ extension CLIArguments {
                 continue
             }
             i += 1
+        }
+
+        // APFEL_* prompt defaults are standing defaults for prompt modes, so an
+        // exported one must not turn --serve/--benchmark/--model-info/--update
+        // into a usage error (#496). Explicit flags keep the hard error below
+        // (#370); env-derived values are dropped here with a warning, matching
+        // the #254 pattern for ignored env input.
+        if Self.inputIgnoringModes.contains(result.mode) {
+            for entry in Self.envPromptDefaults
+            where env[entry.env].map({ !$0.isEmpty }) == true
+                && explicitFlags.isDisjoint(with: entry.flags) {
+                switch entry.env {
+                case "APFEL_SYSTEM_PROMPT": result.systemPrompt = nil
+                case "APFEL_TEMPERATURE": result.temperature = nil
+                case "APFEL_MAX_TOKENS": result.maxTokens = nil
+                case "APFEL_CONTEXT_STRATEGY": result.contextStrategy = nil
+                case "APFEL_CONTEXT_MAX_TURNS": result.contextMaxTurns = nil
+                case "APFEL_CONTEXT_OUTPUT_RESERVE": result.contextOutputReserve = nil
+                default: break
+                }
+                result.warnings.append(
+                    "ignoring \(entry.env) in --\(result.mode.rawValue) mode (it only applies to prompt modes)"
+                )
+            }
         }
 
         // Post-parse semantic validation: mode conflicts, cross-flag
