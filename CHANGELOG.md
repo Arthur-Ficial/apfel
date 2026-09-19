@@ -7,6 +7,8 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+- Exported `APFEL_*` prompt-mode defaults (`APFEL_SYSTEM_PROMPT`, `APFEL_TEMPERATURE`, `APFEL_MAX_TOKENS`, `APFEL_CONTEXT_STRATEGY`, `APFEL_CONTEXT_MAX_TURNS`, `APFEL_CONTEXT_OUTPUT_RESERVE`) no longer make `--serve`, `--benchmark`, `--model-info` and `--update` exit 2. The #370 guard now distinguishes explicit CLI flags (still a hard error) from environment-variable defaults (downgraded to a non-fatal warning, value cleared). A user who exports these variables for daily CLI use can start the server without unsetting them first (#496).
+
 ## [1.10.0] - 2026-09-07
 
 ### Fixed

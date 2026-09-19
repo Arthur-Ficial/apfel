@@ -138,6 +138,14 @@ public struct CLIArguments: Sendable, Equatable {
     public var contextOutputReserve: Int? = nil
     public var contextStatus: Bool = false
 
+    // MARK: - Provenance
+
+    /// Fields whose current value was set by an `APFEL_*` environment variable
+    /// rather than an explicit CLI flag. Used by `validate()` to downgrade the
+    /// #370 hard error to a non-fatal warning when an env default leaks into an
+    /// input-ignoring mode (#496).
+    public var envSourcedFields: Set<String> = []
+
     // MARK: - Warnings
 
     /// Non-fatal parse warnings (e.g. an invalid `APFEL_*` env value that was
@@ -237,7 +245,7 @@ extension CLIArguments {
     ///   seen in which order). Defaults to an empty context, which is
     ///   sufficient for checks that only need the `CLIArguments` struct
     ///   itself.
-    public func validate(context: ValidationContext = .init()) throws {
+    public mutating func validate(context: ValidationContext = .init()) throws {
         // Mode conflict: more than one mode flag was set during parsing.
         // First two flags seen win the error message, matching pre-refactor
         // behavior.
@@ -294,22 +302,39 @@ extension CLIArguments {
         // tuning flag was parsed and then silently ignored. Reject it loudly
         // rather than pretend it took effect. (.serve still honors --permissive,
         // --retry, --mcp, and the server flags - those are consumed.)
+        //
+        // #496: when the value came from an APFEL_* env default (tracked in
+        // envSourcedFields), downgrade to a non-fatal warning and nil it out
+        // instead of hard-erroring - the user exported the var for prompt
+        // modes and should still be able to start the server.
         let inputIgnoringModes: Set<Mode> = [.serve, .benchmark, .modelInfo, .update]
         if inputIgnoringModes.contains(mode) {
-            var offender: String? = nil
-            if !prompt.isEmpty { offender = "a positional prompt" }
-            else if !fileContents.isEmpty || !fileAttachments.isEmpty { offender = "-f/--file content" }
-            else if systemPrompt != nil { offender = "-s/--system" }
-            else if temperature != nil { offender = "--temperature" }
-            else if topP != nil { offender = "--top-p" }
-            else if maxTokens != nil { offender = "--max-tokens" }
-            else if seed != nil { offender = "--seed" }
-            else if contextStrategy != nil { offender = "--context-strategy" }
-            else if contextMaxTurns != nil { offender = "--context-max-turns" }
-            else if contextOutputReserve != nil { offender = "--context-output-reserve" }
-            if let offender {
-                throw CLIParseError("--\(mode.rawValue) does not accept \(offender) - it would be ignored in this mode")
+            let checks: [(field: String, label: String, isSet: Bool)] = [
+                ("prompt",               "a positional prompt",       !prompt.isEmpty),
+                ("fileContents",         "-f/--file content",         !fileContents.isEmpty || !fileAttachments.isEmpty),
+                ("systemPrompt",         "-s/--system",               systemPrompt != nil),
+                ("temperature",          "--temperature",             temperature != nil),
+                ("topP",                 "--top-p",                   topP != nil),
+                ("maxTokens",            "--max-tokens",              maxTokens != nil),
+                ("seed",                 "--seed",                    seed != nil),
+                ("contextStrategy",      "--context-strategy",        contextStrategy != nil),
+                ("contextMaxTurns",      "--context-max-turns",       contextMaxTurns != nil),
+                ("contextOutputReserve", "--context-output-reserve",  contextOutputReserve != nil),
+            ]
+            for check in checks where check.isSet {
+                if envSourcedFields.contains(check.field) {
+                    warnings.append("ignoring \(envVarName(for: check.field)) in --\(mode.rawValue) mode")
+                } else {
+                    throw CLIParseError("--\(mode.rawValue) does not accept \(check.label) - it would be ignored in this mode")
+                }
             }
+            // Clear env-sourced fields that were warned about.
+            if envSourcedFields.contains("systemPrompt") { systemPrompt = nil }
+            if envSourcedFields.contains("temperature") { temperature = nil }
+            if envSourcedFields.contains("maxTokens") { maxTokens = nil }
+            if envSourcedFields.contains("contextStrategy") { contextStrategy = nil }
+            if envSourcedFields.contains("contextMaxTurns") { contextMaxTurns = nil }
+            if envSourcedFields.contains("contextOutputReserve") { contextOutputReserve = nil }
         }
         // --context-status is a --chat-only display toggle; it does nothing in
         // any other mode, so reject it there instead of silently ignoring it.
@@ -317,6 +342,19 @@ extension CLIArguments {
             throw CLIParseError("--context-status only applies to --chat")
         }
         // Future cross-flag checks live here.
+    }
+
+    /// Map a struct field name to its `APFEL_*` environment variable name.
+    private func envVarName(for field: String) -> String {
+        switch field {
+        case "systemPrompt":         return "APFEL_SYSTEM_PROMPT"
+        case "temperature":          return "APFEL_TEMPERATURE"
+        case "maxTokens":            return "APFEL_MAX_TOKENS"
+        case "contextStrategy":      return "APFEL_CONTEXT_STRATEGY"
+        case "contextMaxTurns":      return "APFEL_CONTEXT_MAX_TURNS"
+        case "contextOutputReserve": return "APFEL_CONTEXT_OUTPUT_RESERVE"
+        default:                     return "APFEL_\(field)"
+        }
     }
 }
 
@@ -358,7 +396,10 @@ extension CLIArguments {
             return raw
         }
 
-        result.systemPrompt = env["APFEL_SYSTEM_PROMPT"]
+        if let sp = env["APFEL_SYSTEM_PROMPT"] {
+            result.systemPrompt = sp
+            result.envSourcedFields.insert("systemPrompt")
+        }
 
         if let raw = envValue("APFEL_PORT") {
             if let p = Int(raw), (1...65535).contains(p) {
@@ -385,6 +426,7 @@ extension CLIArguments {
         if let raw = envValue("APFEL_TEMPERATURE") {
             if let t = Double(raw), t >= 0 {
                 result.temperature = t
+                result.envSourcedFields.insert("temperature")
             } else {
                 result.warnings.append("ignoring APFEL_TEMPERATURE=\(raw) (not a non-negative number)")
             }
@@ -393,6 +435,7 @@ extension CLIArguments {
         if let raw = envValue("APFEL_MAX_TOKENS") {
             if let n = Int(raw), n > 0 {
                 result.maxTokens = n
+                result.envSourcedFields.insert("maxTokens")
             } else {
                 result.warnings.append("ignoring APFEL_MAX_TOKENS=\(raw) (not a positive integer)")
             }
@@ -401,6 +444,7 @@ extension CLIArguments {
         if let raw = envValue("APFEL_CONTEXT_STRATEGY") {
             if let s = ContextStrategy(rawValue: raw) {
                 result.contextStrategy = s
+                result.envSourcedFields.insert("contextStrategy")
             } else {
                 result.warnings.append("ignoring APFEL_CONTEXT_STRATEGY=\(raw) (unknown strategy)")
             }
@@ -409,6 +453,7 @@ extension CLIArguments {
         if let raw = envValue("APFEL_CONTEXT_MAX_TURNS") {
             if let n = Int(raw), n > 0 {
                 result.contextMaxTurns = n
+                result.envSourcedFields.insert("contextMaxTurns")
             } else {
                 result.warnings.append("ignoring APFEL_CONTEXT_MAX_TURNS=\(raw) (not a positive integer)")
             }
@@ -417,6 +462,7 @@ extension CLIArguments {
         if let raw = envValue("APFEL_CONTEXT_OUTPUT_RESERVE") {
             if let n = Int(raw), n > 0 {
                 result.contextOutputReserve = n
+                result.envSourcedFields.insert("contextOutputReserve")
             } else {
                 result.warnings.append("ignoring APFEL_CONTEXT_OUTPUT_RESERVE=\(raw) (not a positive integer)")
             }
@@ -507,6 +553,7 @@ extension CLIArguments {
                 i += 1
                 guard i < args.count else { throw CLIErrors.requires("--system", "a value") }
                 result.systemPrompt = args[i]
+                result.envSourcedFields.remove("systemPrompt")
 
             case "--system-file":
                 i += 1
@@ -520,6 +567,7 @@ extension CLIArguments {
                 } catch {
                     throw CLIParseError(fileErrorMessage(path: path))
                 }
+                result.envSourcedFields.remove("systemPrompt")
 
             // -- Structured output (#361) --
 
@@ -730,6 +778,7 @@ extension CLIArguments {
                     throw CLIErrors.requires("--temperature", "a non-negative number (e.g., 0.7)")
                 }
                 result.temperature = t
+                result.envSourcedFields.remove("temperature")
 
             case "--top-p":
                 i += 1
@@ -751,6 +800,7 @@ extension CLIArguments {
                     throw CLIErrors.requires("--max-tokens", "a positive number")
                 }
                 result.maxTokens = n
+                result.envSourcedFields.remove("maxTokens")
 
             case "--permissive":
                 result.permissive = true
@@ -792,6 +842,7 @@ extension CLIArguments {
                     throw CLIErrors.requires("--context-strategy", "one of: newest-first|oldest-first|sliding-window|summarize|strict")
                 }
                 result.contextStrategy = s
+                result.envSourcedFields.remove("contextStrategy")
 
             case "--context-max-turns":
                 i += 1
@@ -799,6 +850,7 @@ extension CLIArguments {
                     throw CLIErrors.requires("--context-max-turns", "a positive number")
                 }
                 result.contextMaxTurns = n
+                result.envSourcedFields.remove("contextMaxTurns")
 
             case "--context-output-reserve":
                 i += 1
@@ -806,6 +858,7 @@ extension CLIArguments {
                     throw CLIErrors.requires("--context-output-reserve", "a positive number")
                 }
                 result.contextOutputReserve = n
+                result.envSourcedFields.remove("contextOutputReserve")
 
             case "--context-status":
                 result.contextStatus = true
