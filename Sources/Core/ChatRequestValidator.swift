@@ -83,6 +83,9 @@ public enum ChatRequestValidationFailure: Sendable, Equatable, Hashable, CustomS
     case imageContent
     /// A numeric or string parameter had an invalid value.
     case invalidParameterValue(String)
+    /// Both `max_tokens` and `max_completion_tokens` were provided with
+    /// different values.
+    case conflictingMaxTokens(legacy: Int, modern: Int)
     /// The request asked for a model name other than `apple-foundationmodel`.
     case invalidModel(String)
 
@@ -103,6 +106,8 @@ public enum ChatRequestValidationFailure: Sendable, Equatable, Hashable, CustomS
             return "Image content is not supported by the Apple on-device model"
         case .invalidParameterValue(let detail):
             return detail
+        case .conflictingMaxTokens(let legacy, let modern):
+            return "Both 'max_tokens' (\(legacy)) and 'max_completion_tokens' (\(modern)) were provided with different values. Use 'max_completion_tokens' only, or provide the same value for both."
         case .invalidModel(let model):
             return "The model '\(model)' does not exist. The only available model is 'apple-foundationmodel'."
         }
@@ -125,6 +130,8 @@ public enum ChatRequestValidationFailure: Sendable, Equatable, Hashable, CustomS
             return "rejected: image content"
         case .invalidParameterValue(let detail):
             return "validation failed: \(detail)"
+        case .conflictingMaxTokens(let legacy, let modern):
+            return "validation failed: conflicting max_tokens=\(legacy) vs max_completion_tokens=\(modern)"
         case .invalidModel(let model):
             return "validation failed: unknown model \(model)"
         }
@@ -158,6 +165,8 @@ public enum ChatRequestValidationFailure: Sendable, Equatable, Hashable, CustomS
             return "model"
         case .unknownRole:
             return "messages"
+        case .conflictingMaxTokens:
+            return "max_completion_tokens"
         default:
             return nil
         }
@@ -217,6 +226,12 @@ public enum ChatRequestValidator {
 
         if let maxTokens = request.max_tokens, maxTokens <= 0 {
             return .invalidParameterValue("'max_tokens' must be a positive integer, got \(maxTokens)")
+        }
+        if let maxCompletionTokens = request.max_completion_tokens, maxCompletionTokens <= 0 {
+            return .invalidParameterValue("'max_completion_tokens' must be a positive integer, got \(maxCompletionTokens)")
+        }
+        if let legacy = request.max_tokens, let modern = request.max_completion_tokens, legacy != modern {
+            return .conflictingMaxTokens(legacy: legacy, modern: modern)
         }
         if let temp = request.temperature, temp < 0 {
             return .invalidParameterValue("'temperature' must be non-negative, got \(temp)")

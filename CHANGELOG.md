@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `max_completion_tokens` in chat-completions requests was silently ignored because `ChatCompletionRequest` only decoded `max_tokens`. Modern OpenAI clients (LangChain, openai-python) send `max_completion_tokens` instead, so the caller's output-token cap was dropped and the model generated an unbounded response. Both fields are now decoded and resolved to one effective limit; providing both with different values returns 400 with `param: "max_completion_tokens"`. `/v1/models` advertises the new field (#478).
+
 ## [1.10.0] - 2026-09-07
 
 ### Fixed

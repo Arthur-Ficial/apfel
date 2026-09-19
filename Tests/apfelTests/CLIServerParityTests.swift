@@ -21,8 +21,8 @@ func runCLIServerParityTests() {
     }
 
     test("max_tokens: server passes the value through unchanged (nil = use remaining window)") {
-        try assertTrue(handlersSrc.contains("maxTokens: chatRequest.max_tokens,"),
-                       "Sources/Handlers.swift must pass chatRequest.max_tokens through verbatim — no `?? <constant>` fallback")
+        try assertTrue(handlersSrc.contains("maxTokens: chatRequest.effectiveMaxTokens,"),
+                       "Sources/Handlers.swift must pass chatRequest.effectiveMaxTokens through verbatim — no `?? <constant>` fallback (#478)")
         try assertTrue(!handlersSrc.contains("?? BodyLimits.defaultMaxResponseTokens"),
                        "Sources/Handlers.swift must NOT apply a fallback constant to max_tokens")
     }
