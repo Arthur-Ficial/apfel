@@ -47,7 +47,7 @@ check-toolchain:
 # --- Build ---
 
 build: check-toolchain
-	swift build -c release
+	swift build -c release --build-system native
 	@$(MAKE) --no-print-directory generate-man-page
 
 install: build
@@ -125,15 +125,15 @@ bump-major:
 # --- Release targets (version bump + build, used by CI workflow only) ---
 
 release-patch: check-toolchain bump-patch generate-build-info update-readme
-	swift build -c release
+	swift build -c release --build-system native
 	@$(MAKE) --no-print-directory generate-man-page
 
 release-minor: check-toolchain bump-minor generate-build-info update-readme
-	swift build -c release
+	swift build -c release --build-system native
 	@$(MAKE) --no-print-directory generate-man-page
 
 release-major: check-toolchain bump-major generate-build-info update-readme
-	swift build -c release
+	swift build -c release --build-system native
 	@$(MAKE) --no-print-directory generate-man-page
 
 # --- Generated files ---
@@ -203,7 +203,7 @@ release:
 test: build
 	@echo ""
 	@echo "=== Unit tests ==="
-	@swift run apfel-tests
+	@swift run --build-system native apfel-tests
 	@echo ""
 	@echo "=== Integration tests ==="
 	@pkill -f "apfel --serve" 2>/dev/null || true

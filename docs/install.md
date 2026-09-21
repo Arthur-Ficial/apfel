@@ -34,7 +34,7 @@ Attribute name is `apfel-llm` because nixpkgs already has an unrelated `apfel` p
 
 ## Option 3: Build from source
 
-Requires Swift 6.3+ with developer tools that include the **macOS 26.4 SDK**. Xcode is **not** required - Command Line Tools are enough.
+Requires Swift 6.3+ with developer tools that include the **macOS 26.4 SDK**. Command Line Tools are enough - `make install` handles the SwiftPM 6.4 build-system workaround automatically. If you run `swift build` directly (outside the Makefile), add `--build-system native` - see the troubleshooting section below.
 
 ```bash
 git clone https://github.com/Arthur-Ficial/apfel.git
@@ -86,6 +86,22 @@ make install
 ```
 
 `xcrun --show-sdk-version` must print `26.4` or newer.
+
+### Troubleshooting: "Unknown error parsing property list" (SwiftPM 6.4+)
+
+If `swift build` fails with:
+
+```text
+Unknown error parsing property list
+```
+
+SwiftPM 6.4 changed its default build system from `native` to `swiftbuild`, which does not work under Command Line Tools alone ([swiftlang/swift-package-manager#10561](https://github.com/swiftlang/swift-package-manager/issues/10561)). `make install` already handles this. If you run `swift build` directly, pass the flag yourself:
+
+```bash
+swift build -c release --build-system native
+```
+
+This workaround is temporary - the upstream fix is tracked at [swiftlang/swift-package-manager#10561](https://github.com/swiftlang/swift-package-manager/issues/10561).
 
 ## Alternative install methods
 

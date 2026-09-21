@@ -31,9 +31,9 @@ fi
 
 check "swift available" "swift --version"
 check "make available" "make --version"
-check "swift build (debug)" "swift build"
-check "swift build (release)" "swift build -c release"
-check "unit tests pass" "swift run apfel-tests"
+check "swift build (debug)" "swift build --build-system native"
+check "swift build (release)" "swift build -c release --build-system native"
+check "unit tests pass" "swift run --build-system native apfel-tests"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
