@@ -493,12 +493,30 @@ func executeMCPToolCallsForCLI(
 /// budget and gets dropped whole by the trimmer (#221). The returned toolLog is
 /// left full elsewhere; only the prompt-bound copy is truncated.
 private func truncatedServerToolResults(
+    toolCalls: [ParsedToolCall],
     toolLog: [(name: String, args: String, result: String, isError: Bool)],
-    priorMessages: [OpenAIMessage]
-) async -> [(name: String, result: String)] {
-    let inputBudget = await TokenCounter.shared.inputBudget(reservedForOutput: 512)
-    let conversationText = priorMessages.compactMap { $0.textContent }.joined(separator: "\n")
-    let overheadTokens = await TokenCounter.shared.count(conversationText)
+    priorMessages: [OpenAIMessage],
+    sessionOptions: SessionOptions
+) async throws -> [(name: String, result: String)] {
+    // Price the follow-up exactly as ContextManager will build it (#221, #482):
+    // the instructions, the originating user prompt, the tool-call entry, an
+    // empty result per call and the synthetic final prompt all have to fit
+    // alongside the results, because the trailing exchange is pinned. Older
+    // history is trimmable and is not charged here. Joining message text used
+    // to miss the tool-call entry, the final prompt and transcript framing, so
+    // a result truncated to that budget still overflowed the pinned exchange.
+    let instructions = priorMessages.filter { [OpenAIMessage].instructionRoles.contains($0.role) }
+    let originating = priorMessages.last(where: { $0.role == "user" }).map { [$0] } ?? []
+    let template = appendExecutedToolResults(
+        to: instructions + originating,
+        toolCalls: toolCalls,
+        toolResults: toolLog.map { (name: $0.name, result: "") })
+    let prepared = try await ContextManager.prepareEntries(
+        messages: template, tools: nil, options: sessionOptions)
+    let overheadTokens = await TokenCounter.shared.count(
+        entries: prepared.base + prepared.history + [prepared.final])
+    let inputBudget = await TokenCounter.shared.inputBudget(
+        reservedForOutput: sessionOptions.contextConfig.outputReserve)
     let perResultBudget = max(0, inputBudget - overheadTokens) / max(1, toolLog.count)
     var out: [(name: String, result: String)] = []
     for entry in toolLog {
@@ -542,8 +560,9 @@ func executeMCPToolCallsForServer(
     // mcpRepromptCap further rounds when the model keeps emitting tool calls.
     var reprompts = 0
     while true {
-        let truncated = await truncatedServerToolResults(
-            toolLog: currentExecuted.toolLog, priorMessages: currentMessages)
+        let truncated = try await truncatedServerToolResults(
+            toolCalls: currentExecuted.toolCalls, toolLog: currentExecuted.toolLog,
+            priorMessages: currentMessages, sessionOptions: sessionOptions)
         let followUpMessages = appendExecutedToolResults(
             to: currentMessages,
             toolCalls: currentExecuted.toolCalls,

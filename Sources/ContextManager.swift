@@ -32,6 +32,51 @@ enum ContextManager {
         jsonMode: Bool = false,
         toolChoice: ToolChoice? = nil
     ) async throws -> (session: LanguageModelSession, finalPrompt: String, inputEntries: [Transcript.Entry]) {
+        let prepared = try await prepareEntries(
+            messages: messages, tools: tools, options: options, jsonMode: jsonMode, toolChoice: toolChoice)
+        let budget = await TokenCounter.shared.inputBudget(reservedForOutput: options.contextConfig.outputReserve)
+        guard let entries = await trimHistoryEntriesToBudget(
+            baseEntries: prepared.base,
+            historyEntries: prepared.history,
+            finalEntry: prepared.final,
+            budget: budget,
+            config: options.contextConfig,
+            // A trailing tool result is answered from its exchange: keep that
+            // exchange whole and in the window (#482).
+            pinLast: prepared.pinsTrailingExchange
+        ) else {
+            throw ApfelError.contextOverflow
+        }
+
+        let session = makeTranscriptSession(model: makeModel(permissive: options.permissive), entries: entries)
+        // Return the entries we actually built (with native tool definitions
+        // intact) so callers can count prompt tokens accurately. Reading them
+        // back from `session.transcript` drops `Instructions.toolDefinitions`,
+        // which would undercount prompt tokens for tool-augmented requests (#176).
+        return (session, prepared.finalPrompt, entries)
+    }
+
+    /// The transcript entries for a conversation before any trimming: the
+    /// instructions block, one entry per history message, and the final prompt
+    /// entry that callers send separately via respond(). Also used to price a
+    /// follow-up exactly as it will be built (#221, #482).
+    struct PreparedEntries {
+        let base: [Transcript.Entry]
+        let history: [Transcript.Entry]
+        let final: Transcript.Entry
+        let finalPrompt: String
+        /// True when the conversation ends with a tool result, whose exchange
+        /// must stay whole and in the window (#482).
+        let pinsTrailingExchange: Bool
+    }
+
+    static func prepareEntries(
+        messages: [OpenAIMessage],
+        tools: [OpenAITool]?,
+        options: SessionOptions,
+        jsonMode: Bool = false,
+        toolChoice: ToolChoice? = nil
+    ) async throws -> PreparedEntries {
         // Instruction roles never take a conversation turn -- they are folded
         // into the instructions block below. `developer` used to survive this
         // filter, then get dropped by historyEntry's nil return, which is the
@@ -61,7 +106,6 @@ enum ContextManager {
             finalPrompt = text
             history = Array(conversation.dropLast())
         }
-        let model = makeModel(permissive: options.permissive)
 
         // Convert tools: native ToolDefinitions + text fallback for failures
         var nativeToolDefs: [Transcript.ToolDefinition] = []
@@ -96,27 +140,13 @@ enum ContextManager {
         // Tool results resolve their name through the call they answer (#482).
         let callNames = ToolExchangeGrouping.callNames(in: history)
         let historyEntries = history.compactMap { historyEntry(for: $0, options: options, callNames: callNames) }
-        let finalPromptEntry = makePromptEntry(finalPrompt, options: options)
-        let budget = await TokenCounter.shared.inputBudget(reservedForOutput: options.contextConfig.outputReserve)
-        guard let entries = await trimHistoryEntriesToBudget(
-            baseEntries: baseEntries,
-            historyEntries: historyEntries,
-            finalEntry: finalPromptEntry,
-            budget: budget,
-            config: options.contextConfig,
-            // A trailing tool result is answered from its exchange: keep that
-            // exchange whole and in the window (#482).
-            pinLast: conversation.last?.role == "tool"
-        ) else {
-            throw ApfelError.contextOverflow
-        }
-
-        let session = makeTranscriptSession(model: model, entries: entries)
-        // Return the entries we actually built (with native tool definitions
-        // intact) so callers can count prompt tokens accurately. Reading them
-        // back from `session.transcript` drops `Instructions.toolDefinitions`,
-        // which would undercount prompt tokens for tool-augmented requests (#176).
-        return (session, finalPrompt, entries)
+        return PreparedEntries(
+            base: baseEntries,
+            history: historyEntries,
+            final: makePromptEntry(finalPrompt, options: options),
+            finalPrompt: finalPrompt,
+            pinsTrailingExchange: conversation.last?.role == "tool"
+        )
     }
 
     // MARK: - Instructions Builder
