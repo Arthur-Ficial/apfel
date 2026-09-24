@@ -1605,6 +1605,83 @@ def test_schema_piped_stdin_prompt(tmp_path):
     assert isinstance(payload.get("age"), int), payload
 
 
+# --schema: local $ref / $defs, bounds, and honest rejection (#479)
+
+ORDER_SCHEMA = {
+    "type": "object",
+    "$defs": {
+        "Address": {
+            "type": "object",
+            "properties": {"street": {"type": "string"}, "city": {"type": "string"}},
+            "required": ["street", "city"],
+            "additionalProperties": False,
+        }
+    },
+    "properties": {
+        "ship_to": {"$ref": "#/$defs/Address"},
+        "items": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"name": {"type": "string"}, "qty": {"type": "integer", "minimum": 1}},
+                "required": ["name", "qty"],
+                "additionalProperties": False,
+            },
+            "minItems": 1,
+            "maxItems": 3,
+        },
+    },
+    "required": ["ship_to", "items"],
+    "additionalProperties": False,
+}
+
+
+def test_schema_unsupported_constraint_exits_2_with_keyword_path_and_file(tmp_path):
+    """A keyword the on-device model cannot enforce is a usage error naming
+    the keyword, the JSON pointer, and the file - before any generation (#479)."""
+    schema = tmp_path / "strict.schema.json"
+    schema.write_text(json.dumps({
+        "type": "object",
+        "properties": {"code": {"type": "string", "pattern": "^[A-Z]{3}$"}},
+    }))
+    result = run_cli(["--schema", str(schema), "extract"], timeout=30)
+    assert result.returncode == 2, result
+    assert "pattern" in result.stderr and "#/properties/code" in result.stderr, result.stderr
+    assert "strict.schema.json" in result.stderr, result.stderr
+
+
+def test_schema_external_ref_exits_2_without_fetching(tmp_path):
+    schema = tmp_path / "ext.schema.json"
+    schema.write_text(json.dumps({
+        "type": "object",
+        "properties": {"a": {"$ref": "https://example.invalid/a.json"}},
+    }))
+    result = run_cli(["--schema", str(schema), "extract"], timeout=30)
+    assert result.returncode == 2, result
+    assert "https://example.invalid/a.json" in result.stderr, result.stderr
+    assert "local" in result.stderr.lower(), result.stderr
+
+
+@pytest.mark.model
+def test_schema_with_defs_ref_and_bounds_output_validates_against_original_schema(tmp_path):
+    """The issue's headline example: a nested Address definition and a bounded
+    items array. The output must validate against the schema as written, not
+    against apfel's intermediate representation (#479)."""
+    from jsonschema import validate
+    require_model()
+    schema = tmp_path / "order.schema.json"
+    schema.write_text(json.dumps(ORDER_SCHEMA))
+    result = run_cli(
+        ["--schema", str(schema), "Extract the order: ship two notebooks to 12 Main Street, Vienna."],
+        timeout=120,
+    )
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    payload = json.loads(result.stdout)
+    validate(instance=payload, schema=ORDER_SCHEMA)
+    assert payload["ship_to"]["city"], payload
+    assert 1 <= len(payload["items"]) <= 3, payload
+
+
 # ============================================================================
 # --messages: one-shot multi-turn from OpenAI messages JSON (#363)
 # ============================================================================

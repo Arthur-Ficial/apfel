@@ -1,6 +1,6 @@
 // ============================================================================
-// SchemaIR.swift — Pure intermediate representation for JSON Schema
-// Part of ApfelCore — no FoundationModels dependency
+// SchemaIR.swift - Pure intermediate representation for JSON Schema
+// Part of ApfelCore - no FoundationModels dependency
 //
 // The tool-calling surface needs to convert arbitrary OpenAI JSON Schema
 // into FoundationModels' DynamicGenerationSchema. Doing the parsing into this
@@ -25,6 +25,27 @@ public indirect enum SchemaIR: Equatable, Hashable, Sendable {
     case bool(name: String, description: String?)
     /// An array schema whose items are described by another schema node.
     case array(itemName: String, items: SchemaIR)
+
+    // MARK: Bounded variants (#479)
+    //
+    // The parser emits these only when the JSON Schema carries at least one
+    // bound; a node without bounds keeps parsing to the plain case above, so
+    // existing consumers see no change for existing inputs. Consumers that
+    // switch over `SchemaIR` must include a `default` branch (STABILITY.md,
+    // "Enum evolution").
+
+    /// A JSON Schema `integer` constrained to an inclusive range.
+    ///
+    /// `minimum` and `maximum` are inclusive; exclusive JSON Schema bounds are
+    /// already converted to the equivalent inclusive integer by the parser.
+    case boundedInteger(name: String, description: String?, minimum: Int?, maximum: Int?)
+    /// A JSON Schema `number` constrained to an inclusive range.
+    ///
+    /// Exclusive JSON Schema bounds are converted to the adjacent representable
+    /// `Double` (`nextUp` / `nextDown`) so the inclusive range is exact.
+    case boundedNumber(name: String, description: String?, minimum: Double?, maximum: Double?)
+    /// An array schema with `minItems` / `maxItems` element-count bounds.
+    case boundedArray(itemName: String, items: SchemaIR, minItems: Int?, maxItems: Int?)
 
     /// A named property within an object schema.
     public struct Property: Equatable, Hashable, Sendable {

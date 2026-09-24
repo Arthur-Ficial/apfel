@@ -1,6 +1,6 @@
 // ============================================================================
-// SchemaConverter.swift — Convert OpenAI JSON schemas to native FoundationModels types
-// Part of apfel — Apple Intelligence from the command line
+// SchemaConverter.swift - Convert OpenAI JSON schemas to native FoundationModels types
+// Part of apfel - Apple Intelligence from the command line
 //
 // The pure JSON -> SchemaIR parsing lives in ApfelCore/SchemaParser.swift and
 // is unit-tested there. This file keeps only:
@@ -175,6 +175,26 @@ enum SchemaConverter {
         case .array(_, let items):
             let inner = try dynamicSchema(from: items)
             return DynamicGenerationSchema(arrayOf: inner)
+
+        // Bounds map onto FoundationModels guides / element limits, which the
+        // framework renders as JSON Schema minimum/maximum/minItems/maxItems
+        // and enforces during guided generation (#479). Contradictory bounds
+        // were already rejected by the parser; the framework does not check.
+        case .boundedInteger(_, _, let minimum, let maximum):
+            var guides: [GenerationGuide<Int>] = []
+            if let minimum { guides.append(.minimum(minimum)) }
+            if let maximum { guides.append(.maximum(maximum)) }
+            return DynamicGenerationSchema(type: Int.self, guides: guides)
+
+        case .boundedNumber(_, _, let minimum, let maximum):
+            var guides: [GenerationGuide<Double>] = []
+            if let minimum { guides.append(.minimum(minimum)) }
+            if let maximum { guides.append(.maximum(maximum)) }
+            return DynamicGenerationSchema(type: Double.self, guides: guides)
+
+        case .boundedArray(_, let items, let minItems, let maxItems):
+            let inner = try dynamicSchema(from: items)
+            return DynamicGenerationSchema(arrayOf: inner, minimumElements: minItems, maximumElements: maxItems)
         }
     }
 }

@@ -454,6 +454,10 @@ func runApfelCorePublicAPIUsageTests() {
         let _: SchemaIR = .number(name: "n", description: nil)
         let _: SchemaIR = .bool(name: "b", description: nil)
         let _: SchemaIR = .array(itemName: "arr", items: .string(name: "item", description: nil, enumValues: nil))
+        // Bounded variants (#479, additive - MINOR under STABILITY.md "Enum evolution")
+        let _: SchemaIR = .boundedInteger(name: "i", description: nil, minimum: 1, maximum: 5)
+        let _: SchemaIR = .boundedNumber(name: "n", description: nil, minimum: 0.5, maximum: nil)
+        let _: SchemaIR = .boundedArray(itemName: "arr", items: .bool(name: "b", description: nil), minItems: nil, maxItems: 3)
 
         // SchemaParser.parse signature
         let parsed = try SchemaParser.parse(
@@ -467,9 +471,18 @@ func runApfelCorePublicAPIUsageTests() {
 
         // SchemaParser.Error cases
         let errs: [SchemaParser.Error] = [
-            .invalidJSON, .unsupportedType("x"), .missingArrayItems,
+            .invalidJSON, .unsupportedType("x"), .missingArrayItems, .invalidProperty("p"),
+            .externalReference(ref: "r", path: "#"),
+            .unresolvedReference(ref: "r", path: "#"),
+            .cyclicReference(ref: "r", path: "#"),
+            .referenceDepthExceeded(limit: 1, path: "#"),
+            .schemaTooLarge(limit: 1),
+            .unsupportedConstraint(keyword: "k", path: "#"),
+            .invalidConstraint(keyword: "k", path: "#", reason: "r"),
         ]
-        try assertEqual(errs.count, 3)
+        try assertEqual(errs.count, 11)
+        // Human-readable descriptions are part of the surface (400 bodies / exit-2 messages).
+        let _: String = errs[0].description
     }
 
     // MARK: - ToolCallHandler

@@ -85,8 +85,12 @@ apfel -s "Reply in JSON only" "List 3 colors"
 apfel --system-file persona.txt "Introduce yourself"
 
 # --schema - guaranteed schema-valid JSON output (single-prompt mode only)
+# Local $ref/$defs, minimum/maximum and minItems/maxItems are honoured; a keyword the
+# on-device model cannot enforce exits 2 naming it and its JSON pointer (see
+# docs/openai-api-compatibility.md, "JSON Schema support")
 apfel --schema person.schema.json "Extract the person: Alice is 30 years old."
 apfel --schema invoice.schema.json -f invoice.txt "Extract the invoice data" | jq .total
+apfel --schema order.schema.json "Extract the order: ship two notebooks to 12 Main Street, Vienna."
 
 # --code - only the code, no prose, no fences (pipe-safe)
 apfel --code "a python function that deduplicates a list" > dedupe.py
