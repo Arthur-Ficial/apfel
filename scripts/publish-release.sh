@@ -48,7 +48,7 @@ echo "Version: $version"
 
 # --- Unit tests ---
 step "Unit tests"
-swift run apfel-tests
+swift run --build-system native apfel-tests
 
 # --- Integration tests (ALL 7 suites, full qualification) ---
 step "Integration tests (full qualification)"

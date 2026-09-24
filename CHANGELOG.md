@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `make install` and `make build` no longer fail under Command Line Tools on SwiftPM 6.4+. SwiftPM 6.4 changed the default `--build-system` from `native` to `swiftbuild`, which dies with "Unknown error parsing property list" without Xcode. All Makefile and `scripts/*.sh` `swift build` and `swift run` invocations now pin `--build-system native`, and a policy test keeps it that way. `docs/install.md` updated with a troubleshooting section for users running `swift build` directly (#194).
+
 ## [1.11.0] - 2026-09-19
 
 ### Fixed
