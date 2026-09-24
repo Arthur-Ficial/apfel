@@ -201,6 +201,9 @@ if parsed.messagesFromStdin {
     } catch let e as MessagesInput.Error {
         printError("invalid --messages JSON from stdin: \(e.message)")
         exit(exitUsageError)
+    } catch let e as ToolExchangeGrouping.AssociationError {
+        printError("invalid --messages JSON from stdin: \(e.message)")
+        exit(exitUsageError)
     }
     messagesJSON = raw
 }

@@ -197,7 +197,9 @@ def test_176_tool_definitions_count_toward_prompt_tokens():
     fallbackCount (macOS < 26.4) ignores Instructions.toolDefinitions entirely,
     so adding a huge tool schema barely changes prompt_tokens -> RED.
     """
-    msg = [{"role": "user", "content": "Say hi."}]
+    # "Do not use any tools": the small model otherwise invents a `say_hi`
+    # function, which #480 rejects (after one repair round) instead of exposing.
+    msg = [{"role": "user", "content": "Say hi. Do not use any tools."}]
     base = _chat({"model": MODEL, "messages": msg})
     assert base.status_code == 200, base.text
     base_pt = base.json()["usage"]["prompt_tokens"]

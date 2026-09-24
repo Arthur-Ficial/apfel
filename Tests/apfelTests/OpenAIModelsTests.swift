@@ -339,7 +339,7 @@ func runChatRequestValidatorTests() {
     test("validator allows tool as last message") {
         let request = try decode(
             ChatCompletionRequest.self,
-            from: #"{"model":"\#(M)","messages":[{"role":"tool","tool_call_id":"call_1","name":"lookup","content":"result"}]}"#
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"look it up"},{"role":"assistant","content":null,"tool_calls":[{"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{}"}}]},{"role":"tool","tool_call_id":"call_1","name":"lookup","content":"result"}]}"#
         )
         try assertNil(ChatRequestValidator.validate(request))
     }
@@ -381,7 +381,7 @@ func runChatRequestValidatorTests() {
         // Tool-role final messages use a synthetic prompt, so empty content is fine.
         let request = try decode(
             ChatCompletionRequest.self,
-            from: #"{"model":"\#(M)","messages":[{"role":"tool","tool_call_id":"c1","name":"x","content":""}]}"#
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"x"},{"role":"assistant","content":null,"tool_calls":[{"id":"c1","type":"function","function":{"name":"x","arguments":"{}"}}]},{"role":"tool","tool_call_id":"c1","name":"x","content":""}]}"#
         )
         try assertNil(ChatRequestValidator.validate(request))
     }
@@ -868,6 +868,40 @@ func runChatRequestValidatorTests() {
         try assertEqual(req.stream, true)
         try assertEqual(req.effectiveMaxTokens, 128)
         try assertNil(ChatRequestValidator.validate(req))
+    }
+
+    // --- tool exchange associations (#482) ---
+
+    test("validator rejects a tool message that answers no tool call, naming the message path (#482)") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"},{"role":"tool","tool_call_id":"c9","content":"42"}]}"#
+        )
+        guard case .invalidParameterValue(let detail) = ChatRequestValidator.validate(request) else {
+            throw TestFailure("expected .invalidParameterValue for an orphan tool result")
+        }
+        try assertTrue(detail.contains("messages[1]"), detail)
+        try assertTrue(detail.contains("c9"), detail)
+    }
+
+    test("validator rejects an assistant tool call with a missing result (#482)") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"},{"role":"assistant","content":null,"tool_calls":[{"id":"c1","type":"function","function":{"name":"add","arguments":"{}"}},{"id":"c2","type":"function","function":{"name":"add","arguments":"{}"}}]},{"role":"tool","tool_call_id":"c1","content":"3"},{"role":"user","content":"and?"}]}"#
+        )
+        guard case .invalidParameterValue(let detail) = ChatRequestValidator.validate(request) else {
+            throw TestFailure("expected .invalidParameterValue for a missing tool result")
+        }
+        try assertTrue(detail.contains("messages[1]"), detail)
+        try assertTrue(detail.contains("c2"), detail)
+    }
+
+    test("validator accepts a complete two-call exchange with a trailing tool result and no names (#482)") {
+        let request = try decode(
+            ChatCompletionRequest.self,
+            from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"},{"role":"assistant","content":null,"tool_calls":[{"id":"c1","type":"function","function":{"name":"add","arguments":"{}"}},{"id":"c2","type":"function","function":{"name":"add","arguments":"{}"}}]},{"role":"tool","tool_call_id":"c2","content":"3"},{"role":"tool","tool_call_id":"c1","content":"4"}]}"#
+        )
+        try assertNil(ChatRequestValidator.validate(request))
     }
 
     // --- parallel_tool_calls decoding (#480) ---

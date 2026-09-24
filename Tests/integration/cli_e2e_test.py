@@ -308,7 +308,7 @@ def parse_json_lines_from_output(text):
 
 # Shared model gate lives in conftest.py (#266 semantics, was duplicated
 # per suite file).
-from conftest import model_available, require_model  # noqa: E402,F401
+from conftest import GUARDRAIL_SEEDS, model_available, require_model  # noqa: E402,F401
 
 
 def test_release_binary_exists():
@@ -1658,6 +1658,57 @@ def test_messages_listed_in_help():
     result = run_cli(["--help"], timeout=20)
     assert result.returncode == 0
     assert "--messages" in result.stdout
+
+
+def test_messages_orphan_tool_result_exits_2(tmp_path):
+    """--messages mirrors the server's 400: a tool result with no call is exit 2 with the message path (#482)."""
+    conv = tmp_path / "conv.json"
+    conv.write_text('[{"role":"user","content":"x"},{"role":"tool","tool_call_id":"c9","content":"42"}]')
+    result = run_cli(["--messages", str(conv)], timeout=30)
+    assert result.returncode == 2, f"expected exit 2, got {result.returncode}: {result.stderr}"
+    assert "messages[1]" in result.stderr and "c9" in result.stderr, result.stderr
+
+
+def _tool_exchange_conversation_with_filler(context_window):
+    """Filler turns sized from the runtime context window so trimming is forced,
+    followed by one complete two-call exchange whose results carry a nonce the
+    final answer must repeat. The exchange is the trailing group (#482)."""
+    pairs = context_window // 40  # ~100+ tokens per pair: comfortably over the window
+    messages = []
+    for i in range(pairs):
+        messages.append({"role": "user", "content": f"Note number {i}: the quick brown fox jumps over the lazy dog again and again while the river runs quietly past the old mill."})
+        messages.append({"role": "assistant", "content": f"Noted number {i}. The fox, the dog, the river and the mill are all recorded."})
+    messages += [
+        {"role": "user", "content": "What is the secret code? Use the lookup tools and reply with just the code."},
+        {"role": "assistant", "content": None, "tool_calls": [
+            {"id": "call_a", "type": "function", "function": {"name": "lookup_code", "arguments": "{\"part\": 1}"}},
+            {"id": "call_b", "type": "function", "function": {"name": "lookup_code", "arguments": "{\"part\": 2}"}},
+        ]},
+        {"role": "tool", "tool_call_id": "call_b", "content": "second half of the secret code: 4127"},
+        {"role": "tool", "tool_call_id": "call_a", "content": "first half of the secret code: 9385"},
+    ]
+    return messages
+
+
+@pytest.mark.model
+def test_messages_preserves_trailing_tool_exchange_under_oldest_first(tmp_path):
+    """--messages parity for #482: with oldest-first and history far beyond the
+    window, the trailing tool exchange (two calls, two results, no names) is
+    pinned whole, so the answer can quote the tool results."""
+    require_model()
+    info = run_cli(["--model-info"], timeout=30)
+    assert info.returncode == 0, info.stderr
+    match = re.search(r"context:\s+(\d+) tokens", info.stdout)
+    assert match, f"no context line in --model-info output: {info.stdout!r}"
+    window = int(match.group(1))
+    conv = tmp_path / "conv.json"
+    conv.write_text(json.dumps(_tool_exchange_conversation_with_filler(window)))
+    for seed in GUARDRAIL_SEEDS:
+        result = run_cli(["--seed", str(seed), "--messages", str(conv), "--context-strategy", "oldest-first"], timeout=180)
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+        if "9385" in result.stdout and "4127" in result.stdout:
+            return
+    pytest.fail(f"tool results not used on any seed {GUARDRAIL_SEEDS}; last stdout: {result.stdout!r}")
 
 
 @pytest.mark.model

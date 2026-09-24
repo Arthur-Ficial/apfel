@@ -224,6 +224,14 @@ public enum ChatRequestValidator {
             }
         }
 
+        // Every tool result must answer a call in the preceding assistant
+        // message and every call must have its result; otherwise trimming
+        // (#482) and the model would see half an exchange. OpenAI rejects the
+        // same shapes with a 400, so compliant clients are unaffected.
+        if let association = ToolExchangeGrouping.validate(request.messages) {
+            return .invalidParameterValue(association.message)
+        }
+
         if let maxTokens = request.max_tokens, maxTokens <= 0 {
             return .invalidParameterValue("'max_tokens' must be a positive integer, got \(maxTokens)")
         }

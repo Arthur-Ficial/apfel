@@ -161,14 +161,62 @@ where BaseEntries.Element == Transcript.Entry, HistoryEntries.Element == Transcr
     )
 }
 
+// MARK: - Tool exchange groups (#482)
+
+/// Indivisible index ranges into `history`: an assistant tool-call entry stays
+/// with the tool outputs that answer it, so no trimming boundary can hand the
+/// model an orphaned call or an unexplained result (#482). Everything else is
+/// one group per entry, so tool-free history trims exactly as before.
+func historyGroups(_ history: [Transcript.Entry]) -> [Range<Int>] {
+    ToolExchangeGrouping.groups(history.map(historyItem))
+}
+
+private func historyItem(_ entry: Transcript.Entry) -> HistoryItem {
+    switch entry {
+    case .prompt:
+        return .prompt
+    case .toolCalls(let calls):
+        return .toolCalls(ids: calls.map(\.id))
+    case .toolOutput(let output):
+        return .toolOutput(id: output.id)
+    default:
+        return .response
+    }
+}
+
+/// The entries of `history` covered by `ranges`, in order.
+func selectEntries(_ history: [Transcript.Entry], in ranges: [Range<Int>]) -> [Transcript.Entry] {
+    ranges.flatMap { history[$0] }
+}
+
+/// The budget predicate group-aware selection drives: does base + the
+/// selected history + the final prompt fit?
+func budgetPredicate(
+    base: [Transcript.Entry], history: [Transcript.Entry],
+    final: Transcript.Entry?, budget: Int
+) -> ([Range<Int>]) async -> Bool {
+    { ranges in
+        await fitsTranscriptBudget(
+            base: base, history: selectEntries(history, in: ranges), final: final, budget: budget)
+    }
+}
+
 func trimHistoryEntriesToBudget(
     baseEntries: [Transcript.Entry],
     historyEntries: [Transcript.Entry],
     finalEntry: Transcript.Entry? = nil,
     budget: Int,
-    config: ContextConfig = .defaults
+    config: ContextConfig = .defaults,
+    pinLast: Bool = false
 ) async -> [Transcript.Entry]? {
-    let requiredEntries = assembleTranscriptEntries(base: baseEntries, history: [], final: finalEntry)
+    // A trailing tool result is only answerable together with the call that
+    // produced it: pin that last exchange and price it as required, so a
+    // group too large for the window fails as context overflow instead of
+    // being silently dropped (#482).
+    let groups = historyGroups(historyEntries)
+    let pin = pinLast && !groups.isEmpty
+    let pinnedEntries = pin ? Array(historyEntries[groups[groups.count - 1]]) : []
+    let requiredEntries = assembleTranscriptEntries(base: baseEntries, history: pinnedEntries, final: finalEntry)
     guard await fitsTranscriptBudget(requiredEntries, budget: budget) else {
         return nil
     }
@@ -176,18 +224,18 @@ func trimHistoryEntriesToBudget(
     switch config.strategy {
     case .newestFirst:
         return await trimNewestFirst(
-            base: baseEntries, history: historyEntries, final: finalEntry, budget: budget)
+            base: baseEntries, history: historyEntries, final: finalEntry, budget: budget, pinLast: pin)
     case .oldestFirst:
         return await trimOldestFirst(
-            base: baseEntries, history: historyEntries, final: finalEntry, budget: budget)
+            base: baseEntries, history: historyEntries, final: finalEntry, budget: budget, pinLast: pin)
     case .slidingWindow:
         return await trimSlidingWindow(
             base: baseEntries, history: historyEntries, final: finalEntry,
-            budget: budget, maxTurns: config.maxTurns)
+            budget: budget, maxTurns: config.maxTurns, pinLast: pin)
     case .summarize:
         return await trimWithSummary(
             base: baseEntries, history: historyEntries, final: finalEntry, budget: budget,
-            permissive: config.permissive)
+            permissive: config.permissive, pinLast: pin)
     case .strict:
         // No trimming — return all history or nil if it exceeds budget.
         // The final entry is included for the budget CHECK only; like every
@@ -206,43 +254,41 @@ func trimHistoryEntriesToBudget(
 
 func trimNewestFirst(
     base: [Transcript.Entry], history: [Transcript.Entry],
-    final: Transcript.Entry?, budget: Int
+    final: Transcript.Entry?, budget: Int, pinLast: Bool = false
 ) async -> [Transcript.Entry] {
-    let keepCount = await maxNewestHistoryCountThatFits(
-        base: base,
-        history: history,
-        final: final,
-        budget: budget
-    )
-    return assembleTranscriptEntries(base: base, history: history.suffix(keepCount))
+    let kept = await ToolExchangeGrouping.newestFirst(
+        groups: historyGroups(history), pinLast: pinLast,
+        fits: budgetPredicate(base: base, history: history, final: final, budget: budget))
+    return assembleTranscriptEntries(base: base, history: selectEntries(history, in: kept))
 }
 
 // MARK: - Strategy: Oldest First
 
 func trimOldestFirst(
     base: [Transcript.Entry], history: [Transcript.Entry],
-    final: Transcript.Entry?, budget: Int
+    final: Transcript.Entry?, budget: Int, pinLast: Bool = false
 ) async -> [Transcript.Entry] {
-    let keepCount = await maxOldestHistoryCountThatFits(
-        base: base,
-        history: history,
-        final: final,
-        budget: budget
-    )
-    return assembleTranscriptEntries(base: base, history: history.prefix(keepCount))
+    let kept = await ToolExchangeGrouping.oldestFirst(
+        groups: historyGroups(history), pinLast: pinLast,
+        fits: budgetPredicate(base: base, history: history, final: final, budget: budget))
+    return assembleTranscriptEntries(base: base, history: selectEntries(history, in: kept))
 }
 
 // MARK: - Strategy: Sliding Window
 
+/// `maxTurns` counts whole groups: a tool exchange (call plus its results) is
+/// one turn, the same as a user or assistant message (#482).
 func trimSlidingWindow(
     base: [Transcript.Entry], history: [Transcript.Entry],
-    final: Transcript.Entry?, budget: Int, maxTurns: Int?
+    final: Transcript.Entry?, budget: Int, maxTurns: Int?, pinLast: Bool = false
 ) async -> [Transcript.Entry] {
-    let windowSize = min(maxTurns ?? Int.max, history.count)
-    let windowed = Array(history.suffix(windowSize))
+    let windowed = ToolExchangeGrouping.window(
+        groups: historyGroups(history), pinLast: pinLast, maxGroups: maxTurns)
     // Apply token-budget safety net (drop from front if over budget)
-    return await trimNewestFirst(
-        base: base, history: windowed, final: final, budget: budget)
+    let kept = await ToolExchangeGrouping.newestFirst(
+        groups: windowed, pinLast: pinLast,
+        fits: budgetPredicate(base: base, history: history, final: final, budget: budget))
+    return assembleTranscriptEntries(base: base, history: selectEntries(history, in: kept))
 }
 
 // MARK: - Unified Prompt Processing (shared by singlePrompt and chat)
@@ -612,46 +658,3 @@ func collectStream(
     }
 }
 
-func maxNewestHistoryCountThatFits(
-    base: [Transcript.Entry],
-    history: [Transcript.Entry],
-    final: Transcript.Entry?,
-    budget: Int
-) async -> Int {
-    guard !history.isEmpty else { return 0 }
-
-    var low = 0
-    var high = history.count
-    while low < high {
-        let mid = (low + high + 1) / 2
-        let candidate = history.suffix(mid)
-        if await fitsTranscriptBudget(base: base, history: candidate, final: final, budget: budget) {
-            low = mid
-        } else {
-            high = mid - 1
-        }
-    }
-    return low
-}
-
-private func maxOldestHistoryCountThatFits(
-    base: [Transcript.Entry],
-    history: [Transcript.Entry],
-    final: Transcript.Entry?,
-    budget: Int
-) async -> Int {
-    guard !history.isEmpty else { return 0 }
-
-    var low = 0
-    var high = history.count
-    while low < high {
-        let mid = (low + high + 1) / 2
-        let candidate = history.prefix(mid)
-        if await fitsTranscriptBudget(base: base, history: candidate, final: final, budget: budget) {
-            low = mid
-        } else {
-            high = mid - 1
-        }
-    }
-    return low
-}

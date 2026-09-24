@@ -305,11 +305,27 @@ private func mcpAutoExecuteResponse(
 
     // Collect full model response (never stream intermediate tool-call output to client)
     let srvRetryMax = sessionOptions.retryEnabled ? sessionOptions.retryCount : 0
-    let rawContent: String
+    var rawContent: String
+    // Hold the first-round calls to the request's tool contract BEFORE anything
+    // is dispatched (#480): a forced choice the model ignored is a violation
+    // and parallel_tool_calls false caps at one. Unknown names are left to
+    // MCPManager, which feeds a tool-not-found error back to the model (#241).
+    // A violation gets ONE bounded repair round; no tool has run at this point.
+    var verdict: ToolPolicy.Outcome
     do {
         rawContent = try await withRetry(maxRetries: srvRetryMax) {
             let result = try await session.respond(to: prompt, options: genOpts)
             return result.content
+        }
+        verdict = policy.evaluate(ToolCallHandler.detectToolCall(in: rawContent), enforceNames: false)
+        if case .violation(let violation) = verdict {
+            let repair = policy.repairPrompt(for: violation)
+            events.append("tool policy repair: \(violation.code)")
+            rawContent = try await withRetry(maxRetries: srvRetryMax) {
+                let result = try await session.respond(to: repair, options: genOpts)
+                return result.content
+            }
+            verdict = policy.evaluate(ToolCallHandler.detectToolCall(in: rawContent), enforceNames: false)
         }
     } catch {
         let classified = ApfelError.classify(error)
@@ -340,12 +356,8 @@ private func mcpAutoExecuteResponse(
         )
     }
 
-    // Hold the first-round calls to the request's tool contract BEFORE anything
-    // is dispatched (#480): a forced choice the model ignored is a typed error
-    // and parallel_tool_calls false caps at one. Unknown names are left to
-    // MCPManager, which feeds a tool-not-found error back to the model (#241).
     let firstRound: [ParsedToolCall]
-    switch policy.evaluate(ToolCallHandler.detectToolCall(in: rawContent), enforceNames: false) {
+    switch verdict {
     case .violation(let violation):
         return toolPolicyFailure(violation, stream: streaming, requestBody: requestBody, events: events)
     case .content:
@@ -468,12 +480,30 @@ private func nonStreamingResponse(
     events: [String]
 ) async throws -> (response: Response, trace: ChatRequestTrace) {
     let nsRetryMax = serverState.config.retryEnabled ? serverState.config.retryCount : 0
-    let outcome: StreamOutcome
+    var events = events
+    var promptTokens = promptTokens
+    var outcome: StreamOutcome
+    var verdict: ToolPolicy.Outcome
     do {
         // Route non-streaming through collectStream so output-side context
         // overflow surfaces as a graceful length-finish on this path too.
         outcome = try await withRetry(maxRetries: nsRetryMax) {
             try await collectStream(session, prompt: prompt, options: genOpts)
+        }
+        // Hold detected calls to the request's tool contract (#480): tool_choice
+        // none makes tool-shaped output content, a forced choice the model
+        // ignored or a call outside the scope is a violation, parallel_tool_calls
+        // false caps at one. A violation gets ONE bounded repair round in the
+        // same session before it becomes a typed error; nothing has run yet.
+        verdict = policy.evaluate(ToolCallHandler.detectToolCall(in: outcome.content))
+        if case .violation(let violation) = verdict {
+            let repair = policy.repairPrompt(for: violation)
+            events.append("tool policy repair: \(violation.code)")
+            promptTokens += await TokenCounter.shared.count(outcome.content) + TokenCounter.shared.count(repair)
+            outcome = try await withRetry(maxRetries: nsRetryMax) {
+                try await collectStream(session, prompt: repair, options: genOpts)
+            }
+            verdict = policy.evaluate(ToolCallHandler.detectToolCall(in: outcome.content))
         }
     } catch {
         let classified = ApfelError.classify(error)
@@ -497,11 +527,8 @@ private func nonStreamingResponse(
     }
     let rawContent = outcome.content
 
-    // Detect tool calls, then hold them to the request's tool contract (#480):
-    // tool_choice none makes tool-shaped output content, a forced choice the
-    // model ignored is a typed error, parallel_tool_calls false caps at one.
     let toolCalls: [ParsedToolCall]?
-    switch policy.evaluate(ToolCallHandler.detectToolCall(in: rawContent)) {
+    switch verdict {
     case .violation(let violation):
         return toolPolicyFailure(violation, stream: false, requestBody: requestBody, events: events)
     case .content:
@@ -597,7 +624,10 @@ private func streamingResponse(
             continuation.yield(ByteBuffer(string: roleLine))
             await eventBox.append("sent role chunk")
 
-            let stream = session.streamResponse(to: prompt, options: genOpts)
+            var currentPrompt = prompt
+            var promptTokens = promptTokens
+            var repaired = false
+            var verdict: ToolPolicy.Outcome = .content
             var prev = ""
             var chunkCount = 0
             // Chars already streamed as content deltas. Tracked explicitly (not
@@ -614,6 +644,10 @@ private func streamingResponse(
             let holdAllContent = jsonMode || policy.forcesToolCall
 
             do {
+              generation: while true {
+                let stream = session.streamResponse(to: currentPrompt, options: genOpts)
+                prev = ""
+                toolGateHolding = policy.toolsInScope
                 for try await snapshot in stream {
                     let content = snapshot.content
                     guard content.count > prev.count else { prev = content; continue }
@@ -644,10 +678,24 @@ private func streamingResponse(
                 }
 
                 // Check accumulated response for tool calls, then hold them to the
-                // request's tool contract (#480). A violation terminates the
-                // stream with an OpenAI error event (headers are already sent).
+                // request's tool contract (#480). While nothing has reached the
+                // client, a violation gets ONE bounded repair round in the same
+                // session; otherwise it terminates the stream with an OpenAI
+                // error event (headers are already sent).
+                verdict = policy.evaluate(ToolCallHandler.detectToolCall(in: prev))
+                if case .violation(let violation) = verdict, !repaired, emittedContentCount == 0 {
+                    repaired = true
+                    let repair = policy.repairPrompt(for: violation)
+                    promptTokens += await TokenCounter.shared.count(prev) + TokenCounter.shared.count(repair)
+                    currentPrompt = repair
+                    await eventBox.append("tool policy repair: \(violation.code)")
+                    continue generation
+                }
+                break generation
+              }
+
                 let toolCalls: [ParsedToolCall]?
-                switch policy.evaluate(ToolCallHandler.detectToolCall(in: prev)) {
+                switch verdict {
                 case .violation(let violation):
                     throw violation
                 case .content:

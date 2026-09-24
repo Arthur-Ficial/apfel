@@ -27,26 +27,28 @@ func trimWithSummary(
     base: [Transcript.Entry], history: [Transcript.Entry],
     final: Transcript.Entry?, budget: Int,
     permissive: Bool = false,
+    pinLast: Bool = false,
     summarize: Summarizer = { text, maxTokens, permissive in
         await generateSummary(text, maxTokens: maxTokens, permissive: permissive)
     }
 ) async -> [Transcript.Entry] {
-    guard history.count > 2 else {
+    // Split at group boundaries so a tool exchange is either kept verbatim or
+    // summarized whole, never half of each (#482).
+    let groups = historyGroups(history)
+    guard groups.count > 2 else {
         return await trimNewestFirst(
-            base: base, history: history, final: final, budget: budget)
+            base: base, history: history, final: final, budget: budget, pinLast: pinLast)
     }
 
     // Split: keep recent 50% of budget, summarize the rest
     let halfBudget = budget / 2
-    let recentCount = await maxNewestHistoryCountThatFits(
-        base: base,
-        history: history,
-        final: final,
-        budget: halfBudget
-    )
-    let recentEntries = Array(history.suffix(recentCount))
+    let recentRanges = await ToolExchangeGrouping.newestFirst(
+        groups: groups, pinLast: pinLast,
+        fits: budgetPredicate(base: base, history: history, final: final, budget: halfBudget))
+    let recentEntries = selectEntries(history, in: recentRanges)
 
-    let oldEntries = Array(history.dropLast(recentEntries.count))
+    let recentStart = recentRanges.first?.lowerBound ?? history.count
+    let oldEntries = Array(history[..<recentStart])
     guard !oldEntries.isEmpty else {
         return assembleTranscriptEntries(base: base, history: recentEntries)
     }
@@ -55,7 +57,7 @@ func trimWithSummary(
     let oldText = renderEntries(oldEntries)
     guard !oldText.isEmpty else {
         return await trimNewestFirst(
-            base: base, history: history, final: final, budget: budget)
+            base: base, history: history, final: final, budget: budget, pinLast: pinLast)
     }
 
     // Cap the summary to a fraction of the budget so it cannot grow unbounded.
@@ -65,7 +67,7 @@ func trimWithSummary(
     let summaryText = await summarize(oldText, summaryMaxTokens, permissive)
     guard let summaryText else {
         return await trimNewestFirst(
-            base: base, history: history, final: final, budget: budget)
+            base: base, history: history, final: final, budget: budget, pinLast: pinLast)
     }
 
     let segment = Transcript.TextSegment(content: "[Summary of prior conversation]: \(summaryText)")
@@ -80,7 +82,7 @@ func trimWithSummary(
         base: base, history: summarized, final: final, budget: budget
     ) else {
         return await trimNewestFirst(
-            base: base, history: history, final: final, budget: budget)
+            base: base, history: history, final: final, budget: budget, pinLast: pinLast)
     }
 
     return assembleTranscriptEntries(base: base, history: summarized)
@@ -99,6 +101,17 @@ private func renderEntries(_ entries: [Transcript.Entry]) -> String {
             return r.segments.compactMap { seg in
                 if case .text(let t) = seg { return "Assistant: \(t.content)" }; return nil
             }.joined()
+        // Tool interactions are represented in the summary input rather than
+        // silently dropped (#482). The summary is prose: it must never look
+        // like an executable call, so the call is described, not re-emitted.
+        case .toolCalls(let calls):
+            let described = calls.map { "\($0.toolName) with arguments \($0.arguments.jsonString)" }
+            return "Assistant called: \(described.joined(separator: "; "))"
+        case .toolOutput(let output):
+            let text = output.segments.compactMap { seg in
+                if case .text(let t) = seg { return t.content }; return nil
+            }.joined()
+            return "Tool \(output.toolName) returned: \(text)"
         default: return nil
         }
     }.joined(separator: "\n")

@@ -181,6 +181,17 @@ func runToolPolicyTests() {
         }
     }
 
+    test("repairPrompt restates the violation and the contract for one bounded repair round (#480)") {
+        let violation = ToolPolicy.Violation(code: ToolPolicy.Violation.notAllowedCode, message: "the model called 'say_hi'")
+        let auto = try resolve(nil).repairPrompt(for: violation)
+        try assertTrue(auto.contains("say_hi"), auto)
+        try assertTrue(auto.contains("get_weather") && auto.contains("plain text"), auto)
+        let forced = try resolve(.specific(name: "lookup_ticket")).repairPrompt(for: violation)
+        try assertTrue(forced.contains("lookup_ticket") && !forced.contains("plain text"), forced)
+        let required = try resolve(.required).repairPrompt(for: violation)
+        try assertTrue(required.contains("get_weather, lookup_ticket") && !required.contains("plain text"), required)
+    }
+
     test("evaluate treats an empty detected array like no detection (#480)") {
         try assertEqual(try resolve(nil).evaluate([]), .content)
         guard case .violation = try resolve(.required).evaluate([]) else {
