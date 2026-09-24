@@ -78,7 +78,7 @@ fi
 
 # --- 5. Unit tests ---
 step "Unit tests"
-if swift run apfel-tests 2>&1; then
+if swift run --build-system native apfel-tests 2>&1; then
     pass "unit tests"
 else
     fail "unit tests"
