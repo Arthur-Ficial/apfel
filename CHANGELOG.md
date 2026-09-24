@@ -7,6 +7,8 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-09-24
+
 ### Added
 
 - Structured-output and tool-parameter schemas resolve local `$ref` pointers. `response_format.json_schema` (Chat Completions), `text.format` (Responses), `apfel --schema` and `tools[].function.parameters` all run through one compiler, which now expands `#/$defs/...` and `#/definitions/...` references in place - including references to any local node, RFC 6901 escapes (`~0`, `~1`) and percent-encoded segments, a `description` sibling next to the `$ref`, definitions that reference other definitions, and the Pydantic `Optional[Model]` shape `anyOf: [{"$ref": ...}, {"type": "null"}]`. Ordinary Pydantic / zod models with nested types now work through `client.chat.completions.parse(...)` without a hand-flattened copy. External references (`https://...`, `other.json`) are rejected without any filesystem or network access, unresolved pointers and recursive schemas are rejected explicitly, and expansion is bounded (16 nested references, 512 nodes). New `ApfelCore` surface: `SchemaIR.boundedInteger`, `.boundedNumber`, `.boundedArray`; `SchemaParser.Error.externalReference`, `.unresolvedReference`, `.cyclicReference`, `.referenceDepthExceeded`, `.schemaTooLarge`, `.unsupportedConstraint`, `.invalidConstraint`, and `SchemaParser.Error: CustomStringConvertible` - additive enum cases, a MINOR change under the STABILITY.md enum-evolution policy (#479).
