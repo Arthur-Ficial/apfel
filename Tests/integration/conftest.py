@@ -135,10 +135,27 @@ def is_guardrail_refusal(text):
     return lowered.startswith(starters) or any(m in lowered for m in markers)
 
 
+TOOL_CHOICE_NOT_SATISFIED = "tool_choice_not_satisfied"
+
+
+def is_tool_choice_not_satisfied(resp):
+    """True when the server reports that the model ignored a forced tool_choice
+    on this sampling trajectory (#480). Like a guardrail refusal this is a model
+    outcome, not an apfel defect, so seed-rotating callers move on to the next
+    seed instead of failing."""
+    if resp.status_code != 500:
+        return False
+    try:
+        return resp.json().get("error", {}).get("code") == TOOL_CHOICE_NOT_SATISFIED
+    except ValueError:
+        return False
+
+
 def post_chat_rotating_seeds(url, payload, timeout, seeds=GUARDRAIL_SEEDS, accept=None):
     """POST a non-streaming chat completion, rotating seeds past guardrail
-    refusals. Returns the parsed JSON of the first usable response; fails the
-    test loudly if every seed refuses (that would be a real problem to see).
+    refusals and past a forced tool_choice the model ignored (#480). Returns
+    the parsed JSON of the first usable response; fails the test loudly if
+    every seed refuses (that would be a real problem to see).
 
     `accept`: optional predicate(data) for callers whose notion of "usable"
     is stricter than non-refusal (e.g. tool_calls must be present)."""
@@ -147,6 +164,9 @@ def post_chat_rotating_seeds(url, payload, timeout, seeds=GUARDRAIL_SEEDS, accep
         body = dict(payload)
         body["seed"] = seed
         resp = httpx.post(url, json=body, timeout=timeout)
+        if is_tool_choice_not_satisfied(resp):
+            last_content = resp.json()["error"]["message"]
+            continue
         assert resp.status_code == 200, \
             f"HTTP {resp.status_code} (seed {seed}): {resp.text[:200]}"
         data = resp.json()

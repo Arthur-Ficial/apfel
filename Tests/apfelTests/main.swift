@@ -99,6 +99,7 @@ suite("FinishReasonResolverTests") { runFinishReasonResolverTests() }
 suite("StreamErrorResolverTests") { runStreamErrorResolverTests() }
 suite("StreamingToolCallGateTests") { runStreamingToolCallGateTests() }
 suite("ToolResolutionTests") { runToolResolutionTests() }
+suite("ToolPolicyTests") { runToolPolicyTests() }
 suite("BodyLimitsTests") { runBodyLimitsTests() }
 suite("ContextWindowTests") { runContextWindowTests() }
 suite("TokenBudgetTests") { runTokenBudgetTests() }

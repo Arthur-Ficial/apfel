@@ -136,6 +136,26 @@ func handleResponses(_ request: Request, context: some RequestContext) async thr
     let tools = ResponsesMapper.tools(from: responsesRequest)
     events.append("decoded input messages=\(messages.count) stream=\(isStreaming) format=\(formatType) tools=\(tools?.count ?? 0)")
 
+    // Same enforceable tool contract as chat completions (#480). MCP tools are
+    // not injected on this endpoint, so the scope is the request's own tools.
+    let toolPolicy: ToolPolicy
+    switch ToolPolicy.resolve(
+        toolChoice: responsesRequest.tool_choice,
+        toolNames: (tools ?? []).map(\.function.name),
+        parallelToolCalls: nil
+    ) {
+    case .success(let policy):
+        toolPolicy = policy
+    case .failure(let scopeError):
+        return openAIFailure(
+            status: .badRequest,
+            message: scopeError.message,
+            type: "invalid_request_error",
+            stream: isStreaming, requestBody: requestBodyString, events: events,
+            event: "tool_choice scope rejected: \(scopeError.message)",
+            param: scopeError.param)
+    }
+
     let truncationStrategy: ContextStrategy = responsesRequest.truncation == "disabled" ? .strict : .newestFirst
     let sessionOpts = SessionOptions(
         temperature: responsesRequest.temperature,
@@ -155,7 +175,7 @@ func handleResponses(_ request: Request, context: some RequestContext) async thr
     let inputEntries: [Transcript.Entry]
     do {
         (session, finalPrompt, inputEntries) = try await ContextManager.makeSession(
-            messages: messages, tools: tools, options: sessionOpts,
+            messages: messages, tools: toolPolicy.scopedTools(from: tools), options: sessionOpts,
             jsonMode: jsonMode, toolChoice: responsesRequest.tool_choice)
     } catch {
         let classified = ApfelError.classify(error)
@@ -186,7 +206,7 @@ func handleResponses(_ request: Request, context: some RequestContext) async thr
 
     let result = try await responsesNonStreamingResponse(
         session: session, prompt: finalPrompt, schema: structuredSchema,
-        jsonMode: jsonMode, id: requestId, created: created, genOpts: genOpts,
+        jsonMode: jsonMode, policy: toolPolicy, id: requestId, created: created, genOpts: genOpts,
         promptTokens: promptTokens, echo: echo,
         requestBody: requestBodyString, events: events)
     return (result.response, result.trace)
@@ -199,6 +219,7 @@ private func responsesNonStreamingResponse(
     prompt: String,
     schema: GenerationSchema?,
     jsonMode: Bool,
+    policy: ToolPolicy,
     id: String,
     created: Int,
     genOpts: GenerationOptions,
@@ -225,7 +246,17 @@ private func responsesNonStreamingResponse(
             let outcome = try await withRetry(maxRetries: retryMax) {
                 try await collectStream(session, prompt: prompt, options: genOpts)
             }
-            if let calls = ToolCallHandler.detectToolCall(in: outcome.content) {
+            // Hold detected calls to the request's tool contract (#480).
+            let judged: [ParsedToolCall]?
+            switch policy.evaluate(ToolCallHandler.detectToolCall(in: outcome.content)) {
+            case .violation(let violation):
+                return toolPolicyFailure(violation, stream: false, requestBody: requestBody, events: events)
+            case .content:
+                judged = nil
+            case .toolCalls(let calls):
+                judged = calls
+            }
+            if let calls = judged {
                 output = calls.map { call in
                     .functionCall(id: "fc_\(UUID().uuidString.prefix(12).lowercased())",
                                   callId: call.id, name: call.name,

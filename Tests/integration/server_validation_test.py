@@ -434,3 +434,55 @@ def test_responses_truncation_disabled_accepted():
     r = _responses({"model": "apple-foundationmodel", "input": "hi", "truncation": "disabled"})
     # disabled is valid - should not be a 400.
     assert r.status_code != 400
+
+
+# ============================================================================
+# #480 - tool_choice scope is validated before generation
+# ============================================================================
+
+def test_tool_choice_required_without_tools_returns_400():
+    """tool_choice 'required' with no tools in scope can never be satisfied - 400, not a 500 after generation."""
+    resp = _post({
+        "model": MODEL,
+        "messages": [{"role": "user", "content": "hi"}],
+        "tool_choice": "required",
+    })
+    assert resp.status_code == 400, resp.text
+    err = _assert_openai_error(resp, expected_type="invalid_request_error")
+    assert err["param"] == "tool_choice", err
+    assert "required" in err["message"], err
+
+
+def test_named_tool_choice_with_no_tools_in_scope_returns_400():
+    """A named tool_choice with neither client tools nor MCP tools is rejected up front (#480)."""
+    resp = _post({
+        "model": MODEL,
+        "messages": [{"role": "user", "content": "hi"}],
+        "tool_choice": {"type": "function", "function": {"name": "lookup_ticket"}},
+    })
+    assert resp.status_code == 400, resp.text
+    err = _assert_openai_error(resp, expected_type="invalid_request_error")
+    assert err["param"] == "tool_choice", err
+    assert "lookup_ticket" in err["message"], err
+
+
+def test_named_tool_choice_not_in_tools_returns_400():
+    """A named tool_choice must reference a function in the request's tools array (#480)."""
+    resp = _post({
+        "model": MODEL,
+        "messages": [{"role": "user", "content": "hi"}],
+        "tools": [{"type": "function", "function": {"name": "get_weather", "description": "d"}}],
+        "tool_choice": {"type": "function", "function": {"name": "lookup_ticket"}},
+    })
+    assert resp.status_code == 400, resp.text
+    err = _assert_openai_error(resp, expected_type="invalid_request_error")
+    assert "lookup_ticket" in err["message"] and "get_weather" in err["message"], err
+
+
+def test_models_advertise_parallel_tool_calls():
+    """parallel_tool_calls is decoded and enforced, so /v1/models must advertise it (#480)."""
+    resp = httpx.get(f"{BASE_URL}/v1/models", timeout=10)
+    assert resp.status_code == 200
+    supported = resp.json()["data"][0]["supported_parameters"]
+    assert "parallel_tool_calls" in supported, supported
+    assert "tool_choice" in supported, supported

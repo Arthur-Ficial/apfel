@@ -43,10 +43,18 @@ package struct ToolLogEntry: Sendable, Equatable {
 }
 
 /// A parsed tool call extracted from model output.
-public struct ParsedToolCall: Sendable {
+public struct ParsedToolCall: Sendable, Equatable {
     public let id: String
     public let name: String
     public let argumentsString: String
+
+    /// Creates a parsed tool call. Library consumers and tests use this to
+    /// feed `ToolPolicy.evaluate` without going through model output.
+    public init(id: String, name: String, argumentsString: String) {
+        self.id = id
+        self.name = name
+        self.argumentsString = argumentsString
+    }
 }
 
 public enum ToolCallHandler {
