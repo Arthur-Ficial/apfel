@@ -151,8 +151,36 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
     // Inject MCP tools if client didn't send any; track source for auto-execution
     let mcpTools = await serverState.mcpManager?.allTools()
     let resolvedTools = ToolResolution.resolve(clientTools: chatRequest.tools, mcpTools: mcpTools)
-    let effectiveTools = resolvedTools.tools
-    let toolsAreMCPInjected = resolvedTools.injected
+
+    // Resolve the enforceable tool contract against the FULL scope (client
+    // tools or attached MCP tools) before any generation. A named or required
+    // choice that nothing in scope can satisfy is a 400 here, not a 500 after
+    // the model has run (#480). The same policy judges the model output below.
+    let toolPolicy: ToolPolicy
+    switch ToolPolicy.resolve(
+        toolChoice: chatRequest.tool_choice,
+        toolNames: (resolvedTools.tools ?? []).map(\.function.name),
+        parallelToolCalls: chatRequest.parallel_tool_calls
+    ) {
+    case .success(let policy):
+        toolPolicy = policy
+    case .failure(let scopeError):
+        return openAIFailure(
+            status: .badRequest,
+            message: scopeError.message,
+            type: "invalid_request_error",
+            stream: isStreaming,
+            requestBody: requestBodyString,
+            events: events,
+            event: "tool_choice scope rejected: \(scopeError.message)",
+            param: scopeError.param
+        )
+    }
+    // tool_choice none takes MCP tools out of play too: nothing is injected
+    // and nothing is auto-executed, so tool-shaped output stays content.
+    let effectiveTools = toolPolicy.scopedTools(from: resolvedTools.tools)
+    let toolsAreMCPInjected = resolvedTools.injected && toolPolicy.toolsInScope
+    events.append("tool policy mode=\(toolPolicy.mode) in_scope=\(toolPolicy.allowedNames.count) max_calls=\(toolPolicy.maxCalls.map(String.init) ?? "unlimited")")
 
     // Build session + extract final prompt via ContextManager (Transcript API)
     let session: LanguageModelSession
@@ -211,7 +239,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
             originalMessages: chatRequest.messages, sessionOptions: sessionOpts,
             id: requestId, created: created, genOpts: genOpts,
             promptTokens: promptTokens, streaming: isStreaming,
-            includeUsage: includeUsage, jsonMode: jsonMode,
+            includeUsage: includeUsage, jsonMode: jsonMode, policy: toolPolicy,
             requestBody: requestBodyString, events: events
         )
         return (result.response, result.trace)
@@ -239,14 +267,14 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
                                        id: requestId, created: created,
                                        genOpts: genOpts, promptTokens: promptTokens,
                                        includeUsage: includeUsage, jsonMode: jsonMode,
-                                       hasTools: !(chatRequest.tools?.isEmpty ?? true),
+                                       policy: toolPolicy,
                                        requestBody: requestBodyString, events: events)
         return (result.response, result.trace)
     } else {
         let result = try await nonStreamingResponse(session: session, prompt: finalPrompt,
                                                      id: requestId, created: created,
                                                      genOpts: genOpts, promptTokens: promptTokens,
-                                                     jsonMode: jsonMode,
+                                                     jsonMode: jsonMode, policy: toolPolicy,
                                                      requestBody: requestBodyString, events: events)
         return (result.response, result.trace)
     }
@@ -269,6 +297,7 @@ private func mcpAutoExecuteResponse(
     streaming: Bool,
     includeUsage: Bool,
     jsonMode: Bool,
+    policy: ToolPolicy,
     requestBody: String?,
     events: [String]
 ) async throws -> (response: Response, trace: ChatRequestTrace) {
@@ -311,11 +340,25 @@ private func mcpAutoExecuteResponse(
         )
     }
 
+    // Hold the first-round calls to the request's tool contract BEFORE anything
+    // is dispatched (#480): a forced choice the model ignored is a typed error
+    // and parallel_tool_calls false caps at one. Unknown names are left to
+    // MCPManager, which feeds a tool-not-found error back to the model (#241).
+    let firstRound: [ParsedToolCall]
+    switch policy.evaluate(ToolCallHandler.detectToolCall(in: rawContent), enforceNames: false) {
+    case .violation(let violation):
+        return toolPolicyFailure(violation, stream: streaming, requestBody: requestBody, events: events)
+    case .content:
+        firstRound = []
+    case .toolCalls(let calls):
+        firstRound = calls
+    }
+
     // Auto-execute MCP tool calls and re-prompt for plain text answer
     let content: String
     do {
         if let executed = try await executeMCPToolCallsForServer(
-            in: rawContent,
+            firstRound: firstRound,
             mcpManager: serverState.mcpManager,
             userPrompt: userPrompt,
             messages: originalMessages,
@@ -420,6 +463,7 @@ private func nonStreamingResponse(
     genOpts: GenerationOptions,
     promptTokens: Int,
     jsonMode: Bool,
+    policy: ToolPolicy,
     requestBody: String?,
     events: [String]
 ) async throws -> (response: Response, trace: ChatRequestTrace) {
@@ -453,8 +497,18 @@ private func nonStreamingResponse(
     }
     let rawContent = outcome.content
 
-    // Detect tool calls in response
-    let toolCalls = ToolCallHandler.detectToolCall(in: rawContent)
+    // Detect tool calls, then hold them to the request's tool contract (#480):
+    // tool_choice none makes tool-shaped output content, a forced choice the
+    // model ignored is a typed error, parallel_tool_calls false caps at one.
+    let toolCalls: [ParsedToolCall]?
+    switch policy.evaluate(ToolCallHandler.detectToolCall(in: rawContent)) {
+    case .violation(let violation):
+        return toolPolicyFailure(violation, stream: false, requestBody: requestBody, events: events)
+    case .content:
+        toolCalls = nil
+    case .toolCalls(let calls):
+        toolCalls = calls
+    }
     let responseMessage: OpenAIMessage
     let deliveredContent: String
     if let calls = toolCalls {
@@ -508,7 +562,7 @@ private func streamingResponse(
     promptTokens: Int,
     includeUsage: Bool,
     jsonMode: Bool,
-    hasTools: Bool,
+    policy: ToolPolicy,
     requestBody: String?,
     events: [String]
 ) -> (response: Response, trace: ChatRequestTrace) {
@@ -552,7 +606,12 @@ private func streamingResponse(
             var emittedContentCount = 0
             // While tools are in play, hold back content that could still be a
             // tool call so we never leak raw tool-call JSON as content (#224).
-            var toolGateHolding = hasTools
+            var toolGateHolding = policy.toolsInScope
+            // A forced tool_choice (required / named) buffers the whole response
+            // like json_object mode: plain text under a forced choice is a
+            // contract violation (#480), and content must not stream out before
+            // that verdict is known.
+            let holdAllContent = jsonMode || policy.forcesToolCall
 
             do {
                 for try await snapshot in stream {
@@ -564,7 +623,7 @@ private func streamingResponse(
                     // suffix (the closing ``` only arrives at the end), so we
                     // buffer the whole response and emit one stripped delta after
                     // the loop (#223), mirroring the structured path.
-                    if jsonMode { continue }
+                    if holdAllContent { continue }
 
                     if toolGateHolding {
                         // Keep buffering while the accumulated content could still
@@ -584,8 +643,18 @@ private func streamingResponse(
                     await eventBox.append("chunk #\(chunkCount) delta=\(delta.count) total=\(content.count)")
                 }
 
-                // Check accumulated response for tool calls before emitting final chunk
-                let toolCalls = ToolCallHandler.detectToolCall(in: prev)
+                // Check accumulated response for tool calls, then hold them to the
+                // request's tool contract (#480). A violation terminates the
+                // stream with an OpenAI error event (headers are already sent).
+                let toolCalls: [ParsedToolCall]?
+                switch policy.evaluate(ToolCallHandler.detectToolCall(in: prev)) {
+                case .violation(let violation):
+                    throw violation
+                case .content:
+                    toolCalls = nil
+                case .toolCalls(let calls):
+                    toolCalls = calls
+                }
 
                 // Deliver any content buffered but not yet streamed:
                 //  - json_object mode buffered the whole response; emit it once,
@@ -684,6 +753,18 @@ private func streamingResponse(
             } catch is CancellationError {
                 streamCancelled = true
                 await eventBox.append("stream cancelled by client")
+            } catch let violation as ToolPolicy.Violation {
+                // The model broke the request's tool contract (#480). Typed
+                // error event, then [DONE] - never a finish_reason that looks
+                // like a completed answer.
+                let errPayload = OpenAIErrorResponse(error: .init(
+                    message: violation.message, type: "server_error", param: "tool_choice", code: violation.code))
+                let errMsg = "data: \(jsonString(errPayload, pretty: false))\n\n"
+                responseLines?.append(errMsg.trimmingCharacters(in: .whitespacesAndNewlines))
+                continuation.yield(ByteBuffer(string: errMsg))
+                continuation.yield(ByteBuffer(string: sseDone))
+                streamError = violation.message
+                await eventBox.append("tool policy violation: \(violation.code)")
             } catch {
                 let classified = ApfelError.classify(error)
                 // Output-side context overflow with content already streamed is
@@ -1072,6 +1153,28 @@ func openAIFailure(
             responseBody: captureTruncatedLogBody(message, enabled: serverState.config.debug),
             events: events + [event]
         )
+    )
+}
+
+/// A model response that breaks the request's tool contract (#480): a typed
+/// server error carrying the violation code, never an HTTP 200 that looks like
+/// a completed answer.
+func toolPolicyFailure(
+    _ violation: ToolPolicy.Violation,
+    stream: Bool,
+    requestBody: String?,
+    events: [String]
+) -> (response: Response, trace: ChatRequestTrace) {
+    openAIFailure(
+        status: .internalServerError,
+        message: violation.message,
+        type: "server_error",
+        stream: stream,
+        requestBody: requestBody,
+        events: events,
+        event: "tool policy violation: \(violation.code)",
+        code: violation.code,
+        param: "tool_choice"
     )
 }
 

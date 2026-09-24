@@ -28,6 +28,27 @@ apfel converts OpenAI-format tool definitions into two paths:
 Detection handles: clean JSON, markdown-wrapped ```` ```json ``` ```` blocks, and JSON
 after preamble text. Both paths produce identical OpenAI-compatible output.
 
+## `tool_choice` and `parallel_tool_calls` are enforced
+
+The model is steered towards the requested `tool_choice` with prompt instructions, but a small
+on-device model does not always comply, so apfel also holds every response to the contract
+before it reaches the client or an MCP server (#480):
+
+| Request | Before generation | Model output that breaks the contract |
+|---------|-------------------|----------------------------------------|
+| `tool_choice: "none"` | No tools are presented, MCP tools are not auto-executed | Tool-call-shaped JSON is delivered as ordinary `content` |
+| omitted / `"auto"` | - | A call to a function outside the request's `tools` is a 500 with `code: "tool_call_not_allowed"` |
+| `tool_choice: "required"` | 400 when nothing is in scope | Plain text is a 500 with `code: "tool_choice_not_satisfied"` |
+| `{"type":"function","function":{"name":"X"}}` | 400 when `X` is neither a client tool nor an attached MCP tool; only `X` is presented to the model | Plain text or a call to another function is a 500 with `code: "tool_choice_not_satisfied"` |
+| `parallel_tool_calls: false` | - | Only the first returned call is exposed or executed |
+
+The violation errors carry `type: "server_error"` and `param: "tool_choice"`; on `stream: true` the
+stream ends with the same error object followed by `[DONE]`. A named or required choice buffers the
+whole response before deciding, so no partial text streams out ahead of a violation. A 500 here means
+the model did not do what the request demanded - retry (a different seed changes the trajectory) or
+relax the choice. The named-choice scope check runs against the effective tool set, so a client may
+name an MCP tool attached with `--mcp` without repeating its definition.
+
 ---
 
 ## Experiment 1: Simple Single Tool Call
@@ -647,7 +668,7 @@ apfel -s 'You have a tool get_weather(city). When asked about weather, respond O
 | Hallucinated extra params | ~50% of calls | Adds `country` when only `city` requested |
 | Renamed params | ~20% of calls | Uses `topic` instead of schema's `query` |
 | Parallel tool calls | Never works | Can't call same tool twice in one response |
-| Hallucinated tool names | Occasional | Calls `wikipedia.info` instead of `search` (apfel accepts it - name validation is caller's job) |
+| Hallucinated tool names | Occasional | Calls `wikipedia.info` instead of `search` - rejected with `tool_call_not_allowed` for client tools; fed back as a tool error for MCP tools so the model can recover |
 | Confused input/output | Rare | Puts output values as input arguments |
 | Guardrail false positives | Occasional | "Stock price" blocked |
 

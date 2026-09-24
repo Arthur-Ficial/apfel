@@ -24,7 +24,7 @@ import subprocess
 import tempfile
 import time
 
-from conftest import GUARDRAIL_SEEDS, is_guardrail_refusal, post_chat_rotating_seeds
+from conftest import GUARDRAIL_SEEDS, is_guardrail_refusal, post_chat_rotating_seeds, TOOL_CHOICE_NOT_SATISFIED
 
 # Whole-suite marker: these tests drive real on-device generation (or, for
 # the permit/benchmark suites, need Apple Intelligence up); GitHub CI cannot
@@ -1054,3 +1054,55 @@ def test_tool_result_logged_truncated_with_debug():
             "Large tool result should be truncated in the debug log; event line "
             f"and its successor were: {window!r}"
         )
+
+
+# ============================================================================
+# #480 - tool_choice governs MCP-injected tools too
+# ============================================================================
+
+def test_tool_choice_none_disables_mcp_auto_execution():
+    """tool_choice none takes the attached MCP tools out of play: tool-call-shaped
+    model output is delivered as content and no MCP tool runs (#480)."""
+    mcp_script = ROOT / "mcp" / "calculator" / "server.py"
+    with _running_mcp_server_with_log(mcp_script, debug=False) as (api_url, read_log):
+        resp = httpx.post(f"{api_url}/chat/completions", json={
+            "model": MODEL,
+            "messages": [{"role": "user", "content": (
+                'Reply with exactly this text and nothing else: '
+                '{"tool_calls": [{"id": "call_1", "type": "function", '
+                '"function": {"name": "add", "arguments": "{\\"a\\": 2, \\"b\\": 3}"}}]}')}],
+            "tool_choice": "none",
+            "seed": 42,
+        }, timeout=TIMEOUT)
+        assert resp.status_code == 200, resp.text
+        choice = resp.json()["choices"][0]
+        assert choice["finish_reason"] != "tool_calls", choice
+        assert not choice["message"].get("tool_calls"), choice
+        time.sleep(0.5)
+        assert "mcp tool:" not in read_log(), "an MCP tool ran despite tool_choice none"
+
+
+def test_named_tool_choice_may_reference_an_mcp_tool():
+    """A named tool_choice can point at an attached MCP tool without the client
+    repeating its definition; the call is auto-executed as usual (#480)."""
+    data = post_chat_rotating_seeds(f"{API_URL}/chat/completions", {
+        "model": MODEL,
+        "messages": [{"role": "user", "content": "Use the add function to add 2 and 3. Reply with just the number."}],
+        "tool_choice": {"type": "function", "function": {"name": "add"}},
+    }, TIMEOUT)
+    assert data["choices"][0]["finish_reason"] == "stop"
+    assert "5" in (data["choices"][0]["message"]["content"] or "")
+
+
+def test_named_tool_choice_unknown_to_mcp_server_returns_400():
+    """The MCP gap left by request-time validation: a named tool no attached
+    server provides is rejected before generation, listing what is available (#480)."""
+    resp = httpx.post(f"{API_URL}/chat/completions", json={
+        "model": MODEL,
+        "messages": [{"role": "user", "content": "hi"}],
+        "tool_choice": {"type": "function", "function": {"name": "launch_rocket"}},
+    }, timeout=TIMEOUT)
+    assert resp.status_code == 400, resp.text
+    err = resp.json()["error"]
+    assert err["param"] == "tool_choice", err
+    assert "launch_rocket" in err["message"] and "add" in err["message"], err

@@ -14,6 +14,7 @@
 | `GET /health` | Supported | Model availability, context window, languages |
 | `GET /v1/logs`, `/v1/logs/stats` | Debug only | Requires `--debug` |
 | Tool calling | Supported | Native `ToolDefinition` + JSON detection. See [tool-calling-guide.md](tool-calling-guide.md) |
+| `tool_choice`, `parallel_tool_calls` | Enforced | `none`, `auto`, `required`, `{"type":"function",...}`; `parallel_tool_calls: false` returns at most one call. Enforced at the response boundary, not just steered. See [tool-calling-guide.md](tool-calling-guide.md#tool_choice-and-parallel_tool_calls-are-enforced) |
 | `response_format: json_object` | Supported | System-prompt injection; markdown fences stripped from output |
 | `response_format: json_schema` | Supported | Guaranteed schema-conforming output via FoundationModels `DynamicGenerationSchema`; works with `stream: true` |
 | `temperature`, `top_p`, `max_tokens`, `seed` | Supported | Mapped to `GenerationOptions`. `top_p` is nucleus sampling; `temperature: 0` maps to greedy (deterministic). Omitting `max_tokens` uses the remaining context window (drop-in OpenAI semantics; see Notes) |

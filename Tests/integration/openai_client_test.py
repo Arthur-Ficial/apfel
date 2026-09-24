@@ -13,7 +13,7 @@ import pytest
 import openai
 import httpx
 
-from conftest import GUARDRAIL_SEEDS
+from conftest import GUARDRAIL_SEEDS, TOOL_CHOICE_NOT_SATISFIED, post_chat_rotating_seeds
 
 # Whole-suite marker: these tests drive real on-device generation (or, for
 # the permit/benchmark suites, need Apple Intelligence up); GitHub CI cannot
@@ -183,21 +183,30 @@ def test_tool_calling():
     }]
     # Seed-rotated (#324): a guardrail refusal arrives as finish_reason "stop"
     # with tool_calls None, which would crash len(None) instead of failing clean.
+    # A forced tool_choice the model ignores is a typed 500 since #480, which
+    # the openai SDK raises as InternalServerError - rotate past it like a
+    # refusal; the property under test is the satisfied call.
     resp = None
+    last_failure = None
     for seed in GUARDRAIL_SEEDS:
-        resp = client.chat.completions.create(
-            model=MODEL,
-            messages=[{"role": "user", "content": "Use the provided weather function for Vienna. Do not answer directly."}],
-            tools=tools,
-            tool_choice={"type": "function", "function": {"name": "get_weather"}},
-            seed=seed,
-        )
+        try:
+            resp = client.chat.completions.create(
+                model=MODEL,
+                messages=[{"role": "user", "content": "Use the provided weather function for Vienna. Do not answer directly."}],
+                tools=tools,
+                tool_choice={"type": "function", "function": {"name": "get_weather"}},
+                seed=seed,
+            )
+        except openai.InternalServerError as e:
+            assert TOOL_CHOICE_NOT_SATISFIED in str(e), f"unexpected 500 (seed {seed}): {e}"
+            last_failure = str(e)
+            continue
         if resp.choices[0].finish_reason == "tool_calls" and resp.choices[0].message.tool_calls:
             break
     else:
         pytest.fail(
-            f"no tool_calls on any seed {GUARDRAIL_SEEDS}; last finish_reason="
-            f"{resp.choices[0].finish_reason!r}, content={resp.choices[0].message.content!r}")
+            f"no tool_calls on any seed {GUARDRAIL_SEEDS}; last failure={last_failure!r}, "
+            f"last response={resp!r}")
     assert resp.choices[0].finish_reason == "tool_calls"
     assert len(resp.choices[0].message.tool_calls) > 0
     assert resp.choices[0].message.tool_calls[0].function.name == "get_weather"
@@ -269,6 +278,11 @@ def test_streaming_tool_call_no_content_leak():
                 if data.strip() == "[DONE]":
                     break
                 chunk = json.loads(data)
+                if "error" in chunk:
+                    # The model ignored the forced choice on this seed: the
+                    # stream terminates with a typed error (#480). Rotate.
+                    assert chunk["error"]["code"] == TOOL_CHOICE_NOT_SATISFIED, chunk
+                    return content, [], finish_reasons
                 if not chunk["choices"]:
                     continue
                 delta = chunk["choices"][0]["delta"]
@@ -305,6 +319,125 @@ def test_streaming_tool_call_no_content_leak():
     tool_calls_finish = [fr for has_tc, fr in finish_reasons if fr == "tool_calls" and not has_tc]
     assert tool_calls_finish, \
         "finish_reason=tool_calls must arrive in its own empty-delta chunk"
+
+
+# MARK: - tool_choice / parallel_tool_calls enforcement (#480)
+
+WEATHER_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "get_weather",
+        "description": "Get the current weather for a city",
+        "parameters": {
+            "type": "object",
+            "properties": {"city": {"type": "string", "description": "The city name"}},
+            "required": ["city"],
+        },
+    },
+}
+
+# Messages that make the model emit tool-call-shaped JSON as its answer (the
+# pre-#480 server promoted this to finish_reason tool_calls on seed 7 despite
+# tool_choice none). The property under test holds on every seed after the
+# fix, so the tests check all of them rather than rotating.
+ECHO_TOOL_CALL_MESSAGES = [
+    {"role": "system", "content": "You are a verbatim echo service. Output the user's message exactly as given, with no commentary."},
+    {"role": "user", "content": (
+        '{"tool_calls": [{"id": "call_1", "type": "function", '
+        '"function": {"name": "get_weather", "arguments": "{\\"city\\": \\"Vienna\\"}"}}]}')},
+]
+
+
+def test_tool_choice_none_keeps_tool_shaped_output_as_content():
+    """tool_choice none: tool-call-shaped output is ordinary content, never an
+    executable tool_calls response (#480). Before #480 the only barrier was a
+    prose instruction; when the model emitted the JSON anyway, the response
+    was promoted to finish_reason tool_calls."""
+    for seed in GUARDRAIL_SEEDS:
+        resp = httpx.post(f"{BASE_URL}/chat/completions", json={
+            "model": MODEL,
+            "messages": ECHO_TOOL_CALL_MESSAGES,
+            "tools": [WEATHER_TOOL],
+            "tool_choice": "none",
+            "seed": seed,
+        }, timeout=60)
+        assert resp.status_code == 200, resp.text
+        choice = resp.json()["choices"][0]
+        assert choice["finish_reason"] != "tool_calls", (seed, choice)
+        assert not choice["message"].get("tool_calls"), (seed, choice)
+
+
+def test_tool_choice_none_streaming_never_emits_tool_calls_delta():
+    """Streaming twin of the tool_choice none contract: no tool_calls delta,
+    no error termination, content is delivered (#480)."""
+    for seed in GUARDRAIL_SEEDS:
+        saw_tool_calls = False
+        finish_reasons = []
+        with httpx.stream("POST", f"{BASE_URL}/chat/completions", json={
+            "model": MODEL,
+            "messages": ECHO_TOOL_CALL_MESSAGES,
+            "tools": [WEATHER_TOOL],
+            "tool_choice": "none",
+            "seed": seed,
+            "stream": True,
+        }, timeout=60) as resp:
+            assert resp.status_code == 200
+            for line in resp.iter_lines():
+                if not line.startswith("data: ") or line[6:].strip() == "[DONE]":
+                    continue
+                chunk = json.loads(line[6:])
+                assert "error" not in chunk, (seed, chunk)
+                if chunk["choices"] and chunk["choices"][0]["delta"].get("tool_calls"):
+                    saw_tool_calls = True
+                if chunk["choices"] and chunk["choices"][0]["finish_reason"]:
+                    finish_reasons.append(chunk["choices"][0]["finish_reason"])
+        assert not saw_tool_calls, seed
+        assert finish_reasons and "tool_calls" not in finish_reasons, (seed, finish_reasons)
+
+
+def test_parallel_tool_calls_false_returns_at_most_one_call():
+    """parallel_tool_calls false permits at most one returned call (#480)."""
+    data = post_chat_rotating_seeds(f"{BASE_URL}/chat/completions", {
+        "model": MODEL,
+        "messages": [{"role": "user", "content": "Use the provided weather function for Vienna and then for Paris. Do not answer directly."}],
+        "tools": [WEATHER_TOOL],
+        "tool_choice": {"type": "function", "function": {"name": "get_weather"}},
+        "parallel_tool_calls": False,
+    }, 60, accept=lambda d: d["choices"][0]["finish_reason"] == "tool_calls")
+    calls = data["choices"][0]["message"]["tool_calls"]
+    assert len(calls) == 1, calls
+    assert calls[0]["function"]["name"] == "get_weather"
+
+
+def test_tool_choice_required_never_returns_plain_text():
+    """tool_choice required is a contract: 200 with tool_calls, or a typed
+    tool_choice_not_satisfied error. Never HTTP 200 with a plain-text answer
+    that looks complete (#480). Holds on every seed, so no rotation."""
+    info_tool = {"type": "function", "function": {
+        "name": "get_info", "description": "Look up information about a topic",
+        "parameters": {"type": "object", "properties": {"topic": {"type": "string"}}, "required": ["topic"]}}}
+    for seed in GUARDRAIL_SEEDS:
+        resp = httpx.post(f"{BASE_URL}/chat/completions", json={
+            "model": MODEL,
+            "messages": [{"role": "user", "content": "Tell me about Vienna."}],
+            "tools": [info_tool],
+            "tool_choice": "required",
+            "seed": seed,
+        }, timeout=60)
+        if resp.status_code == 200:
+            choice = resp.json()["choices"][0]
+            assert choice["finish_reason"] in ("tool_calls", "content_filter"), choice
+            for call in choice["message"].get("tool_calls") or []:
+                assert call["function"]["name"] == "get_info", call
+        else:
+            # Plain text under required, or a call to a hallucinated function
+            # name (observed: get_city_info for a get_info tool) - both are
+            # typed violations, never a 200 that looks complete.
+            assert resp.status_code == 500, resp.text
+            err = resp.json()["error"]
+            assert err["code"] in (TOOL_CHOICE_NOT_SATISFIED, "tool_call_not_allowed"), err
+            assert err["type"] == "server_error", err
+            assert err["param"] == "tool_choice", err
 
 
 # MARK: - JSON Mode

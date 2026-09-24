@@ -328,7 +328,16 @@ func detectAndExecuteMCPTools(
           let toolCalls = ToolCallHandler.detectToolCall(in: content) else {
         return nil
     }
+    return try await executeMCPTools(toolCalls, mcpManager: mcpManager)
+}
 
+/// Execute already-detected tool calls against the MCP manager. The server
+/// path validates the calls against the request's `ToolPolicy` first (#480);
+/// the CLI path feeds detection straight in.
+func executeMCPTools(
+    _ toolCalls: [ParsedToolCall],
+    mcpManager: MCPManager
+) async throws -> MCPExecutionResult {
     var resultParts: [String] = []
     var toolLog: [(name: String, args: String, result: String, isError: Bool)] = []
     for call in toolCalls {
@@ -464,16 +473,19 @@ private func truncatedServerToolResults(
 /// On cap exhaustion any trailing tool-call JSON is stripped so it never leaks to
 /// the HTTP client as `message.content` with `finish_reason: "stop"`.
 func executeMCPToolCallsForServer(
-    in content: String,
+    firstRound: [ParsedToolCall],
     mcpManager: MCPManager?,
     userPrompt: String,
     messages: [OpenAIMessage],
     sessionOptions: SessionOptions,
     options: GenerationOptions
 ) async throws -> (content: String, toolLog: [(name: String, args: String, result: String, isError: Bool)])? {
-    guard let executed = try await detectAndExecuteMCPTools(in: content, mcpManager: mcpManager) else {
+    // `firstRound` is the policy-validated call set for the model's first
+    // response (#480); empty means the model answered in plain text.
+    guard let mcpManager, !firstRound.isEmpty else {
         return nil
     }
+    let executed = try await executeMCPTools(firstRound, mcpManager: mcpManager)
 
     var aggregatedLog = executed.toolLog
     var currentMessages = messages
