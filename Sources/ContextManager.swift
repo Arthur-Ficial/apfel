@@ -93,7 +93,9 @@ enum ContextManager {
             baseEntries.append(.instructions(instr))
         }
 
-        let historyEntries = history.compactMap { historyEntry(for: $0, options: options) }
+        // Tool results resolve their name through the call they answer (#482).
+        let callNames = ToolExchangeGrouping.callNames(in: history)
+        let historyEntries = history.compactMap { historyEntry(for: $0, options: options, callNames: callNames) }
         let finalPromptEntry = makePromptEntry(finalPrompt, options: options)
         let budget = await TokenCounter.shared.inputBudget(reservedForOutput: options.contextConfig.outputReserve)
         guard let entries = await trimHistoryEntriesToBudget(
@@ -101,7 +103,10 @@ enum ContextManager {
             historyEntries: historyEntries,
             finalEntry: finalPromptEntry,
             budget: budget,
-            config: options.contextConfig
+            config: options.contextConfig,
+            // A trailing tool result is answered from its exchange: keep that
+            // exchange whole and in the window (#482).
+            pinLast: conversation.last?.role == "tool"
         ) else {
             throw ApfelError.contextOverflow
         }
@@ -163,7 +168,8 @@ enum ContextManager {
 
     private static func historyEntry(
         for message: OpenAIMessage,
-        options: SessionOptions
+        options: SessionOptions,
+        callNames: [String: String]
     ) -> Transcript.Entry? {
         switch message.role {
         case "user":
@@ -173,7 +179,11 @@ enum ContextManager {
         case "assistant":
             if let calls = message.tool_calls, !calls.isEmpty {
                 let transcriptCalls = calls.compactMap { call -> Transcript.ToolCall? in
-                    guard let arguments = SchemaConverter.makeArguments(call.function.arguments) else {
+                    // Unparseable client-supplied arguments must not drop the
+                    // call and orphan its results (#482): keep it with empty
+                    // arguments instead.
+                    guard let arguments = SchemaConverter.makeArguments(call.function.arguments)
+                            ?? SchemaConverter.makeArguments("{}") else {
                         return nil
                     }
                     return Transcript.ToolCall(
@@ -195,7 +205,7 @@ enum ContextManager {
             let segment = Transcript.TextSegment(content: text)
             let output = Transcript.ToolOutput(
                 id: message.tool_call_id ?? UUID().uuidString,
-                toolName: message.name ?? "tool",
+                toolName: message.tool_call_id.flatMap { callNames[$0] } ?? message.name ?? "tool",
                 segments: [.text(segment)]
             )
             return .toolOutput(output)

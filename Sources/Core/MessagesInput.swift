@@ -43,6 +43,8 @@ public enum MessagesInput {
     }
 
     /// Decode and validate conversation JSON into OpenAI-style messages.
+    /// Throws `MessagesInput.Error` for shape problems and
+    /// `ToolExchangeGrouping.AssociationError` for a tool call/result mismatch.
     public static func decode(_ json: String) throws -> [OpenAIMessage] {
         let data = Data(json.utf8)
         let decoder = JSONDecoder()
@@ -65,6 +67,10 @@ public enum MessagesInput {
         if last.role == "user" {
             let text = (last.textContent ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { throw Error.emptyLastMessage }
+        }
+        // Tool calls and their results must pair up (server parity, #482).
+        if let association = ToolExchangeGrouping.validate(messages) {
+            throw association
         }
         return messages
     }

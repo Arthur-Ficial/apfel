@@ -592,6 +592,8 @@ extension CLIArguments {
                         _ = try MessagesInput.decode(messagesText)
                     } catch let e as MessagesInput.Error {
                         throw CLIParseError("invalid --messages JSON in \(messagesPath): \(e.message)")
+                    } catch let e as ToolExchangeGrouping.AssociationError {
+                        throw CLIParseError("invalid --messages JSON in \(messagesPath): \(e.message)")
                     }
                     result.messagesFromStdin = false
                     result.messagesJSON = messagesText

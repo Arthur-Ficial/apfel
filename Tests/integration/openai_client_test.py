@@ -440,6 +440,63 @@ def test_tool_choice_required_never_returns_plain_text():
             assert err["param"] == "tool_choice", err
 
 
+# MARK: - Complete tool exchanges survive trimming (#482)
+
+def _tool_exchange_history_with_filler(context_window):
+    """Filler sized from the runtime context report (never a window literal),
+    then one complete two-call exchange whose results carry a nonce."""
+    pairs = context_window // 40
+    messages = []
+    for i in range(pairs):
+        messages.append({"role": "user", "content": f"Note number {i}: the quick brown fox jumps over the lazy dog again and again while the river runs quietly past the old mill."})
+        messages.append({"role": "assistant", "content": f"Noted number {i}. The fox, the dog, the river and the mill are all recorded."})
+    messages += [
+        {"role": "user", "content": "What is the secret code? Use the lookup tools and reply with just the code."},
+        {"role": "assistant", "content": None, "tool_calls": [
+            {"id": "call_a", "type": "function", "function": {"name": "lookup_code", "arguments": "{\"part\": 1}"}},
+            {"id": "call_b", "type": "function", "function": {"name": "lookup_code", "arguments": "{\"part\": 2}"}},
+        ]},
+        {"role": "tool", "tool_call_id": "call_b", "content": "second half of the secret code: 4127"},
+        {"role": "tool", "tool_call_id": "call_a", "content": "first half of the secret code: 9385"},
+    ]
+    return messages
+
+
+@pytest.mark.parametrize("strategy", ["oldest-first", "newest-first", "sliding-window"])
+def test_trailing_tool_exchange_survives_trimming(strategy):
+    """Client-supplied history far beyond the window plus a trailing two-call
+    exchange with no redundant names: the exchange is kept whole under every
+    strategy, so the continuation can quote both tool results (#482). Under
+    oldest-first the pre-#482 server dropped the exchange entirely."""
+    health = httpx.get(f"{BASE_URL.replace('/v1', '')}/health", timeout=10).json()
+    window = health["context_window"]
+    payload = {
+        "model": MODEL,
+        "messages": _tool_exchange_history_with_filler(window),
+        "x_context_strategy": strategy,
+        "max_tokens": 64,
+    }
+    if strategy == "sliding-window":
+        payload["x_context_max_turns"] = 3
+    last = None
+    for seed in GUARDRAIL_SEEDS:
+        resp = httpx.post(f"{BASE_URL}/chat/completions", json={**payload, "seed": seed}, timeout=120)
+        last = resp.text[:200]
+        # Observed on macOS 26.5: seed 42 with this exact transcript makes
+        # FoundationModels throw a raw GenerationError (-1) before any output.
+        # That is a model outcome on one trajectory, like a refusal; rotate.
+        if resp.status_code == 500 and "GenerationError" in resp.json()["error"]["message"]:
+            continue
+        assert resp.status_code == 200, f"HTTP {resp.status_code} (seed {seed}): {last}"
+        data = resp.json()
+        content = data["choices"][0]["message"]["content"] or ""
+        if "9385" in content and "4127" in content:
+            assert data["choices"][0]["finish_reason"] in ("stop", "length")
+            assert data["usage"]["prompt_tokens"] <= window
+            return
+    pytest.fail(f"tool results not quoted on any seed {GUARDRAIL_SEEDS}; last: {last!r}")
+
+
 # MARK: - JSON Mode
 
 def test_json_mode():

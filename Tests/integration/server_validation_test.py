@@ -486,3 +486,62 @@ def test_models_advertise_parallel_tool_calls():
     supported = resp.json()["data"][0]["supported_parameters"]
     assert "parallel_tool_calls" in supported, supported
     assert "tool_choice" in supported, supported
+
+
+# ============================================================================
+# #482 - tool calls and their results must pair up
+# ============================================================================
+
+def test_orphan_tool_result_returns_400_with_message_path():
+    """A tool message that answers no tool call is rejected before generation, naming messages[i] (#482)."""
+    resp = _post({
+        "model": MODEL,
+        "messages": [
+            {"role": "user", "content": "hi"},
+            {"role": "tool", "tool_call_id": "call_9", "content": "42"},
+        ],
+    })
+    assert resp.status_code == 400, resp.text
+    err = _assert_openai_error(resp, expected_type="invalid_request_error")
+    assert "messages[1]" in err["message"], err
+    assert "call_9" in err["message"], err
+
+
+def test_tool_call_missing_its_result_returns_400():
+    """An assistant tool_calls message must be followed by a result for every call (#482)."""
+    resp = _post({
+        "model": MODEL,
+        "messages": [
+            {"role": "user", "content": "add"},
+            {"role": "assistant", "content": None, "tool_calls": [
+                {"id": "c1", "type": "function", "function": {"name": "add", "arguments": "{}"}},
+                {"id": "c2", "type": "function", "function": {"name": "add", "arguments": "{}"}},
+            ]},
+            {"role": "tool", "tool_call_id": "c1", "content": "3"},
+            {"role": "user", "content": "and the other?"},
+        ],
+    })
+    assert resp.status_code == 400, resp.text
+    err = _assert_openai_error(resp, expected_type="invalid_request_error")
+    assert "messages[1]" in err["message"] and "c2" in err["message"], err
+
+
+@pytest.mark.model
+def test_trailing_tool_exchange_larger_than_the_window_is_context_overflow():
+    """The exchange that a trailing tool result belongs to is pinned; when it cannot
+    fit the runtime-derived budget the request fails before generation instead of
+    the exchange being silently trimmed away (#482)."""
+    window = httpx.get(f"{BASE_URL}/health", timeout=10).json()["context_window"]
+    huge = "x " * (window * 4)  # far beyond any window at ~1 token per 2 chars
+    resp = _post({
+        "model": MODEL,
+        "messages": [
+            {"role": "user", "content": "fetch it"},
+            {"role": "assistant", "content": None, "tool_calls": [
+                {"id": "c1", "type": "function", "function": {"name": "fetch", "arguments": "{}"}},
+            ]},
+            {"role": "tool", "tool_call_id": "c1", "content": huge},
+        ],
+    }, timeout=60)
+    assert resp.status_code == 400, resp.text
+    err = _assert_openai_error(resp, expected_type="context_length_exceeded")

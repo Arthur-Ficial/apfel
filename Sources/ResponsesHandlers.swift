@@ -243,12 +243,20 @@ private func responsesNonStreamingResponse(
             output = [.message(id: "msg_\(UUID().uuidString.prefix(12).lowercased())",
                                text: content, refusal: nil, status: "completed")]
         } else {
-            let outcome = try await withRetry(maxRetries: retryMax) {
+            var outcome = try await withRetry(maxRetries: retryMax) {
                 try await collectStream(session, prompt: prompt, options: genOpts)
             }
-            // Hold detected calls to the request's tool contract (#480).
+            // Hold detected calls to the request's tool contract (#480), with
+            // one bounded repair round before a violation becomes an error.
+            var verdict = policy.evaluate(ToolCallHandler.detectToolCall(in: outcome.content))
+            if case .violation(let violation) = verdict {
+                outcome = try await withRetry(maxRetries: retryMax) {
+                    try await collectStream(session, prompt: policy.repairPrompt(for: violation), options: genOpts)
+                }
+                verdict = policy.evaluate(ToolCallHandler.detectToolCall(in: outcome.content))
+            }
             let judged: [ParsedToolCall]?
-            switch policy.evaluate(ToolCallHandler.detectToolCall(in: outcome.content)) {
+            switch verdict {
             case .violation(let violation):
                 return toolPolicyFailure(violation, stream: false, requestBody: requestBody, events: events)
             case .content:

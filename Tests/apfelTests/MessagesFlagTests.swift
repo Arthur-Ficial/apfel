@@ -92,6 +92,18 @@ func runMessagesFlagTests() {
         try assertEqual(msgs[2].role, "tool")
     }
 
+    test("orphan tool result throws an AssociationError with the message path (server parity, #482)") {
+        do {
+            _ = try MessagesInput.decode("""
+            [{"role":"user","content":"x"},{"role":"tool","content":"2","tool_call_id":"c9"}]
+            """)
+            try assertTrue(false, "should have thrown")
+        } catch let e as ToolExchangeGrouping.AssociationError {
+            try assertEqual(e.index, 1)
+            try assertTrue(e.message.contains("messages[1]"), e.message)
+        }
+    }
+
     // ========================================================================
     // MARK: - CLIArguments parse behavior
     // ========================================================================

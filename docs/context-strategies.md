@@ -22,6 +22,15 @@ apfel --chat --context-status                    # print context fill after each
 | `summarize` | Old turns compressed into a short summary by the on-device model, then appended as context. | Long sessions where you want continuity without losing old content entirely. Costs one extra on-device inference per rotation. |
 | `strict` | Everything. Errors with `contextOverflow` when the window fills. | CI, scripts, batch pipelines - fail loud instead of silently dropping content. |
 
+## Tool exchanges are never split
+
+An assistant `tool_calls` message and the `tool` messages that answer it are one indivisible turn for every strategy: trimming keeps the whole exchange or drops the whole exchange, never an orphaned call or an unexplained result (#482). Consequences:
+
+- `--context-max-turns N` / `x_context_max_turns` counts a complete tool exchange as one turn, the same as a single user or assistant message.
+- When the conversation ends with a `tool` message, the exchange it belongs to is pinned in the window so the model can answer from it. If that exchange alone does not fit the runtime-derived budget, the request fails with the context-overflow error (400 `context_length_exceeded` on the server, exit 3 on the CLI) rather than silently dropping the results.
+- `summarize` summarizes whole exchanges and describes the tool calls and results in the summary input; the summary is prose and never re-emits an executable call.
+- A tool result that answers no call, a call with a missing result, a duplicate result, or a `tool` message without `tool_call_id` is rejected before generation with the offending `messages[i]` path (400 on the server, exit 2 for `--messages`), matching the OpenAI API.
+
 ## Output token reserve
 
 `--context-output-reserve N` (default `512`) reserves `N` tokens of the window for the model's response. The remaining `4096 - N` tokens are available for input + history (4096 is the macOS 26 window, read dynamically at runtime; on macOS 27 it is `8192 - N`). Lower the reserve if your prompts are long and your answers are short, raise it if answers get cut off.

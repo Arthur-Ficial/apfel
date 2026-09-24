@@ -74,6 +74,11 @@ public struct ToolPolicy: Sendable, Equatable {
 
         public static let notSatisfiedCode = "tool_choice_not_satisfied"
         public static let notAllowedCode = "tool_call_not_allowed"
+
+        public init(code: String, message: String) {
+            self.code = code
+            self.message = message
+        }
     }
 
     /// The verdict for one model response.
@@ -149,6 +154,26 @@ public struct ToolPolicy: Sendable, Equatable {
         case .auto, .required:
             return tools
         }
+    }
+
+    /// The correction sent back to the model for one bounded repair round
+    /// after a violation (#480). It restates what went wrong and what the
+    /// request allows; the caller never executes a tool before the verdict,
+    /// so repair can never re-run one.
+    public func repairPrompt(for violation: Violation) -> String {
+        let names = allowedNames.joined(separator: ", ")
+        let instruction: String
+        switch mode {
+        case .specific(let name):
+            instruction = "Call the function '\(name)' now, using the exact tool-call JSON format, and nothing else."
+        case .required:
+            instruction = "Call one of the available functions (\(names)) now, using the exact tool-call JSON format, and nothing else."
+        case .auto:
+            instruction = "Either call one of the available functions (\(names)) using the exact tool-call JSON format, or answer the user directly in plain text."
+        case .disabled:
+            instruction = "Answer the user directly in plain text."
+        }
+        return "Your previous reply did not follow the tool-calling rules: \(violation.message) \(instruction)"
     }
 
     /// Judge the calls detected in one model response.
