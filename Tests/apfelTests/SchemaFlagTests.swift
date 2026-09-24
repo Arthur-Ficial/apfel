@@ -100,6 +100,38 @@ func runSchemaFlagTests() {
         }
     }
 
+    test("--schema with a $ref/$defs schema is accepted at parse time (#479)") {
+        let args = try CLIArguments.parse(["--schema", "order.schema.json", "x"], readFile: { _ in
+            ##"{"type":"object","$defs":{"A":{"type":"object","properties":{"c":{"type":"string"}}}},"properties":{"a":{"$ref":"#/$defs/A"}}}"##
+        })
+        try assertNotNil(args.schemaJSON)
+    }
+
+    test("--schema with an unrepresentable constraint is a usage error naming keyword, path and file (#479)") {
+        do {
+            _ = try CLIArguments.parse(["--schema", "strict.schema.json", "x"], readFile: { _ in
+                ##"{"type":"object","properties":{"code":{"type":"string","pattern":"^[A-Z]{3}$"}}}"##
+            })
+            try assertTrue(false, "should have thrown")
+        } catch let e as CLIParseError {
+            try assertTrue(e.message.contains("strict.schema.json"), e.message)
+            try assertTrue(e.message.contains("pattern"), e.message)
+            try assertTrue(e.message.contains("#/properties/code"), e.message)
+        }
+    }
+
+    test("--schema with an external $ref is a usage error that says apfel does not fetch it (#479)") {
+        do {
+            _ = try CLIArguments.parse(["--schema", "s.json", "x"], readFile: { _ in
+                ##"{"type":"object","properties":{"a":{"$ref":"https://example.com/a.json"}}}"##
+            })
+            try assertTrue(false, "should have thrown")
+        } catch let e as CLIParseError {
+            try assertTrue(e.message.contains("https://example.com/a.json"), e.message)
+            try assertTrue(e.message.lowercased().contains("local"), e.message)
+        }
+    }
+
     test("--schema - (stdin) is rejected") {
         do {
             _ = try CLIArguments.parse(["--schema", "-", "x"])

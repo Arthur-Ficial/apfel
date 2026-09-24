@@ -413,3 +413,103 @@ def test_243_json_schema_number_allows_fractional():
         f"a JSON Schema 'number' must permit a fractional value; 3 attempts all "
         f"returned whole numbers, last was {last_price!r} (Int mapping would make "
         "fractions unreachable)")
+
+
+# ---------------------------------------------------------------------------
+# #479 references, bounds and duplicate leaf names - output must conform to the
+# schema as the caller wrote it
+# ---------------------------------------------------------------------------
+
+def test_479_duplicate_leaf_names_keep_both_shapes():
+    """Two differently shaped nested objects that share a property name.
+    FoundationModels hoists named nodes into $defs by name; before #479 apfel
+    named both `contact`, the framework merged them, and `company.contact` was
+    generated with the person shape. Validate against the original schema."""
+    from jsonschema import validate
+    schema = {
+        "type": "object",
+        "properties": {
+            "person": {
+                "type": "object",
+                "properties": {"contact": {
+                    "type": "object",
+                    "properties": {"email": {"type": "string"}},
+                    "required": ["email"], "additionalProperties": False}},
+                "required": ["contact"], "additionalProperties": False,
+            },
+            "company": {
+                "type": "object",
+                "properties": {"contact": {
+                    "type": "object",
+                    "properties": {"phone": {"type": "string"}},
+                    "required": ["phone"], "additionalProperties": False}},
+                "required": ["contact"], "additionalProperties": False,
+            },
+        },
+        "required": ["person", "company"],
+        "additionalProperties": False,
+    }
+    resp = _chat({
+        "model": MODEL,
+        "messages": [{"role": "user", "content":
+                      "Alice (alice@example.com) works at Acme, whose phone is +43 1 234 5678."}],
+        "response_format": {"type": "json_schema", "json_schema": {"name": "Contacts", "schema": schema, "strict": True}},
+    })
+    assert resp.status_code == 200, resp.text
+    data = json.loads(resp.json()["choices"][0]["message"]["content"])
+    validate(instance=data, schema=schema)
+    assert "phone" in data["company"]["contact"], data
+
+
+def test_479_numeric_and_array_bounds_are_enforced():
+    """Bounds reach the model as generation guides: a rating asked for as
+    "100 out of 10" must land in 1..5 and a tag list in 2..3 items."""
+    schema = {
+        "type": "object",
+        "properties": {
+            "rating": {"type": "integer", "minimum": 1, "maximum": 5},
+            "tags": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 3},
+        },
+        "required": ["rating", "tags"],
+        "additionalProperties": False,
+    }
+    for _ in range(3):
+        resp = _chat({
+            "model": MODEL,
+            "messages": [{"role": "user", "content":
+                          "Review: the pizza was 100 out of 10, best ever. Return the rating and one tag."}],
+            "response_format": {"type": "json_schema", "json_schema": {"name": "Review", "schema": schema, "strict": True}},
+        })
+        assert resp.status_code == 200, resp.text
+        data = json.loads(resp.json()["choices"][0]["message"]["content"])
+        assert 1 <= data["rating"] <= 5, data
+        assert 2 <= len(data["tags"]) <= 3, data
+
+
+def test_479_shared_ref_and_nullable_ref_generate_full_objects():
+    """A $ref used twice (once nullable) resolves to the definition's
+    properties in the output rather than to an empty object."""
+    from jsonschema import validate
+    schema = {
+        "type": "object",
+        "$defs": {"Address": {
+            "type": "object",
+            "properties": {"street": {"type": "string"}, "city": {"type": "string"}},
+            "required": ["street", "city"], "additionalProperties": False}},
+        "properties": {
+            "billing": {"$ref": "#/$defs/Address"},
+            "shipping": {"anyOf": [{"$ref": "#/$defs/Address"}, {"type": "null"}]},
+        },
+        "required": ["billing", "shipping"],
+        "additionalProperties": False,
+    }
+    resp = _chat({
+        "model": MODEL,
+        "messages": [{"role": "user", "content":
+                      "Bill to 12 Main Street, Vienna and ship to 4 Harbour Road, Hamburg."}],
+        "response_format": {"type": "json_schema", "json_schema": {"name": "Order", "schema": schema, "strict": True}},
+    })
+    assert resp.status_code == 200, resp.text
+    data = json.loads(resp.json()["choices"][0]["message"]["content"])
+    validate(instance=data, schema=schema)
+    assert data["billing"]["city"], data

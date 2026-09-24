@@ -545,3 +545,122 @@ def test_trailing_tool_exchange_larger_than_the_window_is_context_overflow():
     }, timeout=60)
     assert resp.status_code == 400, resp.text
     err = _assert_openai_error(resp, expected_type="context_length_exceeded")
+
+
+# ---------------------------------------------------------------------------
+# #479 - JSON Schema references and constraints are honoured or rejected, never
+# silently dropped. Every case here fails before the model is touched.
+# ---------------------------------------------------------------------------
+
+def _json_schema_request(schema, stream=False):
+    return {
+        "model": MODEL,
+        "messages": [{"role": "user", "content": "extract"}],
+        "stream": stream,
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {"name": "Thing", "schema": schema, "strict": True},
+        },
+    }
+
+
+def test_json_schema_unsupported_keyword_returns_400_naming_keyword_and_path():
+    """A validation keyword with no faithful mapping is an honest 400 that
+    points at the node to fix, not a silently weakened contract (#479)."""
+    schema = {
+        "type": "object",
+        "properties": {"price": {"type": "number", "multipleOf": 0.01}},
+        "required": ["price"],
+        "additionalProperties": False,
+    }
+    resp = _post(_json_schema_request(schema))
+    assert resp.status_code == 400, resp.text
+    err = _assert_openai_error(resp, expected_type="invalid_request_error")
+    assert "multipleOf" in err["message"], err
+    assert "#/properties/price" in err["message"], err
+
+
+def test_json_schema_unsupported_keyword_with_stream_is_still_a_400():
+    """The rejection happens before any SSE frame is written (#479)."""
+    schema = {"type": "object", "properties": {"code": {"type": "string", "pattern": "^[A-Z]+$"}}}
+    resp = _post(_json_schema_request(schema, stream=True))
+    assert resp.status_code == 400, resp.text
+    assert "text/event-stream" not in resp.headers.get("content-type", ""), resp.headers
+    err = _assert_openai_error(resp, expected_type="invalid_request_error")
+    assert "pattern" in err["message"] and "#/properties/code" in err["message"], err
+
+
+def test_json_schema_external_ref_returns_400_and_is_never_fetched():
+    schema = {"type": "object", "properties": {"a": {"$ref": "https://example.invalid/a.json"}}}
+    resp = _post(_json_schema_request(schema))
+    assert resp.status_code == 400, resp.text
+    err = _assert_openai_error(resp, expected_type="invalid_request_error")
+    assert "https://example.invalid/a.json" in err["message"], err
+    assert "local" in err["message"].lower(), err
+
+
+def test_json_schema_unresolved_ref_returns_400():
+    schema = {"type": "object", "$defs": {}, "properties": {"a": {"$ref": "#/$defs/Missing"}}}
+    resp = _post(_json_schema_request(schema))
+    assert resp.status_code == 400, resp.text
+    err = _assert_openai_error(resp, expected_type="invalid_request_error")
+    assert "#/$defs/Missing" in err["message"], err
+
+
+def test_json_schema_recursive_ref_returns_400():
+    schema = {
+        "type": "object",
+        "$defs": {"Node": {"type": "object", "properties": {"next": {"$ref": "#/$defs/Node"}}}},
+        "properties": {"head": {"$ref": "#/$defs/Node"}},
+    }
+    resp = _post(_json_schema_request(schema))
+    assert resp.status_code == 400, resp.text
+    err = _assert_openai_error(resp, expected_type="invalid_request_error")
+    assert "recursive" in err["message"].lower(), err
+
+
+def test_json_schema_contradictory_bounds_return_400():
+    schema = {"type": "object", "properties": {"n": {"type": "integer", "minimum": 5, "maximum": 1}}}
+    resp = _post(_json_schema_request(schema))
+    assert resp.status_code == 400, resp.text
+    err = _assert_openai_error(resp, expected_type="invalid_request_error")
+    assert "minimum" in err["message"] and "#/properties/n" in err["message"], err
+
+
+def test_json_schema_required_undeclared_property_returns_400():
+    schema = {"type": "object", "properties": {"a": {"type": "string"}}, "required": ["a", "ghost"]}
+    resp = _post(_json_schema_request(schema))
+    assert resp.status_code == 400, resp.text
+    err = _assert_openai_error(resp, expected_type="invalid_request_error")
+    assert "ghost" in err["message"], err
+
+
+def test_responses_json_schema_unsupported_keyword_returns_400():
+    """The Responses surface uses the same compiler and the same rejection (#479)."""
+    resp = _responses({
+        "model": MODEL,
+        "input": "extract",
+        "text": {"format": {
+            "type": "json_schema", "name": "Thing",
+            "schema": {"type": "object", "properties": {"tags": {"type": "array", "items": {"type": "string"}, "uniqueItems": True}}},
+        }},
+    })
+    assert resp.status_code == 400, resp.text
+    err = _assert_openai_error(resp, expected_type="invalid_request_error")
+    assert "uniqueItems" in err["message"] and "#/properties/tags" in err["message"], err
+
+
+def test_tool_parameters_with_unsupported_keyword_are_not_a_400():
+    """Tool schemas keep the documented fallback: an unconvertible tool is
+    injected as text, not rejected, so a client with one exotic tool still
+    works (docs/tool-calling-guide.md). Only the request shape is asserted
+    here; the model is not needed to prove the request is accepted."""
+    resp = _post({
+        "model": MODEL,
+        "messages": [{"role": "user", "content": "hi"}],
+        "max_tokens": 1,
+        "tools": [{"type": "function", "function": {"name": "f", "parameters": {
+            "type": "object", "properties": {"x": {"type": "string", "pattern": "^a"}}}}}],
+        "tool_choice": "none",
+    }, timeout=120)
+    assert resp.status_code != 400, resp.text

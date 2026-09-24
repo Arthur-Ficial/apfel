@@ -1018,3 +1018,45 @@ def test_second_system_message_reaches_the_model():
         f"a ~400-word second system message added {two - one} prompt tokens; "
         "it is still being discarded (#390)"
     )
+
+
+def test_chat_completions_parse_nested_pydantic_models():
+    """openai-python `.parse()` with nested Pydantic models emits $defs/$ref,
+    `additionalProperties: false`, numeric bounds and array length bounds.
+    Pydantic re-validates the parsed object, so a bound the model violated or
+    a reference that resolved to an empty object fails here (#479)."""
+    from typing import List, Optional
+    from pydantic import BaseModel, Field
+
+    class Address(BaseModel):
+        street: str
+        city: str
+
+    class Item(BaseModel):
+        name: str
+        qty: int = Field(ge=1, le=100)
+
+    class Order(BaseModel):
+        billing: Address
+        shipping: Optional[Address] = None
+        items: List[Item] = Field(min_length=1, max_length=5)
+
+    last_error = None
+    for seed in GUARDRAIL_SEEDS:
+        try:
+            completion = client.chat.completions.parse(
+                model=MODEL,
+                messages=[{"role": "user", "content":
+                           "Order: two notebooks and one pen, billed to 12 Main Street, Vienna, shipped to 4 Harbour Road, Hamburg."}],
+                response_format=Order,
+                seed=seed,
+            )
+        except Exception as exc:  # noqa: BLE001 - SDK validation error is the signal
+            last_error = exc
+            continue
+        order = completion.choices[0].message.parsed
+        assert isinstance(order, Order), completion
+        assert order.billing.city, order
+        assert 1 <= len(order.items) <= 5, order
+        return
+    pytest.fail(f"nested Pydantic parse failed on every seed {GUARDRAIL_SEEDS}: {last_error!r}")

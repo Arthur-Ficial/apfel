@@ -987,15 +987,8 @@ extension CLIArguments {
 
     /// Human-friendly message for a `--schema` validation failure (#361).
     static func schemaErrorMessage(_ error: SchemaParser.Error) -> String {
-        switch error {
-        case .invalidJSON:
-            return "not valid JSON"
-        case .unsupportedType(let t):
-            return "unsupported type \"\(t)\" (supported: object, string, integer, number, boolean, array)"
-        case .missingArrayItems:
-            return "array schema is missing \"items\""
-        case .invalidProperty(let p):
-            return "property \"\(p)\" is not a schema object"
-        }
+        // One wording for every surface: the same text is the 400 body on the
+        // server and the exit-2 message here (#479).
+        error.description
     }
 }

@@ -21,9 +21,12 @@ apfel converts OpenAI-format tool definitions into two paths:
    via FoundationModels' `Transcript.ToolDefinition` API. The model outputs structured
    JSON tool calls natively.
 
-2. **Fallback path:** If schema conversion fails (unsupported types), the tool definition
-   is injected into the system prompt as text. The model is instructed to output a specific
-   JSON format, which apfel detects post-hoc via `ToolCallHandler.detectToolCall()`.
+2. **Fallback path:** If schema conversion fails (an unsupported type, or a validation
+   keyword the on-device model cannot enforce - see
+   [docs/openai-api-compatibility.md#json-schema-support](openai-api-compatibility.md#json-schema-support)),
+   the tool definition is injected into the system prompt as text. The model is instructed
+   to output a specific JSON format, which apfel detects post-hoc via
+   `ToolCallHandler.detectToolCall()`.
 
 Detection handles: clean JSON, markdown-wrapped ```` ```json ``` ```` blocks, and JSON
 after preamble text. Both paths produce identical OpenAI-compatible output.

@@ -94,6 +94,7 @@ suite("ModelAvailabilityTests") { runModelAvailabilityTests() }
 suite("CLIErrorsTests") { runCLIErrorsTests() }
 suite("CLIValidateTests") { runCLIValidateTests() }
 suite("SchemaParserTests") { runSchemaParserTests() }
+suite("SchemaReferencesAndBoundsTests") { runSchemaReferencesAndBoundsTests() }
 suite("LRUCacheTests") { runLRUCacheTests() }
 suite("FinishReasonResolverTests") { runFinishReasonResolverTests() }
 suite("StreamErrorResolverTests") { runStreamErrorResolverTests() }
