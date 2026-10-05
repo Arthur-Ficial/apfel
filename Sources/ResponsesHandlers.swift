@@ -294,9 +294,11 @@ private func responsesNonStreamingResponse(
         let classified = ApfelError.classify(error)
         if case .refusal(let explanation) = classified {
             // Wire parity with chat: a refusal is a 200 with a refusal part.
-            // A thrown refusal carries no runtime-reported usage: count.
-            let refusalPromptTokens = await promptTokens.resolve()
-            let completionTokens = await TokenCounter.shared.count(explanation)
+            // A thrown refusal carries no runtime-reported usage for its own
+            // round, but prior completed rounds may have reported on macOS 27+ (#516).
+            let roundsSum = TokenUsage.sum(usageRounds)
+            let refusalPromptTokens = roundsSum?.promptTokens ?? (await promptTokens.resolve())
+            let completionTokens = (roundsSum?.completionTokens ?? 0) + await TokenCounter.shared.count(explanation)
             let envelope = echo.envelope(
                 id: id, created: created, status: "completed",
                 output: [.message(id: "msg_\(UUID().uuidString.prefix(12).lowercased())",

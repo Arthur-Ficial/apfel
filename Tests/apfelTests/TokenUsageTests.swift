@@ -57,4 +57,27 @@ func runTokenUsageTests() {
         let b = TokenUsage(promptTokens: 10, completionTokens: 20, cachedPromptTokens: 30)
         try assertEqual(TokenUsage.sum([a, b]), TokenUsage.sum([b, a]))
     }
+
+    test("sum folds repair-round usage for refusal accounting (#516)") {
+        let firstRound = TokenUsage(promptTokens: 60, completionTokens: 25, cachedPromptTokens: 10)
+        let repairRound = TokenUsage(promptTokens: 110, completionTokens: 18, cachedPromptTokens: 60)
+        let roundsSum = TokenUsage.sum([firstRound, repairRound])!
+        try assertEqual(roundsSum.promptTokens, 170)
+        try assertEqual(roundsSum.completionTokens, 43)
+        try assertEqual(roundsSum.cachedPromptTokens, 70)
+        let refusalCounted = 8
+        let totalCompletion = roundsSum.completionTokens + refusalCounted
+        try assertEqual(totalCompletion, 51)
+    }
+
+    test("nil sum preserves counted-path fallback for refusal (#516)") {
+        let roundsSum = TokenUsage.sum([])
+        try assertNil(roundsSum)
+        let countedPrompt = 14
+        let promptAdjustment = 30
+        let fallbackPrompt = roundsSum?.promptTokens ?? (countedPrompt + promptAdjustment)
+        try assertEqual(fallbackPrompt, 44)
+        let fallbackCompletion = (roundsSum?.completionTokens ?? 0) + 8
+        try assertEqual(fallbackCompletion, 8)
+    }
 }
