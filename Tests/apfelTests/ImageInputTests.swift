@@ -62,6 +62,25 @@ func runImageInputTests() {
         try assertEqual(parsed.mediaType, "image/jpeg")
     }
 
+    // A media type whose lowercase form has a different UTF-8 length (capital
+    // sharp S -> "ß", dotted capital I -> "i̇") must be rejected, never crash:
+    // mixing a String.Index from the original into the lowercased copy was a
+    // remote server crash (pre-release review of #510).
+    test("parseDataURL rejects non-ASCII media types without crashing") {
+        for url in ["data:\u{1E9E};base64,QUJD", "data:" + String(repeating: "\u{1E9E}", count: 2000) + ";base64,QUJD", "data:\u{0130}mage/png;base64,QUJD"] {
+            guard case .failure = ImageInput.parseDataURL(url) else {
+                throw TestFailure("expected a rejection for \(url.prefix(20))")
+            }
+        }
+    }
+
+    test("unsupported media type echo in the error message is capped at 64 characters") {
+        let url = "data:" + String(repeating: "x", count: 500) + ";base64,QUJD"
+        guard case .failure(let f) = ImageInput.parseDataURL(url) else { throw TestFailure("expected failure") }
+        try assertTrue(f.message.count < 200, "message too long: \(f.message.count)")
+        try assertTrue(f.message.contains("..."))
+    }
+
     // MARK: parseDataURL — rejections
 
     test("parseDataURL rejects http and https URLs (on-device: no fetching)") {

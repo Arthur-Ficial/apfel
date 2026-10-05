@@ -66,31 +66,6 @@ public enum UnsupportedChatParameter: String, Sendable, Equatable, Hashable, Cus
         return nil
     }
 
-    /// Image-part checks under the `.dataURL` policy: image parts only in
-    /// `user` messages, every `image_url` a well-formed base64 data URL of
-    /// an accepted media type under the size cap (#510).
-    private static func validateImageParts(
-        _ messages: [OpenAIMessage],
-        maxBase64Bytes: Int
-    ) -> ChatRequestValidationFailure? {
-        for message in messages {
-            guard case .parts(let parts) = message.content else { continue }
-            let imageParts = parts.filter { $0.type == "image_url" }
-            guard !imageParts.isEmpty else { continue }
-            guard message.role == "user" else {
-                return .imagePartInRole(message.role)
-            }
-            for part in imageParts {
-                guard let payload = part.image_url, !payload.url.isEmpty else {
-                    return .imageInput(.missingURL)
-                }
-                if case .failure(let failure) = ImageInput.parseDataURL(payload.url, maxBase64Bytes: maxBase64Bytes) {
-                    return .imageInput(failure)
-                }
-            }
-        }
-        return nil
-    }
 }
 
 /// Stable validation failures for OpenAI-compatible chat-completions requests.

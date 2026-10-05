@@ -74,7 +74,9 @@ public enum ImageInput {
             case .notBase64:
                 return "image data URLs must be base64-encoded (data:image/png;base64,...)."
             case .unsupportedMediaType(let type):
-                return "unsupported image media type '\(type)'. Supported: \(ImageInput.allowedMediaTypes.joined(separator: ", "))."
+                // Attacker-controlled text: never echo more than 64 characters.
+                let shown = type.count > 64 ? String(type.prefix(64)) + "..." : type
+                return "unsupported image media type '\(shown)'. Supported: \(ImageInput.allowedMediaTypes.joined(separator: ", "))."
             case .invalidBase64:
                 return "the image data URL payload is not valid base64."
             case .tooLarge(let limit):
@@ -119,7 +121,10 @@ public enum ImageInput {
         guard let comma = trimmed.firstIndex(of: ",") else {
             return .failure(.notBase64)
         }
-        let header = lowered[lowered.index(lowered.startIndex, offsetBy: "data:".count)..<comma]
+        // Slice `trimmed` with `trimmed`'s own index, then lowercase the
+        // slice: lowercasing can change UTF-8 length ("\u{1E9E}" -> "ß"), so
+        // an index from one string is not valid in the other.
+        let header = trimmed[trimmed.index(trimmed.startIndex, offsetBy: "data:".count)..<comma].lowercased()
         let headerFields = header.split(separator: ";").map(String.init)
         guard headerFields.contains("base64") else {
             return .failure(.notBase64)
