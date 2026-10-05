@@ -566,12 +566,14 @@ func executeMCPToolCallsForServer(
     messages: [OpenAIMessage],
     sessionOptions: SessionOptions,
     options: GenerationOptions
-) async throws -> (content: String, toolLog: [(name: String, args: String, result: String, isError: Bool)])? {
+) async throws -> (content: String, toolLog: [(name: String, args: String, result: String, isError: Bool)], usage: [TokenUsage])? {
     // `firstRound` is the policy-validated call set for the model's first
     // response (#480); empty means the model answered in plain text.
     guard let mcpManager, !firstRound.isEmpty else {
         return nil
     }
+    // Runtime-reported usage per follow-up model call (macOS 27+; empty on 26).
+    var usageRounds: [TokenUsage] = []
     let executed = try await executeMCPTools(firstRound, mcpManager: mcpManager)
 
     var aggregatedLog = executed.toolLog
@@ -616,7 +618,11 @@ func executeMCPToolCallsForServer(
             jsonMode: false,
             toolChoice: nil
         )
-        finalContent = try await followUpSession.respond(to: followUpPrompt, options: options).content
+        let followUpResponse = try await followUpSession.respond(to: followUpPrompt, options: options)
+        finalContent = followUpResponse.content
+        if let roundUsage = reportedUsage(of: followUpResponse) {
+            usageRounds.append(roundUsage)
+        }
 
         // The re-prompt answer may itself request another tool call. Execute and
         // re-prompt again with a hard cap so a model that keeps emitting
@@ -635,7 +641,7 @@ func executeMCPToolCallsForServer(
     // instead of stripping the JSON and returning a fragment as success (#435).
     try ToolCallHandler.ensureToolLoopCompleted(in: finalContent)
 
-    return (content: finalContent, toolLog: aggregatedLog)
+    return (content: finalContent, toolLog: aggregatedLog, usage: usageRounds)
 }
 
 private func appendExecutedToolResults(
@@ -678,16 +684,18 @@ private func appendExecutedToolResults(
 ///     after producing content): graceful `.length`. Prompt-side overflow
 ///     (no content produced before the throw) still throws.
 ///
-/// - Returns: A `StreamOutcome` carrying the accumulated content and the
-///   resolved finish reason.
+/// - Returns: A `GenerationOutcome` carrying the accumulated content, the
+///   resolved finish reason, and the runtime-reported usage when the SDK
+///   provides it (macOS 27+; nil on macOS 26).
 func collectStream(
     _ session: LanguageModelSession,
     prompt: String,
     sink: StreamPrintSink? = nil,
     options: GenerationOptions = GenerationOptions()
-) async throws -> StreamOutcome {
+) async throws -> GenerationOutcome {
     let stream = session.streamResponse(to: prompt, options: options)
     var prev = ""
+    var reported: TokenUsage? = nil
     do {
         for try await snapshot in stream {
             let content = snapshot.content
@@ -699,22 +707,39 @@ func collectStream(
                 await sink.feed(cumulative: content)
             }
             prev = content
+            reported = reportedUsage(of: snapshot) ?? reported
         }
-        let completionTokens = await TokenCounter.shared.count(prev)
+        // Completion tokens for the finish-reason decision: the runtime's own
+        // number when reported (macOS 27+), else one tokenizer count (macOS 26).
+        let completionTokens: Int
+        if let reported {
+            completionTokens = reported.completionTokens
+        } else {
+            completionTokens = await TokenCounter.shared.count(prev)
+        }
         let reason = FinishReasonResolver.resolve(
             hasToolCalls: false,
             completionTokens: completionTokens,
             maxTokens: options.maximumResponseTokens
         )
-        return StreamOutcome(content: prev, finishReason: reason)
+        return GenerationOutcome(content: prev, finishReason: reason, usage: reported)
     } catch {
         let classified = ApfelError.classify(error)
         switch StreamErrorResolver.resolve(prev: prev, error: classified) {
         case .truncated(let content):
-            return StreamOutcome(content: content, finishReason: .length)
+            // The last snapshot's reported usage prices the truncated content.
+            return GenerationOutcome(content: content, finishReason: .length, usage: reported)
         case .fatal(let err):
             throw err
         }
     }
+}
+
+/// Outcome of one streamed model call: content, finish reason, and the
+/// runtime-reported usage when the SDK provides it (macOS 27+; nil on 26).
+struct GenerationOutcome: Sendable {
+    let content: String
+    let finishReason: FinishReason
+    let usage: TokenUsage?
 }
 

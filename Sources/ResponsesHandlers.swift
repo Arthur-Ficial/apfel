@@ -188,7 +188,9 @@ func handleResponses(_ request: Request, context: some RequestContext) async thr
     }
 
     let genOpts = makeGenerationOptions(sessionOpts)
-    let promptTokens = await TokenCounter.shared.count(
+    // Prompt tokens: counted up front on macOS 26; deferred on macOS 27, where
+    // the response itself reports input tokens (#510, #504).
+    let promptTokens = await PromptTokens.make(
         entries: sessionInputEntries(builtEntries: inputEntries, finalPrompt: finalPrompt, options: sessionOpts))
     let requestId = "resp_\(UUID().uuidString.prefix(12).lowercased())"
     let created = Int(Date().timeIntervalSince1970)
@@ -223,22 +225,27 @@ private func responsesNonStreamingResponse(
     id: String,
     created: Int,
     genOpts: GenerationOptions,
-    promptTokens: Int,
+    promptTokens: PromptTokens,
     echo: ResponsesEcho,
     requestBody: String?,
     events: [String]
 ) async throws -> (response: Response, trace: ChatRequestTrace) {
     let retryMax = serverState.config.retryEnabled ? serverState.config.retryCount : 0
 
+    // Runtime-reported usage per model call (macOS 27+; empty on macOS 26).
+    var usageRounds: [TokenUsage] = []
     var output: [ResponsesOutputItem] = []
     var deliveredText = ""
     var status = "completed"
     var incompleteReason: String?
     do {
         if let schema {
-            let content = try await withRetry(maxRetries: retryMax) {
-                try await session.respond(to: prompt, schema: schema, options: genOpts).content.jsonString
+            let generated = try await withRetry(maxRetries: retryMax) { () -> (content: String, usage: TokenUsage?) in
+                let result = try await session.respond(to: prompt, schema: schema, options: genOpts)
+                return (content: result.content.jsonString, usage: reportedUsage(of: result))
             }
+            let content = generated.content
+            if let roundUsage = generated.usage { usageRounds.append(roundUsage) }
             deliveredText = content
             output = [.message(id: "msg_\(UUID().uuidString.prefix(12).lowercased())",
                                text: content, refusal: nil, status: "completed")]
@@ -246,6 +253,7 @@ private func responsesNonStreamingResponse(
             var outcome = try await withRetry(maxRetries: retryMax) {
                 try await collectStream(session, prompt: prompt, options: genOpts)
             }
+            if let roundUsage = outcome.usage { usageRounds.append(roundUsage) }
             // Hold detected calls to the request's tool contract (#480), with
             // one bounded repair round before a violation becomes an error.
             var verdict = policy.evaluate(ToolCallHandler.detectToolCall(in: outcome.content))
@@ -253,6 +261,7 @@ private func responsesNonStreamingResponse(
                 outcome = try await withRetry(maxRetries: retryMax) {
                     try await collectStream(session, prompt: policy.repairPrompt(for: violation), options: genOpts)
                 }
+                if let roundUsage = outcome.usage { usageRounds.append(roundUsage) }
                 verdict = policy.evaluate(ToolCallHandler.detectToolCall(in: outcome.content))
             }
             let judged: [ParsedToolCall]?
@@ -285,15 +294,17 @@ private func responsesNonStreamingResponse(
         let classified = ApfelError.classify(error)
         if case .refusal(let explanation) = classified {
             // Wire parity with chat: a refusal is a 200 with a refusal part.
+            // A thrown refusal carries no runtime-reported usage: count.
+            let refusalPromptTokens = await promptTokens.resolve()
             let completionTokens = await TokenCounter.shared.count(explanation)
             let envelope = echo.envelope(
                 id: id, created: created, status: "completed",
                 output: [.message(id: "msg_\(UUID().uuidString.prefix(12).lowercased())",
                                   text: nil, refusal: explanation, status: "completed")],
-                usage: ResponsesUsage(input_tokens: promptTokens, output_tokens: completionTokens))
+                usage: ResponsesUsage(input_tokens: refusalPromptTokens, output_tokens: completionTokens))
             return encodeEnvelope(envelope, requestBody: requestBody,
                                   events: events + ["refusal delivered"],
-                                  estimatedTokens: promptTokens + completionTokens)
+                                  estimatedTokens: refusalPromptTokens + completionTokens)
         }
         return openAIFailure(
             status: .init(code: classified.httpStatusCode),
@@ -303,15 +314,25 @@ private func responsesNonStreamingResponse(
             event: "model error: \(classified.cliLabel)")
     }
 
-    let completionTokens = await TokenCounter.shared.count(deliveredText)
+    // Usage: the summed runtime-reported rounds (macOS 27+), else the counted
+    // numbers (macOS 26 - unchanged on the wire).
+    let usage: TokenUsage
+    if let reported = TokenUsage.sum(usageRounds) {
+        usage = reported
+    } else {
+        usage = TokenUsage(
+            promptTokens: await promptTokens.resolve(),
+            completionTokens: await TokenCounter.shared.count(deliveredText))
+    }
     let envelope = echo.envelope(
         id: id, created: created, status: status, output: output,
-        usage: ResponsesUsage(input_tokens: promptTokens, output_tokens: completionTokens),
+        usage: ResponsesUsage(input_tokens: usage.promptTokens, output_tokens: usage.completionTokens,
+                              cached_input_tokens: usage.cachedPromptTokens),
         incompleteReason: incompleteReason)
     return encodeEnvelope(
         envelope, requestBody: requestBody,
         events: events + ["responses non-stream chars=\(deliveredText.count) status=\(status) items=\(output.count)"],
-        estimatedTokens: promptTokens + completionTokens)
+        estimatedTokens: usage.totalTokens)
 }
 
 private func encodeEnvelope(
@@ -343,7 +364,7 @@ private func responsesStreamingResponse(
     id: String,
     created: Int,
     genOpts: GenerationOptions,
-    promptTokens: Int,
+    promptTokens: PromptTokens,
     echo: ResponsesEcho,
     requestBody: String?,
     events: [String]
@@ -396,9 +417,14 @@ private func responsesStreamingResponse(
             let stream = session.streamResponse(to: prompt, options: genOpts)
             var prev = ""
             var emitted = 0
+            // Usage from the last seen snapshot (macOS 27+; nil on 26).
+            var lastRoundUsage: TokenUsage? = nil
             do {
                 for try await snapshot in stream {
                     let content = snapshot.content
+                    // Capture usage before the no-growth guard: output tokens
+                    // keep advancing on snapshots whose text has not grown.
+                    lastRoundUsage = reportedUsage(of: snapshot) ?? lastRoundUsage
                     guard content.count > prev.count else { prev = content; continue }
                     prev = content
                     // json_object mode buffers the whole response so the final
@@ -418,7 +444,17 @@ private func responsesStreamingResponse(
                         sequence_number: nextSeq(), item_id: itemId,
                         output_index: 0, content_index: 0, delta: finalText))
                 }
-                completionTokens = await TokenCounter.shared.count(finalText)
+                // Usage: runtime-reported (macOS 27+), else counted (macOS 26).
+                let finalUsage: TokenUsage
+                if let reported = lastRoundUsage {
+                    completionTokens = reported.completionTokens
+                    finalUsage = reported
+                } else {
+                    completionTokens = await TokenCounter.shared.count(finalText)
+                    finalUsage = TokenUsage(
+                        promptTokens: await promptTokens.resolve(),
+                        completionTokens: completionTokens)
+                }
                 let resolved = FinishReasonResolver.resolve(
                     hasToolCalls: false, completionTokens: completionTokens,
                     maxTokens: genOpts.maximumResponseTokens)
@@ -435,7 +471,8 @@ private func responsesStreamingResponse(
                     type: "response.output_item.done", sequence_number: nextSeq(), output_index: 0, item: doneItem))
                 let final = echo.envelope(
                     id: id, created: created, status: status, output: [doneItem],
-                    usage: ResponsesUsage(input_tokens: promptTokens, output_tokens: completionTokens),
+                    usage: ResponsesUsage(input_tokens: finalUsage.promptTokens, output_tokens: finalUsage.completionTokens,
+                                          cached_input_tokens: finalUsage.cachedPromptTokens),
                     incompleteReason: status == "incomplete" ? "max_output_tokens" : nil)
                 let terminalEvent = status == "incomplete" ? "response.incomplete" : "response.completed"
                 emit(terminalEvent, ResponsesLifecycleEvent(
@@ -448,8 +485,19 @@ private func responsesStreamingResponse(
                 let classified = ApfelError.classify(error)
                 if case .truncated(let truncatedContent) = StreamErrorResolver.resolve(prev: prev, error: classified) {
                     // Output-side overflow with content already streamed is a
-                    // graceful incomplete, mirroring the chat path.
-                    completionTokens = await TokenCounter.shared.count(truncatedContent)
+                    // graceful incomplete, mirroring the chat path. The last
+                    // snapshot's reported usage prices the truncated content
+                    // (macOS 27+), else count.
+                    let truncatedUsage: TokenUsage
+                    if let reported = lastRoundUsage {
+                        completionTokens = reported.completionTokens
+                        truncatedUsage = reported
+                    } else {
+                        completionTokens = await TokenCounter.shared.count(truncatedContent)
+                        truncatedUsage = TokenUsage(
+                            promptTokens: await promptTokens.resolve(),
+                            completionTokens: completionTokens)
+                    }
                     emit("response.output_text.done", ResponsesTextDoneEvent(
                         sequence_number: nextSeq(), item_id: itemId,
                         output_index: 0, content_index: 0, text: truncatedContent))
@@ -458,7 +506,8 @@ private func responsesStreamingResponse(
                         type: "response.output_item.done", sequence_number: nextSeq(), output_index: 0, item: doneItem))
                     let final = echo.envelope(
                         id: id, created: created, status: "incomplete", output: [doneItem],
-                        usage: ResponsesUsage(input_tokens: promptTokens, output_tokens: completionTokens),
+                        usage: ResponsesUsage(input_tokens: truncatedUsage.promptTokens, output_tokens: truncatedUsage.completionTokens,
+                                              cached_input_tokens: truncatedUsage.cachedPromptTokens),
                         incompleteReason: "max_output_tokens")
                     emit("response.incomplete", ResponsesLifecycleEvent(
                         type: "response.incomplete", sequence_number: nextSeq(), response: final))
@@ -503,7 +552,7 @@ private func responsesStreamingResponse(
         Response(status: .ok, headers: headers, body: .init(asyncSequence: responseStream)),
         ChatRequestTrace(
             stream: true,
-            estimatedTokens: promptTokens,
+            estimatedTokens: promptTokens.countedValue,
             error: nil,
             requestBody: requestBody,
             responseBody: serverState.config.debug

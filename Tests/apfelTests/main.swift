@@ -137,6 +137,7 @@ suite("PrewarmDecisionTests") { runPrewarmDecisionTests() }
 suite("ResponsesModelsTests") { runResponsesModelsTests() }
 suite("ShellOutputTests") { runShellOutputTests() }
 suite("ToolArgumentSchemaTests") { runToolArgumentSchemaTests() }
+suite("TokenUsageTests") { runTokenUsageTests() }
 
 // MARK: - Summary
 

@@ -223,7 +223,12 @@ def test_176_tool_definitions_count_toward_prompt_tokens():
     })
     assert withtool.status_code == 200, withtool.text
     tool_pt = withtool.json()["usage"]["prompt_tokens"]
-    assert tool_pt > base_pt + 200, (
+    # Threshold must hold for BOTH accounting paths (#510): macOS 26 counts
+    # the built entries (full schema text, ~+1600 here), macOS 27 reports the
+    # runtime's own input tokens for what the model actually receives (~+113
+    # here - the runtime renders tool definitions more compactly than the raw
+    # JSON schema). The guarded regression makes the delta ~0 either way.
+    assert tool_pt > base_pt + 50, (
         f"large tool definition must add to prompt_tokens; base={base_pt}, with_tool={tool_pt} "
         "(fallbackCount ignores toolDefinitions)")
 

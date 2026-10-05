@@ -122,6 +122,10 @@ enum ResponsesOutputItem: Encodable {
 struct ResponsesUsage: Encodable {
     let input_tokens: Int
     let output_tokens: Int
+    /// Input tokens served from the runtime's prefix cache. Real on macOS 27
+    /// (runtime-reported usage, #510); 0 on macOS 26 (counted path has no
+    /// cache data - the wire shape is unchanged).
+    var cached_input_tokens: Int = 0
 
     private enum Keys: String, CodingKey {
         case input_tokens, output_tokens, total_tokens
@@ -133,7 +137,7 @@ struct ResponsesUsage: Encodable {
         try c.encode(input_tokens, forKey: .input_tokens)
         try c.encode(output_tokens, forKey: .output_tokens)
         try c.encode(input_tokens + output_tokens, forKey: .total_tokens)
-        try c.encode(["cached_tokens": 0], forKey: .input_tokens_details)
+        try c.encode(["cached_tokens": cached_input_tokens], forKey: .input_tokens_details)
         try c.encode(["reasoning_tokens": 0], forKey: .output_tokens_details)
     }
 }
