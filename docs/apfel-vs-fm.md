@@ -38,7 +38,7 @@ apfel came first. Its first commit and v0.1.0 landed on 2026-03-24, the first Gi
 | Read prompt from stdin | yes, auto-detected (`echo text \| apfel`) | yes (`echo text \| fm respond`) |
 | System prompt | `-s`, `--system-file`, `APFEL_SYSTEM_PROMPT` | `-i, --instructions` |
 | Streaming | `--stream` (off by default, so output is pipe-safe) | on by default, `--no-stream` to disable |
-| Machine-readable output | `-o json` (content, usage, finish reason) | no (plain text only) |
+| Machine-readable output | `-o json` (content, model, metadata incl. finish reason) | no (plain text only) |
 | JSON Schema constrained output | `--schema file.json`: guaranteed schema-valid JSON, any local schema with `$ref`/`$defs`, bounds, enums | `--schema file`, schema authored with `fm schema object --name Person --string name --int age` |
 | Code-only answers | `--code`: prints the first fenced block, bare command for shell scripts | no |
 | Multi-turn in one shot | `--messages file.json` (OpenAI messages array) | `--resume transcript.json` + `--save-transcript` |
@@ -67,7 +67,7 @@ Both tools start a local server. apfel: `apfel --serve` (port 11434). `fm`: `fm 
 | `POST /v1/chat/completions` | yes | yes |
 | Response when `stream` is omitted | one JSON object (OpenAI default) | **SSE stream** (OpenAI clients that did not ask for a stream get `text/event-stream`) |
 | `stream: false` explicit | JSON object | JSON object |
-| `usage` (prompt / completion tokens) | yes, also in streams with `stream_options.include_usage` | yes in non-streaming responses; a `usage` chunk appears with `stream_options.include_usage` |
+| `usage` (prompt / completion tokens) | yes, also in streams with `stream_options.include_usage`; on macOS 27 straight from the runtime's `Response.usage` (same accounting `fm` uses), on macOS 26 counted with the tokenizer | yes in non-streaming responses; a `usage` chunk appears with `stream_options.include_usage` |
 | `finish_reason` | `stop`, `length`, `tool_calls` | `stop` |
 | Tool calling (`tools`, `tool_choice`) | yes: `finish_reason: tool_calls`, structured `tool_calls`, MCP auto-execution | no: `tools` is accepted, the reply is plain `content` such as `<start_of_turn>model\n{a:2,b:3}` with `finish_reason: stop` |
 | `response_format: json_schema` | yes, schema-guaranteed, `$ref` and bounds supported, also streaming | yes (`{"fruit": "apple"}` for the test schema) |

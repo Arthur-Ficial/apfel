@@ -20,6 +20,7 @@
 | `temperature`, `top_p`, `max_tokens`, `seed` | Supported | Mapped to `GenerationOptions`. `top_p` is nucleus sampling; `temperature: 0` maps to greedy (deterministic). Omitting `max_tokens` uses the remaining context window (drop-in OpenAI semantics; see Notes) |
 | `stream: true` | Supported | SSE; final usage chunk only when `stream_options: {"include_usage": true}` (per OpenAI spec) |
 | `stream_options.include_usage` | Supported | Opt-in for the empty-`choices` usage chunk before `[DONE]` |
+| `usage` accounting | Supported | On macOS 27 the numbers are the FoundationModels runtime's own accounting (`Response.usage`), which includes Apple's chat-template framing - a one-line prompt reports about 46 more `prompt_tokens` than the message text alone, and tool definitions are priced as the model actually receives them. On macOS 26 apfel counts the message text with `tokenCount(for:)`. Both are real tokenizer counts; budget against `context_window` either way. |
 | `finish_reason` | Supported | `stop`, `tool_calls`, `length` |
 | Context strategies | Supported | `x_context_strategy`, `x_context_max_turns`, `x_context_output_reserve` extension fields |
 | CORS | Supported | Enable with `--cors` |
@@ -41,7 +42,7 @@
 | `temperature`, `top_p`, `max_output_tokens`, `metadata` | Supported | Same semantics as chat; metadata echoed back |
 | `text.format: json_object` / `json_schema` | Supported | json_schema is non-streaming only (501 with `stream: true`); same schema subset as Chat Completions, see [JSON Schema support](#json-schema-support) |
 | Function tools (flat Responses shape) | Supported | Non-streaming only; the call comes back as a `function_call` output item for the client to execute |
-| `usage` | Supported | `input_tokens` / `output_tokens` / `total_tokens` |
+| `usage` | Supported | `input_tokens` / `output_tokens` / `total_tokens`; `input_tokens_details.cached_tokens` carries the runtime's prefix-cache number on macOS 27 (0 on macOS 26). Same accounting note as Chat Completions above |
 | `previous_response_id` | 501 | apfel is stateless: resend the full conversation in `input` |
 | `store: true` | 501 | Responses are never stored; every response reports `"store": false` |
 | `background`, `reasoning`, `include` | 501 | Not available on-device |
