@@ -25,6 +25,18 @@ public enum ApfelExitCodes {
     /// branch on "re-prompt or fall back" vs "the run itself failed".
     public static let noCode: Int32 = 7
 
+    /// Build the CLI error line for a classified error.
+    /// When file input was attached and the error is a guardrail violation,
+    /// appends a hint about `--permissive` so the user has an actionable
+    /// remedy instead of a wall (#505).
+    public static func cliErrorMessage(for error: ApfelError, hasFileInput: Bool) -> String {
+        var msg = "\(error.cliLabel) \(error.openAIMessage)"
+        if error == .guardrailViolation && hasFileInput {
+            msg += " Attached file text was refused; retry with --permissive."
+        }
+        return msg
+    }
+
     /// Map a classified `ApfelError` to its documented CLI exit code.
     public static func code(for error: ApfelError) -> Int32 {
         switch error {

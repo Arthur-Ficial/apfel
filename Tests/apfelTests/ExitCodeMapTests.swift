@@ -42,6 +42,33 @@ func runExitCodeMapTests() {
         try assertEqual(ApfelExitCodes.code(for: .toolExecution("x")), 1)
         try assertEqual(ApfelExitCodes.code(for: .unknown("x")), 1)
     }
+    // MARK: - cliErrorMessage (context-aware guardrail hint, #505)
+
+    test("cliErrorMessage: guardrailViolation with file input includes --permissive hint") {
+        let msg = ApfelExitCodes.cliErrorMessage(for: .guardrailViolation, hasFileInput: true)
+        try assertTrue(msg.contains("--permissive"), "expected --permissive hint, got: \(msg)")
+        try assertTrue(msg.contains("[guardrail]"), "expected [guardrail] label, got: \(msg)")
+    }
+
+    test("cliErrorMessage: guardrailViolation without file input does NOT mention --permissive") {
+        let msg = ApfelExitCodes.cliErrorMessage(for: .guardrailViolation, hasFileInput: false)
+        try assertTrue(!msg.contains("--permissive"), "should not mention --permissive without file input, got: \(msg)")
+        try assertTrue(msg.contains("[guardrail]"), "expected [guardrail] label")
+        try assertTrue(msg.contains("Try rephrasing"), "expected default 'Try rephrasing' message")
+    }
+
+    test("cliErrorMessage: non-guardrail error with file input does NOT mention --permissive") {
+        let msg = ApfelExitCodes.cliErrorMessage(for: .contextOverflow, hasFileInput: true)
+        try assertTrue(!msg.contains("--permissive"), "non-guardrail error should not mention --permissive")
+        try assertTrue(msg.contains("[context overflow]"), "expected [context overflow] label")
+    }
+
+    test("cliErrorMessage: refusal with file input does NOT mention --permissive") {
+        let msg = ApfelExitCodes.cliErrorMessage(for: .refusal("some reason"), hasFileInput: true)
+        try assertTrue(!msg.contains("--permissive"), "refusal should not mention --permissive (it's a different error)")
+        try assertTrue(msg.contains("[refusal]"), "expected [refusal] label")
+    }
+
     test("ApfelExitCodes: constants match documented values") {
         try assertEqual(ApfelExitCodes.success, 0)
         try assertEqual(ApfelExitCodes.runtimeError, 1)

@@ -15,6 +15,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 - On macOS 27, reasoning entries in a transcript (`Transcript.Entry.reasoning`) now count toward the chars/4 token estimate apfel falls back to when the tokenizer is unavailable; before they were skipped and the estimate came out low. The exact tokenizer path was not affected. Builds against the macOS 27 SDK are free of the non-exhaustive-switch warnings this caused, and source comments no longer name a fixed context size (#513, #192, #330).
 - On macOS 27, when the model refuses after a tool-policy repair round, the refusal's `usage` now includes the earlier round instead of dropping it: the earlier round's runtime-reported tokens plus the counted refused round, in chat (streaming and non-streaming), the tool-calling path and `/v1/responses`. On macOS 26 the numbers are unchanged. New ApfelCore helper `TokenUsage.refusal(completedRounds:refusedRound:)` (#516).
 
+### Changed
+
+- When the guardrails refuse a request that has `-f` / `--file` input, the error now suggests `--permissive` instead of only "Try rephrasing". The default guardrails stay as they are; on macOS 27 they refuse OCR'd image text more often than on 26 (3 of 5 test images vs 0 of 5), and the message now points at the opt-out (#505).
+
 ## [1.16.0] - 2026-10-05
 
 ### Added
