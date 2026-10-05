@@ -55,4 +55,19 @@ public struct TokenUsage: Sendable, Equatable {
         }
         return total
     }
+
+    /// Compute prompt and prior-completion tokens for a refusal that follows
+    /// zero or more completed model rounds. On macOS 27 the runtime reports
+    /// per-round usage and the sum is the source of truth; on macOS 26 no
+    /// runtime usage exists and the caller falls back to a counted prompt
+    /// figure (the discarded output is folded in as a prompt adjustment).
+    public static func refusalBase(
+        rounds: [TokenUsage],
+        countedPromptTokens: Int
+    ) -> (promptTokens: Int, priorCompletionTokens: Int) {
+        if let reported = sum(rounds) {
+            return (reported.promptTokens, reported.completionTokens)
+        }
+        return (countedPromptTokens, 0)
+    }
 }

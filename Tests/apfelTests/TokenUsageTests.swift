@@ -57,4 +57,33 @@ func runTokenUsageTests() {
         let b = TokenUsage(promptTokens: 10, completionTokens: 20, cachedPromptTokens: 30)
         try assertEqual(TokenUsage.sum([a, b]), TokenUsage.sum([b, a]))
     }
+
+    // MARK: - refusalBase (#516)
+
+    test("refusalBase with no rounds falls back to counted prompt tokens") {
+        let base = TokenUsage.refusalBase(rounds: [], countedPromptTokens: 42)
+        try assertEqual(base.promptTokens, 42)
+        try assertEqual(base.priorCompletionTokens, 0)
+    }
+
+    test("refusalBase with one round uses reported prompt and completion tokens") {
+        let round = TokenUsage(promptTokens: 60, completionTokens: 25)
+        let base = TokenUsage.refusalBase(rounds: [round], countedPromptTokens: 999)
+        try assertEqual(base.promptTokens, 60)
+        try assertEqual(base.priorCompletionTokens, 25)
+    }
+
+    test("refusalBase with repair round sums both rounds") {
+        let initial = TokenUsage(promptTokens: 60, completionTokens: 25)
+        let repair = TokenUsage(promptTokens: 110, completionTokens: 18)
+        let base = TokenUsage.refusalBase(rounds: [initial, repair], countedPromptTokens: 999)
+        try assertEqual(base.promptTokens, 170)
+        try assertEqual(base.priorCompletionTokens, 43)
+    }
+
+    test("refusalBase ignores countedPromptTokens when rounds are present") {
+        let round = TokenUsage(promptTokens: 7, completionTokens: 3)
+        let base = TokenUsage.refusalBase(rounds: [round], countedPromptTokens: 1_000_000)
+        try assertEqual(base.promptTokens, 7)
+    }
 }
