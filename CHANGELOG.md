@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `TokenCounter.fallbackCount` and `Benchmark.signature` now handle the macOS 27 `Transcript.Entry.reasoning` case explicitly instead of silently skipping it via `@unknown default`. On macOS 27, reasoning entries are counted in the chars/4 fallback path; the real `tokenCount(for:)` API was already unaffected. Two comment literals that hardcoded "4096-token ceiling" in `Session.swift` and `StreamOutcome.swift` are reworded to "the context window" per the no-literal rule (#192, #330, #513).
+
 ## [1.12.0] - 2026-09-24
 
 ### Added

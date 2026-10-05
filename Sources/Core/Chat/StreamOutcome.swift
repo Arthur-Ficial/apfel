@@ -2,8 +2,8 @@
 // StreamOutcome.swift — Pure decision logic for handling errors thrown
 // during a streaming model response.
 //
-// On Apple's on-device FoundationModels, hitting the 4096-token context
-// ceiling after producing some content surfaces as a thrown error rather
+// On Apple's on-device FoundationModels, hitting the context window
+// after producing some content surfaces as a thrown error rather
 // than as a natural EOS. That throw is morally equivalent to OpenAI's
 // finish_reason: "length", not to a server error. This resolver makes the
 // distinction:

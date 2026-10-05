@@ -212,6 +212,10 @@ actor TokenCounter {
                 for call in tc {
                     total += 20 + max(1, call.arguments.jsonString.count / 4)
                 }
+            case .reasoning(let r):
+                if #available(macOS 27, *) {
+                    for seg in r.segments { if case .text(let t) = seg { total += max(1, t.content.count / 4) } }
+                }
             @unknown default:
                 break
             }
