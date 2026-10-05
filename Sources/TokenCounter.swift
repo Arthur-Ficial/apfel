@@ -220,9 +220,9 @@ actor TokenCounter {
     }
 
     /// Approximate the prompt-token cost of a native tool definition from its
-    /// name and description (chars/4). The SDK does not expose the parameter
-    /// schema as a readable property, so it cannot be included here.
+    /// name and description (chars/4). Delegates to the pure ApfelCore formula
+    /// so the #176 regression is unit-testable without FoundationModels.
     private func toolDefinitionTokens(_ def: Transcript.ToolDefinition) -> Int {
-        max(1, (def.name.count + def.description.count) / 4)
+        TokenUsage.estimateToolDefinitionTokens(name: def.name, description: def.description)
     }
 }
