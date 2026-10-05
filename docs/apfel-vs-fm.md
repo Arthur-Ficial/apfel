@@ -45,7 +45,8 @@ apfel came first. Its first commit and v0.1.0 landed on 2026-03-24, the first Gi
 | Interactive chat | `apfel --chat` with context trimming strategies | `fm chat` with named sessions (`--resume name`, `--continue`) |
 | Attach files | `-f` text, PDF, images (Vision OCR + image understanding), repeatable | `--image` (image input to the model), `--text` segments |
 | Image understanding | Native image input to the model on macOS 27 (`-f photo.jpg`, piped bytes, server `image_url` data URLs - #510) PLUS OCR text via Vision on both 26 and 27 | yes on macOS 27: `--image photo.jpg` goes to the model itself (the 3B model's descriptions are coarse: it called a metal plaque "a glass bottle wrapped in foil") |
-| Built-in vision tools | no | `--tool ocr`, `--tool barcode` |
+| Built-in OCR | yes, automatic: every `-f` image or PDF page goes through Apple's Vision OCR and image classification before the model sees it, on macOS 26 and 27 | yes on macOS 27, opt-in: `--tool ocr` as a model-callable tool |
+| Barcode / QR reading | no (the sister tool [auge](https://github.com/Arthur-Ficial/auge) does barcodes, faces and classification) | `--tool barcode` on macOS 27 |
 | External tools | MCP servers, local (`--mcp ./server.py`) and remote (`--mcp https://...`, bearer token, OAuth) | none |
 | Sampling | `--temperature`, `--top-p`, `--seed`, `--max-tokens` | `--greedy` only |
 | Guardrails | `--permissive` | `--guardrails permissive-content-transformations` |
