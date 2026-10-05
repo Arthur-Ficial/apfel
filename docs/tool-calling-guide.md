@@ -13,6 +13,8 @@ and apfel's OpenAI-compatible tool calling implementation.
 
 ---
 
+> Note on the `usage` numbers in the examples below: they come from macOS 26's counted path. On macOS 27 the runtime reports its own accounting, which includes Apple's chat-template framing (about 46 extra `prompt_tokens`) and prices tool definitions as the model receives them, so the figures are higher there. See [docs/openai-api-compatibility.md](openai-api-compatibility.md).
+
 ## How It Works
 
 apfel converts OpenAI-format tool definitions into two paths:
