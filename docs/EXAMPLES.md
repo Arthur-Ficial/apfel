@@ -4,7 +4,7 @@ Every response below is **real, unedited output** from Apple's on-device model
 via `apfel`. Nothing was cherry-picked, cleaned up, or re-run.
 This file was generated automatically by `scripts/generate-examples.sh`.
 
-> apfel v1.15.0 | macOS 27.0.1 | M2 | 2026-10-05
+> apfel v1.16.0 | macOS 27.0.1 | M2 | 2026-10-05
 
 ## Table of Contents
 
