@@ -79,6 +79,30 @@ def _bare_swift_invocations(subcommand: str) -> list[str]:
     return offenders
 
 
+def test_check_toolchain_requires_sdk_27():
+    """check-toolchain must reject any SDK older than 27 (#520).
+
+    Since v1.15.0 the sources use macOS 27-only FoundationModels types
+    (LanguageModelSession.Usage, SystemLanguageModel.capabilities, etc.)
+    behind runtime #available gates. They compile against the 27 SDK but
+    not an older one. The check-toolchain target must fail early with a
+    clear message instead of letting the build produce cryptic compiler
+    errors.
+    """
+    text = _makefile_text()
+    # The guard must reject major < 27 (not 26).
+    assert '"$$major" -lt 27' in text, (
+        "check-toolchain must require SDK >= 27 (v1.15.0+ sources use "
+        "macOS-27-only FoundationModels types). "
+        "Expected '\"$$major\" -lt 27' guard in the Makefile."
+    )
+    # The error message must name the actual requirement.
+    assert "macOS 27" in text, (
+        "check-toolchain error message must say 'macOS 27' so the user "
+        "knows which SDK to install."
+    )
+
+
 def test_swift_build_calls_use_native_build_system():
     """Every swift build invocation must include --build-system native (#194).
 

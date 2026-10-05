@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `make build` / `make install` now fails early with a clear message when the active SDK is older than macOS 27, instead of producing cryptic compiler errors about missing FoundationModels types. Since v1.15.0 the sources use macOS 27-only types (`LanguageModelSession.Usage`, `SystemLanguageModel.capabilities`) behind runtime `#available` gates - they compile against the macOS 27 SDK but not an older one. The binary still runs on macOS 26 (deployment floor 26.0); users on macOS 26 can install pre-built binaries via Homebrew or Nix (#520).
+
 ## [1.15.0] - 2026-10-05
 
 ### Added
