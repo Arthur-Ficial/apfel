@@ -57,4 +57,42 @@ func runTokenUsageTests() {
         let b = TokenUsage(promptTokens: 10, completionTokens: 20, cachedPromptTokens: 30)
         try assertEqual(TokenUsage.sum([a, b]), TokenUsage.sum([b, a]))
     }
+
+    // #516: repair-round usage must fold into refusal responses on macOS 27
+    test("sum of one repair round provides prompt and completion for refusal folding") {
+        let repairRound = TokenUsage(promptTokens: 200, completionTokens: 50, cachedPromptTokens: 0)
+        let roundsUsage = TokenUsage.sum([repairRound])
+        try assertNotNil(roundsUsage)
+        try assertEqual(roundsUsage!.promptTokens, 200)
+        try assertEqual(roundsUsage!.completionTokens, 50)
+        let refusalPrompt = 100
+        let refusalCompletion = 20
+        try assertEqual(refusalPrompt + (roundsUsage?.promptTokens ?? 0), 300)
+        try assertEqual(refusalCompletion + (roundsUsage?.completionTokens ?? 0), 70)
+    }
+
+    test("sum of empty rounds returns nil so macOS 26 counted path is unchanged") {
+        let roundsUsage = TokenUsage.sum([])
+        try assertNil(roundsUsage)
+        let refusalPrompt = 100
+        try assertEqual(refusalPrompt + (roundsUsage?.promptTokens ?? 0), 100)
+    }
+
+    // #516 item 2: tool-definition token estimate guards #176 regression
+    test("estimateToolDefinitionTokens returns chars/4 of name + description") {
+        let tokens = TokenUsage.estimateToolDefinitionTokens(
+            name: "calculator", description: "Performs arithmetic operations")
+        let expected = max(1, ("calculator".count + "Performs arithmetic operations".count) / 4)
+        try assertEqual(tokens, expected)
+    }
+
+    test("estimateToolDefinitionTokens floors at 1 for empty name and description") {
+        try assertEqual(TokenUsage.estimateToolDefinitionTokens(name: "", description: ""), 1)
+    }
+
+    test("estimateToolDefinitionTokens grows with description length") {
+        let short = TokenUsage.estimateToolDefinitionTokens(name: "add", description: "Add two numbers")
+        let long = TokenUsage.estimateToolDefinitionTokens(name: "add", description: "Add two numbers together and return the sum of the operands as an integer")
+        try assertTrue(long > short)
+    }
 }

@@ -55,4 +55,12 @@ public struct TokenUsage: Sendable, Equatable {
         }
         return total
     }
+
+    /// Approximate the prompt-token cost of a native tool definition from its
+    /// name and description (chars/4). The SDK does not expose the parameter
+    /// schema as a readable property, so it cannot be included here. Guards
+    /// the #176 regression independently of the runtime delta margin.
+    public static func estimateToolDefinitionTokens(name: String, description: String) -> Int {
+        max(1, (name.count + description.count) / 4)
+    }
 }
