@@ -336,4 +336,45 @@ func runApfelErrorTests() {
             throw TestFailure("expected .decodingFailure passthrough")
         }
     }
+
+    // --- macOS 27 LanguageModelError string-based classification (#521) ---
+    // The typed path (TypedErrorSupport.swift, main target) handles
+    // LanguageModelError via `if #available`. These tests verify the PURE
+    // ApfelCore string-based classifier also recognises LanguageModelError
+    // case names, which matters for the @unknown default fallback and any
+    // ApfelCore-internal call path (e.g. the retry banner).
+
+    test("classify maps LanguageModelError.contextSizeExceeded to .contextOverflow (#521)") {
+        let err = LanguageModelErrorStub(
+            caseName: "contextSizeExceeded",
+            localizedMsg: "The input exceeds the context window"
+        )
+        try assertEqual(ApfelError.classify(err), .contextOverflow)
+    }
+    test("classify maps LanguageModelError.unsupportedGenerationGuide to .unsupportedGuide (#521)") {
+        let err = LanguageModelErrorStub(
+            caseName: "unsupportedGenerationGuide",
+            localizedMsg: "An unsupported generation guide was used"
+        )
+        try assertEqual(ApfelError.classify(err), .unsupportedGuide)
+    }
+    test("classify maps LanguageModelError cases with unchanged names (#521)") {
+        let cases: [(caseName: String, expected: ApfelError)] = [
+            ("guardrailViolation", .guardrailViolation),
+            ("refusal", .refusal("model refused")),
+            ("rateLimited", .rateLimited),
+            ("unsupportedLanguageOrLocale", .unsupportedLanguage("model refused")),
+        ]
+        for item in cases {
+            let err = LanguageModelErrorStub(caseName: item.caseName, localizedMsg: "model refused")
+            try assertEqual(ApfelError.classify(err), item.expected, "LanguageModelError case=\(item.caseName)")
+        }
+    }
+    test("classify maps unknown LanguageModelError case to .unknown (#521)") {
+        let err = LanguageModelErrorStub(
+            caseName: "quotaExhausted",
+            localizedMsg: "Quota exhausted for this device"
+        )
+        try assertEqual(ApfelError.classify(err), .unknown("Quota exhausted for this device"))
+    }
 }
