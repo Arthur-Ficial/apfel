@@ -27,10 +27,12 @@ import Foundation
 public struct StreamOutcome: Sendable, Equatable, Hashable {
     public let content: String
     public let finishReason: FinishReason
+    public let completionTokens: Int?
 
-    public init(content: String, finishReason: FinishReason) {
+    public init(content: String, finishReason: FinishReason, completionTokens: Int? = nil) {
         self.content = content
         self.finishReason = finishReason
+        self.completionTokens = completionTokens
     }
 }
 

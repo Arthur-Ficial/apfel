@@ -548,7 +548,16 @@ private func nonStreamingResponse(
         responseMessage = OpenAIMessage(role: "assistant", content: .text(deliveredContent))
     }
 
-    let completionTokens = await TokenCounter.shared.count(deliveredContent)
+    // collectStream already counted completion tokens for finish-reason
+    // resolution; reuse that count when the delivered content is the raw model
+    // output (no JSON fence-stripping). Saves one tokenCount(for:) round trip
+    // per non-streaming request (#504).
+    let completionTokens: Int
+    if let cached = outcome.completionTokens, !jsonMode || toolCalls != nil {
+        completionTokens = cached
+    } else {
+        completionTokens = await TokenCounter.shared.count(deliveredContent)
+    }
     // collectStream already resolved .stop vs .length (cap-hit and output-side
     // overflow); only override here when tool calls are detected.
     let finishReason = (toolCalls != nil ? FinishReason.toolCalls : outcome.finishReason).openAIValue
