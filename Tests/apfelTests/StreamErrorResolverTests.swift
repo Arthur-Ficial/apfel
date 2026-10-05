@@ -225,4 +225,26 @@ func runStreamErrorResolverTests() {
         try assertEqual(empty.content, "")
         try assertEqual(empty.finishReason, .stop)
     }
+
+    // MARK: - StreamOutcome completionTokens (#504)
+
+    test("StreamOutcome carries completionTokens when provided") {
+        let outcome = StreamOutcome(content: "hello", finishReason: .stop, completionTokens: 42)
+        try assertEqual(outcome.completionTokens, 42)
+    }
+
+    test("StreamOutcome defaults completionTokens to nil") {
+        let outcome = StreamOutcome(content: "hello", finishReason: .stop)
+        try assertTrue(outcome.completionTokens == nil, "completionTokens should default to nil")
+    }
+
+    test("StreamOutcome equality considers completionTokens") {
+        let a = StreamOutcome(content: "x", finishReason: .stop, completionTokens: 10)
+        let b = StreamOutcome(content: "x", finishReason: .stop, completionTokens: 10)
+        let c = StreamOutcome(content: "x", finishReason: .stop, completionTokens: 20)
+        let d = StreamOutcome(content: "x", finishReason: .stop)
+        try assertEqual(a, b)
+        try assertTrue(a != c, "different completionTokens should differ")
+        try assertTrue(a != d, "present vs nil completionTokens should differ")
+    }
 }

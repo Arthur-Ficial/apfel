@@ -665,7 +665,7 @@ func collectStream(
             completionTokens: completionTokens,
             maxTokens: options.maximumResponseTokens
         )
-        return StreamOutcome(content: prev, finishReason: reason)
+        return StreamOutcome(content: prev, finishReason: reason, completionTokens: completionTokens)
     } catch {
         let classified = ApfelError.classify(error)
         switch StreamErrorResolver.resolve(prev: prev, error: classified) {

@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Non-streaming `/v1/chat/completions` no longer double-counts completion tokens. `collectStream` already calls `tokenCount(for:)` to resolve `finish_reason`; the handler reused to count the same text a second time for the `usage` response field. On macOS 26/27 each SDK token-count round trip takes ~0.1-0.15 s, so eliminating the redundant call saves one round trip per non-streaming request. `StreamOutcome` now carries the optional `completionTokens` computed during streaming so callers can reuse it (#504).
+
 ## [1.12.0] - 2026-09-24
 
 ### Added
