@@ -4,7 +4,7 @@ apfel natively speaks the [https://modelcontextprotocol.io/](https://modelcontex
 
 All inference runs on-device with no network calls for the LLM itself. Optional remote MCP tool servers (`--mcp https://...`) do make network calls for tool arguments.
 
-> **Ready-made MCPs for apfel**: [apfel-mcp.franzai.com](https://apfel-mcp.franzai.com/) ships three token-budget-optimized MCP servers for apfel's small on-device context window (4096 tokens on macOS 26, 8192 on macOS 27): `url-fetch`, `ddg-search`, and the flagship compound `search-and-fetch` tool. Details in [Ready-made MCPs](#ready-made-mcps) below.
+> **Ready-made MCPs for apfel**: [apfel-mcp.franzai.com](https://apfel-mcp.franzai.com/) ships three token-budget-optimized MCP servers for apfel's small on-device context window (4096 tokens, measured on macOS 26 and 27.0): `url-fetch`, `ddg-search`, and the flagship compound `search-and-fetch` tool. Details in [Ready-made MCPs](#ready-made-mcps) below.
 
 ## Quick start
 
@@ -217,7 +217,7 @@ apfel --mcp ./my-tool.py "question that needs the tool"
 
 ## Limitations
 
-- **Small context window (4096 tokens on macOS 26, 8192 on macOS 27 - read at runtime).** Tool definitions, question, tool result, and final answer must all fit.
+- **Small context window (4096 tokens, measured on macOS 26 and 27.0 - read at runtime).** Tool definitions, question, tool result, and final answer must all fit.
 - **One tool call per turn.** Multi-tool chains require multiple round trips.
 - **No guaranteed schema compliance.** The model follows schemas loosely. Your server must handle unexpected argument formats.
 - **No streaming for tool calls.** Tool call responses are always non-streaming.

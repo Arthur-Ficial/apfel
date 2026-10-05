@@ -38,7 +38,7 @@ If `/health` responds, you're ready. Pick your language and follow the guide.
 
 ## Honest limits (same for all languages)
 
-- **Context window:** 4096 tokens on macOS 26, 8192 on macOS 27 (read at runtime; `apfel --model-info` prints the live value)
+- **Context window:** 4096 tokens, measured on macOS 26 and 27.0 (read at runtime; `apfel --model-info` prints the live value)
 - **Embeddings:** not supported (returns HTTP 501 - see each guide's error-handling section)
 - **Vision / audio:** not supported
 - **JSON mode:** supported via `response_format: {type: "json_object"}` - occasionally wrapped in markdown fences, so the guides show a one-line fence-strip pattern

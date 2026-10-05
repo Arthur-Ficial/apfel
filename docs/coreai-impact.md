@@ -6,6 +6,7 @@
 > [developer.apple.com/documentation/coreai](https://developer.apple.com/documentation/coreai/) (Core AI).
 > Tracking epic: [#189](https://github.com/Arthur-Ficial/apfel/issues/189).
 > Updated 2026-07-22: OS 27 on-device context window confirmed as 8192 on real hardware (#192).
+> **Correction 2026-10-05:** the 8192 reading below came from a macOS 27 *beta*. On the shipped macOS 27.0.1 (26A434) `SystemLanguageModel.contextSize` reports **4096** - measured with apfel built against both the 26.5 and the 27.0 SDK, and `context_window_measured: true` on `/health`. The 8192 statements in this page are kept as history; the current number is 4096 and apfel reads it at runtime (#192, #193).
 
 ## TL;DR
 
@@ -160,13 +161,13 @@ Core AI per se, but they ship in the same window and Core AI is the headline tha
    commands report 4096 on macOS 26. This matches the WWDC26 session-241
    ([video](https://developer.apple.com/videos/play/wwdc2026/241/)) example, which prints
    `let model = SystemLanguageModel(); print(model.contextSize) // 8192` for the **on-device** model.
-   So: **4096 tokens on macOS 26, 8192 on macOS 27.** The 32K figure is separate again - that is the
+   So: **4096 tokens, measured on macOS 26 and 27.0.** The 32K figure is separate again - that is the
    cloud `PrivateCloudComputeLanguageModel`, which apfel does not use.
    - **Behavior was always safe:** apfel reads the live value via `SystemLanguageModel.contextSize`
      (`Sources/TokenCounter.swift` -> `CLI.swift`, `Server.swift`, `Benchmark.swift`), not a
      hardcode. No code change needed for the doubling.
    - **Docs are fixed (#192):** the hardcoded "4096" references across `README.md` and `docs/` now
-     describe the dynamic window ("4096 tokens on macOS 26, 8192 on macOS 27") and point at
+     describe the dynamic window ("4096 tokens, measured on macOS 26 and 27.0") and point at
      `apfel --model-info` for the live value.
 
 2. **FoundationModels base model change - CONFIRMED.** Apple's updates page states verbatim: *"the

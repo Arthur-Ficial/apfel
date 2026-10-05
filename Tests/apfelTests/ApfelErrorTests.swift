@@ -117,6 +117,30 @@ func runApfelErrorTests() {
         )
         try assertEqual(ApfelError.classify(guardrail), .guardrailViolation)
     }
+    // macOS 27 throws the legacy GenerationError to binaries linked against an
+    // SDK <= 26.x, but its mirror no longer carries a case name - just the
+    // message "May contain unsafe content" - and the localized description is
+    // "Detected content likely to be unsafe". The type-name branch must fall
+    // through to the description keywords instead of giving up (#193).
+    test("classify maps a case-less macOS 27 GenerationError by its description (#193)") {
+        let guardrail = CaselessGenerationErrorStub(
+            mirrorText: "May contain unsafe content",
+            localizedMsg: "Detected content likely to be unsafe"
+        )
+        try assertEqual(ApfelError.classify(guardrail), .guardrailViolation)
+        let overflow = CaselessGenerationErrorStub(
+            mirrorText: "Prompt too long",
+            localizedMsg: "The prompt exceeded the context window size"
+        )
+        try assertEqual(ApfelError.classify(overflow), .contextOverflow)
+        // Truly unrecognisable text still ends up as .unknown with the message kept.
+        let other = CaselessGenerationErrorStub(mirrorText: "???", localizedMsg: "Something new happened")
+        if case .unknown(let msg) = ApfelError.classify(other) {
+            try assertEqual(msg, "Something new happened")
+        } else {
+            throw TestFailure("expected .unknown")
+        }
+    }
     test("classify string fallback detects refusal keywords") {
         for keyword in ["refused", "refusal", "declined"] {
             let err = NSError(domain: "FM", code: 0,

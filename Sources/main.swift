@@ -446,6 +446,10 @@ do {
     }
 } catch {
     let classified = ApfelError.classify(error)
+    // --debug shows the raw FoundationModels error so a new OS release that
+    // changes error types (macOS 27: LanguageModelError) can be diagnosed
+    // from the terminal instead of a Swift probe (#193).
+    debugLog("error", "raw type=\(String(describing: type(of: error))) mirror=\(String(reflecting: error).prefix(300)) localized=\(error.localizedDescription) -> \(classified)")
     printError("\(classified.cliLabel) \(classified.openAIMessage)")
     await shutdownMCP()
     exit(exitCode(for: classified))

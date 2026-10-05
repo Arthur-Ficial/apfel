@@ -235,6 +235,16 @@ func runCodeCropperTests() {
         try assertTrue(CodeCropper.steeringDirective.contains("No text before or after"))
     }
 
+    // macOS 27 model: the phrase "language info string" was read as a JSON
+    // key - the model answered `{"language_info": {...}, "command": ...}` or
+    // appended `# lang: python` / `LANG=en_US` (#193). The directive names the
+    // fence shape by example instead and never says "info string".
+    test("steering directive shows the fence by example, never says 'info string' (#193)") {
+        try assertTrue(CodeCropper.steeringDirective.contains("```bash"))
+        try assertTrue(!CodeCropper.steeringDirective.lowercased().contains("info string"))
+        try assertTrue(!CodeCropper.steeringDirective.lowercased().contains("language info"))
+    }
+
     // ========================================================================
     // MARK: - crop(from:) — the full --code policy (fence, else pass-through)
     // A model that complies with the steering so well that it omits the fence

@@ -36,9 +36,9 @@ public enum CodeCropper {
     /// 20/20 against the live model in the #373 prompt battery; do not edit
     /// without re-running it.
     public static let steeringDirective = """
-        Answer with exactly one fenced markdown code block containing only \
-        the code or command. No text before or after the block. Use a correct \
-        language info string on the fence.
+        Reply with exactly one fenced markdown code block (open it with three \
+        backticks followed by the language name, for example ```bash) that \
+        contains only the code or command. No text before or after the block.
         """
 
     /// The full `--code` output policy: fenced block first, bare pass-through

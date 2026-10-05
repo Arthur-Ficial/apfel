@@ -45,10 +45,18 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
         }
 
         guard let generationCase = FoundationModelsGenerationErrorCase.firstMatch(in: mirror) else {
-            // It IS a GenerationError, but the case name is one we don't recognise.
-            // Return .unknown directly rather than falling through to
-            // classifyLocalizedDescription's locale-fragile English keyword matching.
-            return .unknown(localizedDescription)
+            if mirror.contains("GenerationError") {
+                // A case name is present but unknown to us (#181): return
+                // .unknown directly rather than guessing from locale-fragile
+                // English keywords.
+                return .unknown(localizedDescription)
+            }
+            // The type is a GenerationError but the mirror carries no case at
+            // all. macOS 27 does this to binaries linked against an SDK <= 26.x:
+            // mirror "May contain unsafe content", description "Detected content
+            // likely to be unsafe" (#193). Only the description is left to go
+            // on, so fall through to the keyword classifier.
+            return nil
         }
 
         return generationCase.apfelError(localizedDescription: localizedDescription)

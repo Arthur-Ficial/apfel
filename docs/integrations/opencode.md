@@ -85,7 +85,7 @@ echo 'export OPENCODE_DISABLE_CLAUDE_CODE_PROMPT=1' >> ~/.zshrc
 
 ## The 4096-token window: the fix you must set
 
-apfel's on-device model has a **4096-token context window on macOS 26** (8192 on macOS 27 - apfel reads the real size at runtime; everything on this page was measured on macOS 26, and the failure mode is identical on macOS 27, just with more headroom). opencode is a full coding agent, and it **injects your instruction files into the system prompt on every request**. It loads them in this order (each category accumulates - they do not replace each other):
+apfel's on-device model has a **4096-token context window** (measured on macOS 26 and macOS 27.0; apfel reads the real size at runtime, check `apfel --model-info`). Everything on this page was measured on macOS 26 and the failure mode is identical on macOS 27. opencode is a full coding agent, and it **injects your instruction files into the system prompt on every request**. It loads them in this order (each category accumulates - they do not replace each other):
 
 1. Local `AGENTS.md` / `CLAUDE.md` (walking up from the current directory)
 2. Global `~/.config/opencode/AGENTS.md`

@@ -55,7 +55,8 @@ The README.md mirrors this priority - **violating this structure is a bug.**
 ### Non-negotiable principles:
 
 - **100% on-device.** No cloud, no API keys, no network for inference. Ever.
-- **Honest about limitations.** Small on-device context window (4096 tokens on macOS 26, 8192 on macOS 27 - read at runtime via `SystemLanguageModel.contextSize`, never hardcoded), no embeddings, no vision - say so clearly. Never bake a single context-size literal into code or user-facing prose; the window is dynamic and must stay true if Apple changes it (#192, #330).
+- **macOS 26 AND macOS 27, one binary, both first-class.** apfel must build, install, run, and pass its tests on the previous macOS (26 Tahoe) and the current one (27). Neither is "legacy". The deployment floor stays `platforms: [.macOS(.v26)]` in `Package.swift`; builds use the newest SDK; every OS-27-only FoundationModels API (`LanguageModelError`, `GenerationOptions.ToolCallingMode`, `LanguageModel`, ...) is wrapped in `if #available(macOS 27, *) { new } else { honest macOS-26 path }` on the call path - never a crash, never a silent downgrade on 26. No `#available` sprinkled through `ApfelCore` or the CLI: isolate OS-27 surfaces behind a protocol + factory in the main target. Any PR that raises the floor, drops a 26 fallback, or ships a binary whose `vtool -show-build` minos is not `26.0` is a P0 bug. Full strategy and checklist: #205. Dev Mac is on macOS 27 since 2026-10-05; Franz's Mac (M5, macOS 26.1, reach it via `ssh franz-mac`) is the macOS 26 verification bed - run the model suite there before any release that touches an availability branch.
+- **Honest about limitations.** Small on-device context window (4096 tokens as measured on macOS 26.x and macOS 27.0.1 - read at runtime via `SystemLanguageModel.contextSize`, never hardcoded; the 8192 figure reported on macOS 27 betas did not ship in 27.0), no embeddings, no vision - say so clearly. Never bake a single context-size literal into code or user-facing prose; the window is dynamic and must stay true if Apple changes it (#192, #330).
 - **Clean code, clean logic.** No hacks. Proper error types. Real token counts.
 - **Swift 6 strict concurrency.** No data races.
 - **Usable security.** Secure defaults that don't get in the way.
@@ -65,6 +66,17 @@ The README.md mirrors this priority - **violating this structure is a bug.**
 
 - **Links in docs and README:** Always use the URL/path as the anchor text, not generic phrases like "full guide" or "click here". Example: `[docs/background-service.md](docs/background-service.md)` not `[full guide](docs/background-service.md)`.
 - **One code block, one purpose - never mix mutually-exclusive commands.** A fenced code block must be safe to copy-paste verbatim into a terminal: every line either runs in sequence as part of the same workflow, or the block contains only one command. Alternatives (e.g. `brew install apfel` vs `brew install Arthur-Ficial/tap/apfel` vs `git clone … && make install`) get **separate** fenced blocks with a one-line prose lead-in describing when to use that block. Inline `#` comments labelling alternatives inside one block are not a substitute - users hit "copy" and run the lot. This applies to README.md, every file under `docs/`, and any future user-facing surface.
+
+## apfel vs Apple's `fm` CLI - keep the comparison page current
+
+macOS 27 ships Apple's own FoundationModels CLI at `/usr/bin/fm` (`fm respond|chat|serve|count-tokens|schema|available`). [docs/apfel-vs-fm.md](docs/apfel-vs-fm.md) is the single source of truth comparing the two, with measured numbers; apfel.franzai.com/a/apfel-vs-fm is a 1:1 HTML rendering of that Markdown produced by `~/dev/apfel-web/build-pages.sh` (pandoc), never hand-edited.
+
+**Update rule - this is a release-gate item, not optional:**
+- Any change to apfel's user-facing surface (new/removed flag, endpoint, exit code, context/limit behavior, install channel) updates the matching row in `docs/apfel-vs-fm.md` in the same PR.
+- Every release re-runs the measured section on the release binary (`apfel --benchmark`, the timed `fm respond` / `apfel` pairs, token counts, binary sizes) and records the apfel version, the macOS build and the date in the page's "Measured on" line. Numbers older than the current release are a bug.
+- After each macOS point update re-check the `fm` column (`fm --help`, each subcommand's `--help`, the `fm serve` probes in the doc) - Apple can change it without notice.
+- Then regenerate and deploy: `cd ~/dev/apfel-web && ./build-pages.sh && wrangler pages deploy . --project-name apfel-web --commit-dirty=true && git add -A && git commit -m "pages: regenerate apfel-vs-fm" && git push`.
+- Tone: honest. Where `fm` is better (zero install, Apple-signed, image/OCR tools, built-in transcript persistence) the page says so plainly. No marketing claims without a measurement or a reproducible command behind them.
 
 ## Architecture
 

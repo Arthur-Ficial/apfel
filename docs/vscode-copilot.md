@@ -38,28 +38,7 @@ On **macOS 26** (4096-token window), add this to your VSCode settings:
 ]
 ```
 
-On **macOS 27** (8192-token window), use this instead:
-
-```json
-[
-  {
-    "name": "Apfel",
-    "vendor": "customendpoint",
-    "apiType": "chat-completions",
-    "models": [
-      {
-        "id": "apple-foundationmodel",
-        "name": "Apple Foundation Model",
-        "url": "http://127.0.0.1:11434/v1/chat/completions",
-        "toolCalling": false,
-        "vision": false,
-        "maxInputTokens": 7680,
-        "maxOutputTokens": 512
-      }
-    ]
-  }
-]
-```
+If `apfel --model-info` reports a larger window on your machine, set `maxInputTokens` to that window minus the 512-token output reserve (`maxOutputTokens`). On macOS 26 and macOS 27.0 the measured window is 4096, so the values above are correct as-is.
 
 If you raise `maxOutputTokens`, lower `maxInputTokens` by the same amount so the two still sum to
 the window. apfel's own 512-token reserve needs no change: it only caps how much input the server

@@ -5,7 +5,7 @@ and apfel's OpenAI-compatible tool calling implementation.
 
 **Findings from:** 2026-03-26 (apfel v0.5.0, macOS 26.3) | **Last verified:** 2026-07-02 (apfel v1.7.1, macOS 26.5.2). The documented behaviors are exercised by the MCP integration suites (`Tests/integration/mcp_server_test.py`, `Tests/integration/mcp_remote_test.py`) on every release.
 
-> **Looking for ready-made MCPs?** [apfel-mcp.franzai.com](https://apfel-mcp.franzai.com/) ships three token-budget-optimized MCP servers designed for apfel's small on-device context window (4096 tokens on macOS 26, 8192 on macOS 27): `url-fetch`, `ddg-search`, and the flagship compound `search-and-fetch` tool. `brew install Arthur-Ficial/tap/apfel-mcp`. The repo is open for contributions of new apfel-optimized MCPs - see [apfel-mcp.franzai.com/#contribute](https://apfel-mcp.franzai.com/#contribute).
+> **Looking for ready-made MCPs?** [apfel-mcp.franzai.com](https://apfel-mcp.franzai.com/) ships three token-budget-optimized MCP servers designed for apfel's small on-device context window (4096 tokens, measured on macOS 26 and 27.0): `url-fetch`, `ddg-search`, and the flagship compound `search-and-fetch` tool. `brew install Arthur-Ficial/tap/apfel-mcp`. The repo is open for contributions of new apfel-optimized MCPs - see [apfel-mcp.franzai.com/#contribute](https://apfel-mcp.franzai.com/#contribute).
 
 > **Managing many MCPs?** [Arthur-Ficial/apfel-run](https://github.com/Arthur-Ficial/apfel-run) is an MIT wrapper that keeps an enabled/disabled list in `~/.config/apfel/mcps.conf` (comment out with `-` to disable), builds `APFEL_MCP`, and `execve`s apfel. Stop typing `--mcp` on every call; edit the file instead.
 

@@ -14,3 +14,4 @@ apfel-*.tar.gz.sha256
 
 # Internal working notes (SDD controller ledger)
 .superpowers/
+.build-sdk26/

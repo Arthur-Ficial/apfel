@@ -10,7 +10,7 @@ For **scripting language guides** (how to call apfel from Python, Node.js, Ruby,
 
 [opencode](https://opencode.ai) is an open-source terminal AI coding agent. Wire it to apfel's OpenAI-compatible server and every token stays on-device at zero cost. Re-verified end-to-end on opencode 1.17.16 + apfel 1.8.2.
 
-Full setup, the verified config, a real transcript, and every gotcha are on the dedicated page: [docs/integrations/opencode.md](integrations/opencode.md). The one you must not miss: opencode pastes your global `~/.claude/CLAUDE.md` into the system prompt, which overflows apfel's on-device context window (4096 tokens on macOS 26, 8192 on macOS 27) - fix it with `export OPENCODE_DISABLE_CLAUDE_CODE_PROMPT=1`.
+Full setup, the verified config, a real transcript, and every gotcha are on the dedicated page: [docs/integrations/opencode.md](integrations/opencode.md). The one you must not miss: opencode pastes your global `~/.claude/CLAUDE.md` into the system prompt, which overflows apfel's on-device context window (4096 tokens, measured on macOS 26 and 27.0) - fix it with `export OPENCODE_DISABLE_CLAUDE_CODE_PROMPT=1`.
 
 ---
 
@@ -43,7 +43,7 @@ Full setup, the verified config, a real transcript, and every gotcha are on the 
 }
 ```
 
-`max_tokens` is the context window, covering input and output combined. `4096` is the **macOS 26** value; on **macOS 27** set `max_tokens: 8192`, or you give up half the window. `apfel --model-info` prints the live value for your machine.
+`max_tokens` is the context window, covering input and output combined. `4096` is the value measured on macOS 26 and macOS 27.0; `apfel --model-info` prints the live value for your machine - use that number if it differs.
 
 Start apfel:
 
@@ -71,7 +71,7 @@ Why this setup works well:
 
 - `apfel` stays in the small-context, low-latency review lane
 - Continue provides the Visual Studio Code integration
-- a second model can handle larger edit/apply tasks without overloading `apfel`'s small on-device context window (4096 tokens on macOS 26, 8192 on macOS 27)
+- a second model can handle larger edit/apply tasks without overloading `apfel`'s small on-device context window (4096 tokens, measured on macOS 26 and 27.0)
 
 ---
 

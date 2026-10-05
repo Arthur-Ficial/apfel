@@ -7,6 +7,17 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Documentation no longer claims an 8192-token context window on macOS 27. That figure came from a macOS 27 beta; on the shipped macOS 27.0.1 the model reports 4096 tokens (`context_window_measured: true`), the same as macOS 26. README and docs now say "4096 tokens, measured on macOS 26 and 27.0" and point to `apfel --model-info` for the live value. New page [docs/apfel-vs-fm.md](docs/apfel-vs-fm.md) compares apfel with Apple's `fm` CLI that ships in macOS 27 (#192, #193).
+
+- `docs/file-extraction.md` documents that macOS 27's default guardrails sometimes refuse prompts built from OCR'd image text (3 of 5 runs on the Apollo 11 plaque fixture, none on macOS 26) and that `--permissive` is the intended remedy; the OCR integration test now runs with `--permissive` for that reason (#193).
+
+### Fixed
+
+- Guardrail hits on macOS 27 are classified again for binaries built against a macOS 26 SDK (every Homebrew, nixpkgs and MacPorts build so far). macOS 27 throws the legacy `GenerationError` to such binaries without a case name in its mirror (`May contain unsafe content`, description `Detected content likely to be unsafe`), and the classifier returned `.unknown`: the CLI exited 1 with `[error]` instead of 3 with `[guardrail]`, and the server answered HTTP 500 `server_error` instead of 400 `content_policy_violation`. The type-name branch now falls through to the description keywords. Binaries built against the macOS 27 SDK receive `LanguageModelError` ("The model's safety guardrails were triggered.") and were already classified correctly. `--debug` now prints the raw error type, mirror and description next to the classification so the next OS change is diagnosable from the terminal (#193).
+- `apfel --code` on macOS 27. The new on-device model read the steering directive's phrase "use a correct language info string on the fence" as a data field and answered with `{"language_info": {"name": "English", "iso_639": "en"}, "command": "brew outdated"}`, `# lang: python` suffixes or a `LANG=en_US` prefix instead of a bare command. The directive now shows the fence by example ("three backticks followed by the language name, for example ```bash") and no longer says "info string"; verified 3/3 prompts on macOS 27.0.1 and 3/3 on macOS 26.1 with the same wording (#193).
+
 ## [1.12.0] - 2026-09-24
 
 ### Added

@@ -151,11 +151,20 @@ def test_unsupported_file_errors(tmp_path):
 
 @pytest.mark.model
 def test_photo_ocr_content_reaches_model():
+    """OCR'd image text reaches the model.
+
+    Runs with --permissive: on macOS 27.0.1 the default guardrails block the
+    OCR'd Apollo 11 plaque text 3 times out of 5 (0/5 on macOS 26.1, 0/5 with
+    --permissive on 27). The flag selects Apple's permissiveContentTransformations
+    guardrail set, which is the one Apple intends for transforming user-provided
+    content such as OCR output - and this test is about the extraction path,
+    not about the default guardrail's mood (#193).
+    """
     require_model()
     r = subprocess.run(
-        [str(BINARY), "-f", str(PLAQUE),
+        [str(BINARY), "--permissive", "-f", str(PLAQUE),
          "Output only the exact words you can read in the image, uppercase, nothing else."],
-        capture_output=True, text=True, timeout=90,
+        capture_output=True, text=True, timeout=90, stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 0, r.stderr
     out = r.stdout.upper()
