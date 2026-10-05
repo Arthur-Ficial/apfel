@@ -499,7 +499,8 @@ private func nonStreamingResponse(
         if case .violation(let violation) = verdict {
             let repair = policy.repairPrompt(for: violation)
             events.append("tool policy repair: \(violation.code)")
-            promptTokens += outcome.completionTokens + await TokenCounter.shared.count(repair)
+            let repairTokens = await TokenCounter.shared.count(repair)
+            promptTokens += outcome.completionTokens + repairTokens
             outcome = try await withRetry(maxRetries: nsRetryMax) {
                 try await collectStream(session, prompt: repair, options: genOpts)
             }
