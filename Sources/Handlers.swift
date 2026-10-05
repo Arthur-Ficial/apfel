@@ -499,7 +499,8 @@ private func nonStreamingResponse(
         if case .violation(let violation) = verdict {
             let repair = policy.repairPrompt(for: violation)
             events.append("tool policy repair: \(violation.code)")
-            promptTokens += await TokenCounter.shared.count(outcome.content) + TokenCounter.shared.count(repair)
+            let repairTokens = await TokenCounter.shared.count(repair)
+            promptTokens += outcome.completionTokens + repairTokens
             outcome = try await withRetry(maxRetries: nsRetryMax) {
                 try await collectStream(session, prompt: repair, options: genOpts)
             }
@@ -548,7 +549,11 @@ private func nonStreamingResponse(
         responseMessage = OpenAIMessage(role: "assistant", content: .text(deliveredContent))
     }
 
-    let completionTokens = await TokenCounter.shared.count(deliveredContent)
+    // Reuse the token count collectStream already computed; recount only when
+    // JSON fence stripping altered the delivered content (#504).
+    let completionTokens = (jsonMode && toolCalls == nil)
+        ? await TokenCounter.shared.count(deliveredContent)
+        : outcome.completionTokens
     // collectStream already resolved .stop vs .length (cap-hit and output-side
     // overflow); only override here when tool calls are detected.
     let finishReason = (toolCalls != nil ? FinishReason.toolCalls : outcome.finishReason).openAIValue

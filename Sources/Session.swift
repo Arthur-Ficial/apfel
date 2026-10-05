@@ -665,12 +665,13 @@ func collectStream(
             completionTokens: completionTokens,
             maxTokens: options.maximumResponseTokens
         )
-        return StreamOutcome(content: prev, finishReason: reason)
+        return StreamOutcome(content: prev, finishReason: reason, completionTokens: completionTokens)
     } catch {
         let classified = ApfelError.classify(error)
         switch StreamErrorResolver.resolve(prev: prev, error: classified) {
         case .truncated(let content):
-            return StreamOutcome(content: content, finishReason: .length)
+            let truncatedTokens = await TokenCounter.shared.count(content)
+            return StreamOutcome(content: content, finishReason: .length, completionTokens: truncatedTokens)
         case .fatal(let err):
             throw err
         }

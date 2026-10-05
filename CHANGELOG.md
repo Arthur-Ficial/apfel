@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Non-streaming `/v1/chat/completions` no longer counts completion tokens twice per request. `collectStream` already computed the count for finish-reason resolution but discarded it; callers then re-counted the same text for the `usage` response. `StreamOutcome` now carries the count forward, eliminating one `tokenCount(for:)` SDK call per non-streaming request. The same redundancy in the tool-policy repair path is also removed. Saves ~0.1-0.15 s per request on typical hardware (#504).
+
 ## [1.12.0] - 2026-09-24
 
 ### Added
