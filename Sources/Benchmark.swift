@@ -161,7 +161,7 @@ private func benchmarkTrimNewestFirst(options: SessionOptions) async -> Benchmar
         budget: fixture.budget
     )
 
-    let iterations = 14
+    let iterations = 7
     let baseline = await measure(iterations: iterations) {
         _ = await legacyTrimNewestFirst(
             base: fixture.baseEntries,
@@ -205,7 +205,7 @@ private func benchmarkTrimOldestFirst(options: SessionOptions) async -> Benchmar
         budget: fixture.budget
     )
 
-    let iterations = 14
+    let iterations = 7
     let baseline = await measure(iterations: iterations) {
         _ = await legacyTrimOldestFirst(
             base: fixture.baseEntries,
@@ -238,7 +238,7 @@ private func benchmarkContextManager(options: SessionOptions) async throws -> Be
     let tools = benchmarkTools()
     let messages = benchmarkMessages()
 
-    let iterations = 12
+    let iterations = 6
     let timing = try await measure(iterations: iterations) {
         _ = try await ContextManager.makeSession(
             messages: messages,
@@ -341,7 +341,7 @@ private func benchmarkRequestPipeline(options: SessionOptions) async throws -> B
     let request = try JSONDecoder().decode(ChatCompletionRequest.self, from: requestJSON)
     let validation = try await benchmarkRequestPipelineResult(request: request, options: options)
 
-    let iterations = 40
+    let iterations = 14
     let timing = try await measure(iterations: iterations) {
         _ = try await benchmarkRequestPipelineResult(request: request, options: options)
     }
@@ -466,8 +466,8 @@ private func makeTrimFixture(options: SessionOptions) -> (
     )
 
     var historyEntries: [Transcript.Entry] = []
-    historyEntries.reserveCapacity(72)
-    for idx in 0..<36 {
+    historyEntries.reserveCapacity(48)
+    for idx in 0..<24 {
         historyEntries.append(makePromptEntry(
             "User turn \(idx): \(String(repeating: "question \(idx) ", count: 10))",
             options: options
@@ -489,7 +489,7 @@ private func makeTrimFixture(options: SessionOptions) -> (
         baseEntries: [.instructions(instructions)],
         historyEntries: historyEntries,
         finalEntry: finalEntry,
-        budget: 1_800
+        budget: 1_200
     )
 }
 
@@ -561,7 +561,7 @@ private func benchmarkMessages() -> [OpenAIMessage] {
         )
     ]
 
-    for idx in 0..<18 {
+    for idx in 0..<12 {
         messages.append(OpenAIMessage(
             role: "user",
             content: .parts([
