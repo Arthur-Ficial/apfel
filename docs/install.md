@@ -53,7 +53,7 @@ sw_vers
 # Check Swift is installed
 swift --version
 
-# Check the active Apple SDK version (must be 26.4+)
+# Check the active Apple SDK version (must be 27+)
 xcrun --show-sdk-version
 
 # If Swift is missing, install Command Line Tools:
@@ -62,30 +62,23 @@ xcode-select --install
 
 ### Troubleshooting build errors
 
-If `make install` fails with:
-
-```text
-value of type 'SystemLanguageModel' has no member 'tokenCount'
-value of type 'SystemLanguageModel' has no member 'contextSize'
-```
-
-Your selected Command Line Tools are older than the macOS 26.4 SDK. Fix:
+If `make install` fails with errors about missing FoundationModels types (e.g. `LanguageModelSession.Usage`, `LanguageModelSession.Response`, `LanguageModelCapabilities`) or the older `tokenCount`/`contextSize` errors, your SDK is too old. Since apfel 1.15.0, building from source requires the macOS 27 SDK. Fix:
 
 ```bash
-# update/install Command Line Tools
+# install Command Line Tools for macOS 27 (or Xcode 27)
 xcode-select --install
 
 # ensure the CLT developer dir is selected
 sudo xcode-select -s /Library/Developer/CommandLineTools
 
-# confirm the active SDK is new enough
+# confirm the active SDK is 27+
 xcrun --show-sdk-version
 
 # retry
 make install
 ```
 
-`xcrun --show-sdk-version` must print `26.4` or newer.
+`xcrun --show-sdk-version` must print `27.0` or newer.
 
 ### Troubleshooting: "Unknown error parsing property list" (SwiftPM 6.4+)
 

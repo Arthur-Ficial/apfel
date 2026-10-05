@@ -58,6 +58,43 @@ def test_release_targets_still_depend_on_generate_build_info():
         )
 
 
+def test_check_toolchain_requires_sdk_27():
+    """check-toolchain must reject SDK versions below 27 (#520).
+
+    Since v1.15.0 the sources use macOS 27-only FoundationModels API
+    (UsageAccounting, VisionSupport, ToolCallingSupport, TypedErrorSupport)
+    behind runtime #available gates but without compile-time SDK guards,
+    so the 26.x SDK cannot compile them. The Makefile must catch this
+    before swift build runs.
+    """
+    text = _makefile_text()
+    # Extract the check-toolchain recipe (everything between the target
+    # line and the next blank-line-then-target or end of the "Environment
+    # checks" section).
+    import re
+    match = re.search(
+        r"^check-toolchain:\s*\n((?:\t.*\n)+)",
+        text,
+        re.MULTILINE,
+    )
+    assert match, "check-toolchain target not found in Makefile"
+    recipe = match.group(1)
+
+    # The recipe must reject SDK major version < 27. The simplest correct
+    # guard is `[ "$major" -lt 27 ]`. We also accept the compound form
+    # `[ "$major" -lt 27 ] || { [ "$major" -eq 27 ] && ... }` (which
+    # would gate on a minor within 27). What it must NOT do is accept 26.
+    assert '26.4' not in recipe, (
+        "check-toolchain still references SDK 26.4; it must require SDK 27+ "
+        "since v1.15.0 (UsageAccounting.swift, VisionSupport.swift use "
+        "macOS 27-only FoundationModels types at compile time). See #520."
+    )
+    assert '-lt 27' in recipe or '-lt 28' in recipe, (
+        "check-toolchain does not appear to reject SDK major < 27. "
+        "The guard must require the macOS 27 SDK or newer. See #520."
+    )
+
+
 def _swift_invocation_files() -> list[pathlib.Path]:
     """Makefile plus every shell script under scripts/ (release infra, #194)."""
     return [MAKEFILE, *sorted((ROOT / "scripts").glob("*.sh"))]
