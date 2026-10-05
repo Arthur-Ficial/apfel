@@ -24,3 +24,17 @@ struct CaselessGenerationErrorStub: Error, LocalizedError, CustomStringConvertib
     var errorDescription: String? { localizedMsg }
     var description: String { mirrorText }
 }
+
+/// Simulates a macOS 27 LanguageModelError without importing FoundationModels.
+/// The type name contains "LanguageModelError" (not "GenerationError"), and
+/// the mirror is "LanguageModelError.<caseName>(...)" (#522).
+struct LanguageModelErrorStub: Error, LocalizedError, CustomStringConvertible {
+    let caseName: String
+    let localizedMsg: String
+
+    var errorDescription: String? { localizedMsg }
+
+    var description: String {
+        "LanguageModelError.\(caseName)(Context(debugDescription: \"\(localizedMsg)\"))"
+    }
+}

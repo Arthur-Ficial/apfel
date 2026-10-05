@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `isRetryableError` and `withRetry` now recognise macOS 27 `LanguageModelError` by type name, not just the legacy `GenerationError`. A typed `rateLimited` (or `concurrentRequests`, `assetsUnavailable`) thrown as a `LanguageModelError` was falling through to locale-dependent English keyword matching, so `--retry` could silently fail on non-English systems. The classifier now checks for both `GenerationError` and `LanguageModelError` in the error's type name and mirror string (#522).
+
 ## [1.15.0] - 2026-10-05
 
 ### Added

@@ -39,17 +39,23 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
         return classifyLocalizedDescription(error.localizedDescription)
     }
 
+    private static let knownModelErrorTypes = ["GenerationError", "LanguageModelError"]
+
+    private static func isKnownModelErrorType(_ text: String) -> Bool {
+        knownModelErrorTypes.contains { text.contains($0) }
+    }
+
     private static func classifyGenerationError(
         typeName: String,
         mirror: String,
         localizedDescription: String
     ) -> ApfelError? {
-        guard typeName.contains("GenerationError") || mirror.contains("GenerationError") else {
+        guard isKnownModelErrorType(typeName) || isKnownModelErrorType(mirror) else {
             return nil
         }
 
         guard let generationCase = FoundationModelsGenerationErrorCase.firstMatch(in: mirror) else {
-            if mirror.contains("GenerationError") {
+            if isKnownModelErrorType(mirror) {
                 // A case name is present but unknown to us (#181): return
                 // .unknown directly rather than guessing from locale-fragile
                 // English keywords.

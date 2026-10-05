@@ -237,6 +237,55 @@ func runApfelErrorTests() {
             }
         }
     }
+    // --- macOS 27 LanguageModelError classification (#522) ---
+
+    test("classify maps every known LanguageModelError case (#522)") {
+        let localized = "localized details"
+        let cases: [(caseName: String, expected: ApfelError)] = [
+            ("exceededContextWindowSize", .contextOverflow),
+            ("assetsUnavailable", .assetsUnavailable),
+            ("guardrailViolation", .guardrailViolation),
+            ("unsupportedGuide", .unsupportedGuide),
+            ("unsupportedLanguageOrLocale", .unsupportedLanguage(localized)),
+            ("decodingFailure", .decodingFailure(localized)),
+            ("rateLimited", .rateLimited),
+            ("concurrentRequests", .concurrentRequest),
+            ("refusal", .refusal(localized)),
+        ]
+
+        for item in cases {
+            let err = LanguageModelErrorStub(caseName: item.caseName, localizedMsg: localized)
+            try assertEqual(ApfelError.classify(err), item.expected, "LanguageModelError case=\(item.caseName)")
+        }
+    }
+    test("classify LanguageModelError.rateLimited is retryable on non-English locale (#522)") {
+        let err = LanguageModelErrorStub(caseName: "rateLimited", localizedMsg: "レート制限。後でもう一度お試しください。")
+        try assertEqual(ApfelError.classify(err), .rateLimited)
+        try assertTrue(isRetryableError(err))
+    }
+    test("classify LanguageModelError.concurrentRequests is retryable on German locale (#522)") {
+        let err = LanguageModelErrorStub(caseName: "concurrentRequests", localizedMsg: "Zu viele gleichzeitige Anfragen.")
+        try assertEqual(ApfelError.classify(err), .concurrentRequest)
+        try assertTrue(isRetryableError(err))
+    }
+    test("classify LanguageModelError.assetsUnavailable is retryable (#522)") {
+        let err = LanguageModelErrorStub(caseName: "assetsUnavailable", localizedMsg: "모델 자산을 로드하는 중")
+        try assertEqual(ApfelError.classify(err), .assetsUnavailable)
+        try assertTrue(isRetryableError(err))
+    }
+    test("classify LanguageModelError.guardrailViolation is NOT retryable (#522)") {
+        let err = LanguageModelErrorStub(caseName: "guardrailViolation", localizedMsg: "Inhaltsrichtlinie verletzt")
+        try assertEqual(ApfelError.classify(err), .guardrailViolation)
+        try assertTrue(!isRetryableError(err))
+    }
+    test("classify unknown LanguageModelError case returns .unknown (#522)") {
+        let err = LanguageModelErrorStub(caseName: "brandNewCase", localizedMsg: "Something new from Apple")
+        if case .unknown(let msg) = ApfelError.classify(err) {
+            try assertEqual(msg, "Something new from Apple")
+        } else {
+            throw TestFailure("expected .unknown for unrecognised LanguageModelError case")
+        }
+    }
     test("openAIMessage is non-empty for all cases") {
         let cases: [ApfelError] = [.guardrailViolation, .refusal("text"), .contextOverflow,
                                     .rateLimited, .concurrentRequest, .assetsUnavailable,

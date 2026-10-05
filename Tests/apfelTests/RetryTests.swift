@@ -118,6 +118,41 @@ func runRetryTests() {
         try assertTrue(isRetryableError(err))
     }
 
+    // ---- macOS 27 LanguageModelError retry (#522) ----
+
+    for lt in localeTests {
+        test("isRetryableError: LanguageModelError.rateLimited detected on \(lt.lang) locale (#522)") {
+            let err = LanguageModelErrorStub(caseName: "rateLimited", localizedMsg: lt.rateLimitedMsg)
+            let classified = ApfelError.classify(err)
+            try assertEqual(classified, .rateLimited, "LanguageModelError locale=\(lt.lang)")
+            try assertTrue(isRetryableError(err), "isRetryableError should be true for \(lt.lang) LanguageModelError.rateLimited")
+        }
+
+        test("isRetryableError: LanguageModelError.concurrentRequests detected on \(lt.lang) locale (#522)") {
+            let err = LanguageModelErrorStub(caseName: "concurrentRequests", localizedMsg: lt.concurrentMsg)
+            let classified = ApfelError.classify(err)
+            try assertEqual(classified, .concurrentRequest, "LanguageModelError locale=\(lt.lang)")
+            try assertTrue(isRetryableError(err), "isRetryableError should be true for \(lt.lang) LanguageModelError.concurrentRequests")
+        }
+    }
+
+    test("isRetryableError: LanguageModelError.assetsUnavailable is retryable (#522)") {
+        let err = LanguageModelErrorStub(
+            caseName: "assetsUnavailable",
+            localizedMsg: "Model assets are still loading"
+        )
+        try assertEqual(ApfelError.classify(err), .assetsUnavailable)
+        try assertTrue(isRetryableError(err))
+    }
+
+    test("isRetryableError: LanguageModelError.guardrailViolation NOT retryable (#522)") {
+        let err = LanguageModelErrorStub(
+            caseName: "guardrailViolation",
+            localizedMsg: "Inhaltsrichtlinie verletzt"
+        )
+        try assertTrue(!isRetryableError(err))
+    }
+
     // ---- withRetry tests ----
 
     testAsync("withRetry: succeeds on first attempt, no retry") {
