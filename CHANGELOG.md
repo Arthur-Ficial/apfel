@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `apfel --benchmark` no longer times out on macOS 27 where `tokenCount(for:)` latency is higher. Reduced iteration counts and fixture sizes for the four model-calling benchmarks (trim, context-manager, request-pipeline) to cut total `tokenCount` calls from ~1,700 to ~800, keeping single-run wall time well under the 180 s integration-test timeout while preserving meaningful speedup assertions (#511).
+
 ## [1.12.0] - 2026-09-24
 
 ### Added
