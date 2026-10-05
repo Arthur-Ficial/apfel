@@ -136,6 +136,7 @@ suite("CodeFlagTests") { runCodeFlagTests() }
 suite("PrewarmDecisionTests") { runPrewarmDecisionTests() }
 suite("ResponsesModelsTests") { runResponsesModelsTests() }
 suite("ShellOutputTests") { runShellOutputTests() }
+suite("ToolArgumentSchemaTests") { runToolArgumentSchemaTests() }
 
 // MARK: - Summary
 

@@ -41,7 +41,10 @@ def _run_benchmarks():
         [str(BINARY), "--benchmark", "-o", "json"],
         text=True,
         capture_output=True,
-        timeout=180,
+        # One full `--benchmark -o json` pass takes ~4m20s on an idle macOS
+        # 27.0.1 machine (measured 2026-10-05; it fit in 180s on macOS 26).
+        # 600s keeps >2x headroom without masking a hang.
+        timeout=600,
         check=False,
     )
     assert result.returncode == 0, result.stderr

@@ -519,6 +519,15 @@ actor MCPManager {
         guard let conn = toolMap[name] else {
             throw MCPError.toolNotFound("No MCP server provides tool '\(name)'")
         }
+        // Validate model-emitted arguments against the tool's declared
+        // inputSchema before executing (#193). A mismatch throws
+        // .invalidArguments, which executeMCPTools feeds back to the model as
+        // a retryable error tool-result - the tool is never executed with an
+        // argument shape the schema rejects.
+        let schemaJSON = conn.tools.first { $0.function.name == name }?
+            .function.parameters?.value
+        try MCPProtocol.validateToolArguments(
+            name: name, arguments: arguments, inputSchemaJSON: schemaJSON)
         do {
             return try await conn.callTool(name: name, arguments: arguments)
         } catch {
@@ -532,6 +541,15 @@ actor MCPManager {
             }
             throw error
         }
+    }
+
+    /// The corrective re-prompt for a schema-rejected call to `name` (#193),
+    /// or nil when the tool is unknown or declares no parameter names.
+    func retryPrompt(for name: String) -> String? {
+        guard let conn = toolMap[name] else { return nil }
+        let schemaJSON = conn.tools.first { $0.function.name == name }?
+            .function.parameters?.value
+        return MCPProtocol.toolRetryPrompt(name: name, inputSchemaJSON: schemaJSON)
     }
 
     /// Remove a dead connection from the routing tables and reap its child.

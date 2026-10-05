@@ -79,6 +79,130 @@ public enum MCPProtocol {
         }
     }
 
+    /// Validates model-emitted tool-call arguments against the tool's declared
+    /// `inputSchema` before they are sent to an MCP server (#193).
+    ///
+    /// On macOS 27 the model can invent an argument shape that ignores the
+    /// schema (e.g. `multiply({"numbers": [247, 83]})` against a schema
+    /// requiring `a` and `b`). Executing such a call lets all-optional-params
+    /// servers silently "succeed" with defaults. This check rejects the call
+    /// up front so the caller can feed a descriptive error result back to the
+    /// model, which then retries within its existing re-prompt budget.
+    ///
+    /// Checks performed (shallow, key-level only - not full JSON Schema):
+    /// - `arguments` must be valid JSON (delegates to
+    ///   `validateToolArguments(name:arguments:)`, #241).
+    /// - Every key in the schema's `required` array must be present.
+    /// - When the schema declares `properties`, no argument key outside them
+    ///   is allowed - unless `additionalProperties` is literally `true`.
+    ///
+    /// A `nil`, unparseable, or `properties`/`required`-free schema skips the
+    /// schema checks entirely, so schema-less tools behave exactly as before.
+    ///
+    /// - Parameters:
+    ///   - name: The tool name, used in the error message.
+    ///   - arguments: JSON text describing the tool-call arguments.
+    ///   - inputSchemaJSON: The tool's declared `inputSchema` as JSON text,
+    ///     or `nil` when the tool declares none.
+    /// - Throws: `MCPError.invalidArguments` naming the tool, the
+    ///   missing/unexpected keys, and the expected parameter names and types.
+    public static func validateToolArguments(
+        name: String, arguments: String, inputSchemaJSON: String?
+    ) throws {
+        try validateToolArguments(name: name, arguments: arguments)
+
+        guard let inputSchemaJSON,
+              let schemaData = inputSchemaJSON.data(using: .utf8),
+              let schema = (try? JSONSerialization.jsonObject(with: schemaData)) as? [String: Any]
+        else { return }
+
+        let required = (schema["required"] as? [String]) ?? []
+        let properties = schema["properties"] as? [String: Any]
+        guard !required.isEmpty || properties != nil else { return }
+
+        let trimmed = arguments.trimmingCharacters(in: .whitespacesAndNewlines)
+        let argsObject: [String: Any]
+        if trimmed.isEmpty {
+            argsObject = [:]
+        } else {
+            // Non-object arguments (e.g. a bare array) carry no named keys:
+            // every required key counts as missing.
+            argsObject = ((try? JSONSerialization.jsonObject(with: Data(trimmed.utf8)))
+                as? [String: Any]) ?? [:]
+        }
+
+        let missing = required.filter { argsObject[$0] == nil }
+
+        var unexpected: [String] = []
+        // JSON Schema: `properties: {}` does not close the object (only
+        // `additionalProperties: false` does, and argument-ignoring tools
+        // declare exactly `{"type": "object", "properties": {}}`). Enforce
+        // unknown-key rejection only when there are declared property names
+        // the model could use instead.
+        if let properties, !properties.isEmpty, schema["additionalProperties"] as? Bool != true {
+            unexpected = argsObject.keys.filter { properties[$0] == nil }.sorted()
+        }
+
+        guard !missing.isEmpty || !unexpected.isEmpty else { return }
+
+        var parts: [String] = []
+        if !missing.isEmpty {
+            parts.append("missing required parameter(s): \(missing.joined(separator: ", "))")
+        }
+        if !unexpected.isEmpty {
+            parts.append("unexpected parameter(s): \(unexpected.joined(separator: ", "))")
+        }
+        let expected = (properties ?? [:]).keys.sorted().map { key -> String in
+            if let prop = (properties ?? [:])[key] as? [String: Any],
+               let type = prop["type"] as? String {
+                return "\(key) (\(type))"
+            }
+            return key
+        }
+        if !expected.isEmpty {
+            parts.append("expected parameters: \(expected.joined(separator: ", "))")
+        }
+        throw MCPError.invalidArguments(
+            "Tool '\(name)' called with invalid arguments: \(parts.joined(separator: "; "))."
+        )
+    }
+
+    /// The corrective re-prompt for a tool call rejected by
+    /// `validateToolArguments(name:arguments:inputSchemaJSON:)` (#193).
+    ///
+    /// The rejection itself reaches the model as an error tool result, but
+    /// that alone does not make the on-device model retry - it apologizes or
+    /// does the arithmetic by hand instead. Callers send this prompt as the
+    /// follow-up user message, with the tool schemas back in scope, so the
+    /// model re-emits the call with the correct parameter names. The exact
+    /// phrasing is reliability-tested on-device (5/5 corrected retries on
+    /// macOS 27 against both a strict and an argument-coercing MCP server;
+    /// descriptive variants peaked at 4/5).
+    ///
+    /// - Parameters:
+    ///   - name: The tool name.
+    ///   - inputSchemaJSON: The tool's declared `inputSchema` as JSON text.
+    /// - Returns: The corrective prompt, or `nil` when the schema declares no
+    ///   parameter names to steer the model toward.
+    public static func toolRetryPrompt(name: String, inputSchemaJSON: String?) -> String? {
+        guard let inputSchemaJSON,
+              let data = inputSchemaJSON.data(using: .utf8),
+              let schema = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        else { return nil }
+        let required = (schema["required"] as? [String]) ?? []
+        let properties = (schema["properties"] as? [String: Any]) ?? [:]
+        let names = required.isEmpty ? properties.keys.sorted() : required
+        guard !names.isEmpty else { return nil }
+        let quoted = names.map { "'\($0)'" }
+        let list = quoted.count == 1
+            ? "name \(quoted[0])"
+            : "names \(quoted.dropLast().joined(separator: ", ")) and \(quoted.last!)"
+        return "Your tool call used wrong parameter names and was rejected. "
+            + "Call the tool '\(name)' again now with the same values, "
+            + "using the parameter \(list). "
+            + "Respond ONLY with the tool call JSON, no other text."
+    }
+
     // MARK: - Response parsing
 
     /// MCP server identity returned from the initialize handshake.

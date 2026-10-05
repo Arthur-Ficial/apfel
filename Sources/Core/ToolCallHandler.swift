@@ -325,9 +325,58 @@ public enum ToolCallHandler {
         // Empty string → empty object
         if trimmed.isEmpty { return "{}" }
         // Already a JSON object or array
-        if trimmed.hasPrefix("{") || trimmed.hasPrefix("[") { return s }
+        if trimmed.hasPrefix("{") || trimmed.hasPrefix("[") {
+            // On macOS 27 the model deterministically drops the final escaped
+            // `}` inside the arguments string when retrying a rejected tool
+            // call: the outer tool_calls JSON parses, so the truncated object
+            // lands here as-is. Repair unclosed strings/braces/brackets when
+            // (and only when) the repaired text parses; anything else is
+            // returned unchanged so #241 still fails loud (#193).
+            if (try? JSONSerialization.jsonObject(with: Data(trimmed.utf8))) == nil,
+               let repaired = repairUnclosedContainers(trimmed) {
+                return repaired
+            }
+            return s
+        }
         // Plain string — wrap as {"value": "..."} using the JSON encoder for escaping.
         return jsonObjectString(["value": trimmed]) ?? "{}"
+    }
+
+    /// Close an unterminated trailing string and any unclosed `{`/`[`
+    /// containers (string-aware, innermost first), returning the repaired
+    /// text only when it parses as JSON. Returns nil when the text is
+    /// balanced already or the repair does not produce valid JSON.
+    private static func repairUnclosedContainers(_ json: String) -> String? {
+        var stack: [Character] = []
+        var inString = false
+        var escaped = false
+        for ch in json {
+            if inString {
+                if escaped { escaped = false }
+                else if ch == "\\" { escaped = true }
+                else if ch == "\"" { inString = false }
+            } else if ch == "\"" {
+                inString = true
+            } else if ch == "{" || ch == "[" {
+                stack.append(ch)
+            } else if ch == "}" || ch == "]" {
+                guard let open = stack.last,
+                      (ch == "}" && open == "{") || (ch == "]" && open == "[") else {
+                    return nil // mismatched closer: not repairable
+                }
+                stack.removeLast()
+            }
+        }
+        guard inString || !stack.isEmpty else { return nil }
+        var repaired = json
+        if inString { repaired.append("\"") }
+        for open in stack.reversed() {
+            repaired.append(open == "{" ? "}" : "]")
+        }
+        guard (try? JSONSerialization.jsonObject(with: Data(repaired.utf8))) != nil else {
+            return nil
+        }
+        return repaired
     }
 
     /// The model sometimes omits the closing `]` for the tool_calls array,

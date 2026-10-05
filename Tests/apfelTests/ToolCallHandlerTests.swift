@@ -382,6 +382,40 @@ func runToolCallHandlerTests() {
         try assertEqual(ToolCallHandler.ensureJSONArguments("  "), "{}")
     }
 
+    test("ensureJSONArguments repairs a missing closing brace (#193)") {
+        // macOS 27 deterministically drops the final escaped `}` inside the
+        // arguments string on tool-call retries; the outer JSON parses, so
+        // the truncated object reaches argument handling as-is.
+        let result = ToolCallHandler.ensureJSONArguments(#"{"a": 247, "b": 83"#)
+        let parsed = try JSONSerialization.jsonObject(with: Data(result.utf8)) as? [String: Any]
+        try assertEqual(parsed?["a"] as? Int, 247)
+        try assertEqual(parsed?["b"] as? Int, 83)
+    }
+
+    test("ensureJSONArguments repairs nested missing closing braces") {
+        let result = ToolCallHandler.ensureJSONArguments(#"{"outer": {"inner": 1"#)
+        let parsed = try JSONSerialization.jsonObject(with: Data(result.utf8)) as? [String: Any]
+        let outer = parsed?["outer"] as? [String: Any]
+        try assertEqual(outer?["inner"] as? Int, 1)
+    }
+
+    test("ensureJSONArguments repairs an unclosed array in an object") {
+        let result = ToolCallHandler.ensureJSONArguments(#"{"items": [1, 2"#)
+        let parsed = try JSONSerialization.jsonObject(with: Data(result.utf8)) as? [String: Any]
+        try assertEqual((parsed?["items"] as? [Int])?.count, 2)
+    }
+
+    test("ensureJSONArguments ignores braces inside strings when repairing") {
+        let result = ToolCallHandler.ensureJSONArguments(#"{"path": "dir{weird"#)
+        let parsed = try JSONSerialization.jsonObject(with: Data(result.utf8)) as? [String: Any]
+        try assertEqual(parsed?["path"] as? String, "dir{weird")
+    }
+
+    test("ensureJSONArguments leaves unrepairable garbage unchanged so #241 fires loud") {
+        let garbage = "{not json}"
+        try assertEqual(ToolCallHandler.ensureJSONArguments(garbage), garbage)
+    }
+
     test("ensureJSONArguments handles whitespace-padded JSON") {
         let result = ToolCallHandler.ensureJSONArguments("  {\"key\": \"val\"}  ")
         // Should pass through since trimmed starts with {

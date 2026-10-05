@@ -361,6 +361,13 @@ struct MCPExecutionResult {
     let toolCalls: [ParsedToolCall]
     let resultParts: [String]
     let toolLog: [(name: String, args: String, result: String, isError: Bool)]
+    /// Corrective re-prompts (`MCPProtocol.toolRetryPrompt`) for calls
+    /// rejected by schema validation (#193). Non-empty means those calls were
+    /// not executed and the model should be re-prompted to retry; both paths
+    /// surface these as the follow-up's final instruction, because an error
+    /// inside a tool-result transcript entry alone does not make the
+    /// on-device model re-emit a tool call.
+    let retryInstructions: [String]
 }
 
 /// Detect and execute MCP tool calls found in model output.
@@ -386,6 +393,7 @@ func executeMCPTools(
 ) async throws -> MCPExecutionResult {
     var resultParts: [String] = []
     var toolLog: [(name: String, args: String, result: String, isError: Bool)] = []
+    var retryInstructions: [String] = []
     for call in toolCalls {
         do {
             let result = try await mcpManager.execute(name: call.name, arguments: call.argumentsString)
@@ -408,13 +416,19 @@ func executeMCPTools(
                 let msg = "\(error)"
                 resultParts.append("\(call.name): error - \(msg)")
                 toolLog.append((name: call.name, args: call.argumentsString, result: msg, isError: true))
+                if case .invalidArguments = error as? MCPError,
+                   let retryPrompt = await mcpManager.retryPrompt(for: call.name) {
+                    retryInstructions.append(retryPrompt)
+                }
             default:
                 throw error
             }
         }
     }
 
-    return MCPExecutionResult(toolCalls: toolCalls, resultParts: resultParts, toolLog: toolLog)
+    return MCPExecutionResult(
+        toolCalls: toolCalls, resultParts: resultParts, toolLog: toolLog,
+        retryInstructions: retryInstructions)
 }
 
 /// The fixed CLI follow-up prompt template with an empty tool result, used to
@@ -456,10 +470,19 @@ func executeMCPToolCallsForCLI(
     var aggregatedLog = executed.toolLog
     let plainSession = makeSession(systemPrompt: systemPrompt)
     let overhead = cliFollowUpOverhead(userPrompt: userPrompt, systemPrompt: systemPrompt)
+    // Schema-rejected calls (#193): close the follow-up with the corrective
+    // instead of "Answer the user's question..." - the CLI follow-up session
+    // keeps the original system prompt (tool schemas + calling format), so
+    // the model can re-emit the corrected call and the loop below runs it.
+    func followUpInstruction(_ result: MCPExecutionResult) -> String {
+        result.retryInstructions.isEmpty
+            ? "Answer the user's question using this result."
+            : result.retryInstructions.joined(separator: "\n")
+    }
     var toolResult = await truncateToolResultToBudget(
         executed.resultParts.joined(separator: "\n"), overhead: overhead)
     var finalContent = try await plainSession.respond(
-        to: "The user asked: \(userPrompt)\n\nThe tool returned: \(toolResult)\n\nAnswer the user's question using this result.",
+        to: "The user asked: \(userPrompt)\n\nThe tool returned: \(toolResult)\n\n\(followUpInstruction(executed))",
         options: options
     ).content
 
@@ -476,7 +499,7 @@ func executeMCPToolCallsForCLI(
         toolResult = await truncateToolResultToBudget(
             followUp.resultParts.joined(separator: "\n"), overhead: overhead)
         finalContent = try await plainSession.respond(
-            to: "The user asked: \(userPrompt)\n\nThe tool returned: \(toolResult)\n\nAnswer the user's question using this result.",
+            to: "The user asked: \(userPrompt)\n\nThe tool returned: \(toolResult)\n\n\(followUpInstruction(followUp))",
             options: options
         ).content
     }
@@ -563,14 +586,32 @@ func executeMCPToolCallsForServer(
         let truncated = try await truncatedServerToolResults(
             toolCalls: currentExecuted.toolCalls, toolLog: currentExecuted.toolLog,
             priorMessages: currentMessages, sessionOptions: sessionOptions)
-        let followUpMessages = appendExecutedToolResults(
+        var followUpMessages = appendExecutedToolResults(
             to: currentMessages,
             toolCalls: currentExecuted.toolCalls,
             toolResults: truncated
         )
+        // Schema-rejected calls (#193): the corrective must arrive as the
+        // final user prompt. Left only in the tool-result entry, the
+        // synthetic "Respond to the user based on the tool result above."
+        // prompt wins and the model apologizes instead of re-emitting a
+        // corrected tool call.
+        if !currentExecuted.retryInstructions.isEmpty {
+            followUpMessages.append(OpenAIMessage(
+                role: "user",
+                content: .text(currentExecuted.retryInstructions.joined(separator: "\n"))
+            ))
+        }
+        // A retry round needs the tool schemas and the tool-calling format in
+        // scope again, exactly like the first round - without them the model
+        // answers the arithmetic by hand (wrongly) instead of re-emitting the
+        // corrected call (#193). Ordinary tool-result follow-ups keep
+        // tools: nil, unchanged.
+        let followUpTools: [OpenAITool]? = currentExecuted.retryInstructions.isEmpty
+            ? nil : await mcpManager.allTools()
         let (followUpSession, followUpPrompt, _) = try await ContextManager.makeSession(
             messages: followUpMessages,
-            tools: nil,
+            tools: followUpTools,
             options: sessionOptions,
             jsonMode: false,
             toolChoice: nil
