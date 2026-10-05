@@ -29,7 +29,8 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
     case unknown(String)
 
     /// Classify any thrown error into a typed ApfelError.
-    /// Matches on FoundationModels.GenerationError first, falls back to string matching.
+    /// Matches on FoundationModels GenerationError / LanguageModelError first,
+    /// falls back to string matching.
     public static func classify(_ error: Error) -> ApfelError {
         if let already = error as? ApfelError { return already }
         if let mcpError = error as? MCPError {
@@ -55,15 +56,18 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
         mirror: String,
         localizedDescription: String
     ) -> ApfelError? {
-        guard typeName.contains("GenerationError") || mirror.contains("GenerationError") else {
+        let isFoundationModelsError =
+            typeName.contains("GenerationError") || mirror.contains("GenerationError")
+            || typeName.contains("LanguageModelError") || mirror.contains("LanguageModelError")
+        guard isFoundationModelsError else {
             return nil
         }
 
         guard let generationCase = FoundationModelsGenerationErrorCase.firstMatch(in: mirror) else {
-            if mirror.contains("GenerationError") {
-                // A case name is present but unknown to us (#181): return
-                // .unknown directly rather than guessing from locale-fragile
-                // English keywords.
+            if mirror.contains("GenerationError") || mirror.contains("LanguageModelError") {
+                // A case name is present but unknown to us (#181, #521):
+                // return .unknown directly rather than guessing from
+                // locale-fragile English keywords.
                 return .unknown(localizedDescription)
             }
             // The type is a GenerationError but the mirror carries no case at
@@ -228,6 +232,7 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
 }
 
 private enum FoundationModelsGenerationErrorCase: String, CaseIterable {
+    // GenerationError case names (macOS 26)
     case guardrailViolation
     case refusal
     case exceededContextWindowSize
@@ -237,6 +242,9 @@ private enum FoundationModelsGenerationErrorCase: String, CaseIterable {
     case assetsUnavailable
     case unsupportedGuide
     case decodingFailure
+    // LanguageModelError case names that differ from GenerationError (macOS 27, #521)
+    case contextSizeExceeded
+    case unsupportedGenerationGuide
 
     static func firstMatch(in mirror: String) -> FoundationModelsGenerationErrorCase? {
         allCases.first { mirror.contains($0.rawValue) }
@@ -248,7 +256,7 @@ private enum FoundationModelsGenerationErrorCase: String, CaseIterable {
             return .guardrailViolation
         case .refusal:
             return .refusal(localizedDescription)
-        case .exceededContextWindowSize:
+        case .exceededContextWindowSize, .contextSizeExceeded:
             return .contextOverflow
         case .rateLimited:
             return .rateLimited
@@ -258,7 +266,7 @@ private enum FoundationModelsGenerationErrorCase: String, CaseIterable {
             return .unsupportedLanguage(localizedDescription)
         case .assetsUnavailable:
             return .assetsUnavailable
-        case .unsupportedGuide:
+        case .unsupportedGuide, .unsupportedGenerationGuide:
             return .unsupportedGuide
         case .decodingFailure:
             return .decodingFailure(localizedDescription)

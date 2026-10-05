@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The pure `ApfelError.classify` string-based classifier now recognises macOS 27's `LanguageModelError` by type name, not only the legacy `GenerationError`. The renamed case names (`contextSizeExceeded`, `unsupportedGenerationGuide`) are mapped to the same `ApfelError` cases as their macOS 26 equivalents. This hardens the `@unknown default` fallback path in the typed classifier and any ApfelCore-internal call site (e.g. the retry banner) that receives a `LanguageModelError` without going through the main target's `#available` glue (#521).
+
 ### Added
 
 - `tool_choice` reaches the macOS 27 runtime (#510 item 3, #197). On macOS 27 apfel sets `GenerationOptions.ToolCallingMode` for the request: `auto` (and an omitted `tool_choice` with tools in scope) maps to `.allowed`, `none` to `.disallowed`, on both `/v1/chat/completions` and `/v1/responses`; the debug trace names the applied mode (`runtime_mode=`). The SDK's `.required` mode is deliberately NOT used: with apfel's out-of-band tool calling (#119 - transcript tool definitions, no registered `FoundationModels.Tool`) the runtime rejected every `.required` request with `LanguageModelError` "An unsupported generation guide was used" (0/10 seeds survived on macOS 27.0.1/M2), while apfel's existing prompt steering + `ToolPolicy` enforcement satisfied `tool_choice: "required"` on 10/10 of the same requests - so `required` and named functions keep the steering + enforcement path on every OS (there is also no per-tool mode in the SDK). Measured before/after on the bundled calculator's `multiply` schema, 10 seeds each: `required` on a greeting prompt 10/10 -> 10/10 tool calls, `auto` on the same prompt 0/10 -> 0/10, `auto` on a multiplication prompt 10/10 -> 10/10, `none` on the multiplication prompt 0/10 -> 0/10 - behavior preserved, with the runtime now told the same contract. macOS 26 generation options are byte-identical to before. New `ApfelCore` surface (additive): `ToolCallingDirective` (#510)
