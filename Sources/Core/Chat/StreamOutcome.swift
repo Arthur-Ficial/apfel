@@ -27,10 +27,15 @@ import Foundation
 public struct StreamOutcome: Sendable, Equatable, Hashable {
     public let content: String
     public let finishReason: FinishReason
+    /// Token count of `content`, computed during finish-reason resolution.
+    /// Callers that need completion tokens for usage reporting can reuse this
+    /// instead of re-counting the same text (#504).
+    public let completionTokens: Int
 
-    public init(content: String, finishReason: FinishReason) {
+    public init(content: String, finishReason: FinishReason, completionTokens: Int = 0) {
         self.content = content
         self.finishReason = finishReason
+        self.completionTokens = completionTokens
     }
 }
 

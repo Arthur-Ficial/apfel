@@ -201,6 +201,24 @@ func runStreamErrorResolverTests() {
         try assertEqual(length.finishReason, .length)
     }
 
+    test("StreamOutcome carries completionTokens (#504)") {
+        let outcome = StreamOutcome(content: "hello", finishReason: .stop, completionTokens: 42)
+        try assertEqual(outcome.completionTokens, 42)
+    }
+
+    test("StreamOutcome completionTokens defaults to zero") {
+        let outcome = StreamOutcome(content: "hello", finishReason: .stop)
+        try assertEqual(outcome.completionTokens, 0)
+    }
+
+    test("StreamOutcome equality includes completionTokens") {
+        let a = StreamOutcome(content: "x", finishReason: .stop, completionTokens: 10)
+        let b = StreamOutcome(content: "x", finishReason: .stop, completionTokens: 10)
+        let c = StreamOutcome(content: "x", finishReason: .stop, completionTokens: 20)
+        try assertEqual(a, b)
+        try assertTrue(a != c, "different completionTokens should differ")
+    }
+
     test("StreamOutcome is Equatable") {
         let a = StreamOutcome(content: "x", finishReason: .stop)
         let b = StreamOutcome(content: "x", finishReason: .stop)

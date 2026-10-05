@@ -306,6 +306,9 @@ func runApfelCorePublicAPIUsageTests() {
         let outcome = StreamOutcome(content: "hi", finishReason: .stop)
         let _: String        = outcome.content
         let _: FinishReason  = outcome.finishReason
+        let _: Int           = outcome.completionTokens
+        let withTokens = StreamOutcome(content: "hi", finishReason: .stop, completionTokens: 5)
+        let _: Int           = withTokens.completionTokens
         let _ = requireSendable(outcome)
 
         let truncated = StreamErrorResolver.resolve(prev: "x", error: .contextOverflow)
