@@ -24,3 +24,18 @@ struct CaselessGenerationErrorStub: Error, LocalizedError, CustomStringConvertib
     var errorDescription: String? { localizedMsg }
     var description: String { mirrorText }
 }
+
+/// Simulates a macOS 27 LanguageModelError thrown to binaries built with the
+/// SDK 27.0 stamp. The type name contains "LanguageModelError" (not
+/// "GenerationError") and the case names differ (e.g. `contextSizeExceeded`
+/// instead of `exceededContextWindowSize`) (#521).
+struct LanguageModelErrorStub: Error, LocalizedError, CustomStringConvertible {
+    let caseName: String
+    let localizedMsg: String
+
+    var errorDescription: String? { localizedMsg }
+
+    var description: String {
+        "LanguageModelError.\(caseName)(Context(debugDescription: \"\(localizedMsg)\"))"
+    }
+}

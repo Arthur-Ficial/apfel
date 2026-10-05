@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `ApfelError.classify` now recognises macOS 27 `LanguageModelError` errors thrown to binaries built with the SDK 27.0 stamp. Previously the classifier only checked for `GenerationError` in the error's type name, so `LanguageModelError` fell through to the locale-fragile keyword matcher - losing typed classification and returning `.unknown` for cases whose localized description did not happen to contain the right English keyword. The classifier now also matches `LanguageModelError` and the renamed macOS 27 case `contextSizeExceeded` (was `exceededContextWindowSize` in `GenerationError`) (#521).
+
 ## [1.15.0] - 2026-10-05
 
 ### Added

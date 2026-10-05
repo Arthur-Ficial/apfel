@@ -141,6 +141,45 @@ func runApfelErrorTests() {
             throw TestFailure("expected .unknown")
         }
     }
+    // --- macOS 27 LanguageModelError (SDK 27.0 stamp, #521) ---
+
+    test("classify maps LanguageModelError cases (SDK 27.0 stamp, #521)") {
+        let localized = "localized details"
+        let cases: [(caseName: String, expected: ApfelError)] = [
+            ("contextSizeExceeded", .contextOverflow),
+            ("assetsUnavailable", .assetsUnavailable),
+            ("guardrailViolation", .guardrailViolation),
+            ("unsupportedGuide", .unsupportedGuide),
+            ("unsupportedLanguageOrLocale", .unsupportedLanguage(localized)),
+            ("decodingFailure", .decodingFailure(localized)),
+            ("rateLimited", .rateLimited),
+            ("concurrentRequests", .concurrentRequest),
+            ("refusal", .refusal(localized)),
+        ]
+
+        for item in cases {
+            let err = LanguageModelErrorStub(caseName: item.caseName, localizedMsg: localized)
+            try assertEqual(ApfelError.classify(err), item.expected, "LanguageModelError case=\(item.caseName)")
+        }
+    }
+    test("classify maps LanguageModelError.contextSizeExceeded to contextOverflow (#521)") {
+        let err = LanguageModelErrorStub(
+            caseName: "contextSizeExceeded",
+            localizedMsg: "The input exceeds the model's context size."
+        )
+        try assertEqual(ApfelError.classify(err), .contextOverflow)
+    }
+    test("classify maps unknown LanguageModelError case to .unknown (#521)") {
+        let err = LanguageModelErrorStub(
+            caseName: "someNewCase",
+            localizedMsg: "Something new from macOS 28"
+        )
+        if case .unknown(let msg) = ApfelError.classify(err) {
+            try assertEqual(msg, "Something new from macOS 28")
+        } else {
+            throw TestFailure("expected .unknown for unrecognised LanguageModelError case")
+        }
+    }
     test("classify string fallback: 'rate limit exceeded' is rateLimited, not contextOverflow") {
         let err = NSError(domain: "FM", code: 0,
             userInfo: [NSLocalizedDescriptionKey: "Rate limit exceeded, try again later"])
