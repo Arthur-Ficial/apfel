@@ -10,7 +10,7 @@ This page is the single source of truth for the comparison. Every number below w
 
 - **Same model, same limits.** Both read the same on-device model: 4096-token context window on this M2 Air (8192 on M3 or newer Macs with 12 GB+, which get Apple's larger AFM 3 Core Advanced model), same languages, same safety guardrails, same tokenizer. Neither is "smarter".
 - **`fm` is the zero-install option.** It is already on every macOS 27 Mac, Apple-signed, with image input (OCR, barcode) and persistent chat transcripts. If you want to type one prompt once, use `fm`.
-- **apfel is the integration option.** OpenAI-compatible server that real clients accept as a drop-in (non-streaming responses, `usage`, tool calling, `response_format: json_schema`, the Responses API, bearer auth, CORS), MCP tool servers, JSON Schema constrained output from the CLI, honest exit codes for scripts, file and PDF extraction, and it runs on macOS 26 as well as 27.
+- **apfel is the integration option.** OpenAI-compatible server that real clients accept as a drop-in (non-streaming responses, `usage`, tool calling with `tool_choice`, image input as data URLs on macOS 27, `response_format: json_schema`, the Responses API, bearer auth, CORS), MCP tool servers, JSON Schema constrained output from the CLI, honest exit codes for scripts, file and PDF extraction, and it runs on macOS 26 as well as 27.
 - **`fm serve` is close, but not a drop-in OpenAI server today.** It streams by default when `stream` is omitted (OpenAI clients expect JSON), ignores `max_tokens`, has no tool calling (the `tools` field makes it leak `<start_of_turn>model` template tokens into `content`), returns HTTP 500 for guardrail hits, and has no `/v1/responses`, no auth and no `usage` in streams. Explicit `stream: false` and `response_format: json_schema` work.
 
 ## A short history
@@ -69,7 +69,7 @@ Both tools start a local server. apfel: `apfel --serve` (port 11434). `fm`: `fm 
 | `stream: false` explicit | JSON object | JSON object |
 | `usage` (prompt / completion tokens) | yes, also in streams with `stream_options.include_usage`; on macOS 27 straight from the runtime's `Response.usage` (same accounting `fm` uses), on macOS 26 counted with the tokenizer | yes in non-streaming responses; a `usage` chunk appears with `stream_options.include_usage` |
 | `finish_reason` | `stop`, `length`, `tool_calls` | `stop` |
-| Tool calling (`tools`, `tool_choice`) | yes: `finish_reason: tool_calls`, structured `tool_calls`, MCP auto-execution | no: `tools` is accepted, the reply is plain `content` such as `<start_of_turn>model\n{a:2,b:3}` with `finish_reason: stop` |
+| Tool calling (`tools`, `tool_choice`) | yes: `finish_reason: tool_calls`, structured `tool_calls`, MCP auto-execution; on macOS 27 `tool_choice: auto` / `none` are passed to the runtime's tool-calling mode, `required` and named functions are enforced by apfel (the runtime's own required mode rejects out-of-band tools) | no: `tools` is accepted, the reply is plain `content` such as `<start_of_turn>model\n{a:2,b:3}` with `finish_reason: stop` |
 | `response_format: json_schema` | yes, schema-guaranteed, `$ref` and bounds supported, also streaming | yes (`{"fruit": "apple"}` for the test schema) |
 | `response_format: json_object` | yes | not tested |
 | `POST /v1/responses` (Responses API) | yes, incl. streaming and `text.format` | no |
@@ -79,6 +79,7 @@ Both tools start a local server. apfel: `apfel --serve` (port 11434). `fm`: `fm 
 | `temperature`, `top_p`, `seed` | mapped to `GenerationOptions`; `temperature: 0` is greedy | `temperature` accepted silently (effect not verified); `top_p`, `seed` not documented |
 | Unsupported endpoints | honest `501` for `/v1/embeddings`, `/v1/completions` | `404 not_found` |
 | Explicit `400` for unsupported params | yes for `n>1`, `logprobs`, `stop`, penalties, images | `n>1` gets a clear 400; `logprobs: true` is accepted silently |
+| Context overflow | HTTP 400, `type: context_length_exceeded`; on macOS 27 the message carries the runtime's real token count and window | CLI: exit 1 with "The session's transcript exceeded the model's context size"; server shape not probed |
 | Guardrail hit | HTTP 400, `type: content_policy_violation` | HTTP 500, `type: server_error`; in a stream an `event: error` frame after HTTP 200 was already sent |
 | Error body shape | OpenAI `error.type` / `error.code` with mapped HTTP status (400 guardrail, 429 rate limit, 503 unavailable) | OpenAI-like `error` object, `code` is the HTTP status as a string |
 | CORS | opt-in `--cors`; unknown `Origin` gets 403 and no `Access-Control-Allow-Origin` | always on; unknown `Origin` gets 403 but the header still echoes the origin |
