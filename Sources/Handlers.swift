@@ -949,8 +949,9 @@ private func streamingResponse(
                     let base = TokenUsage.refusalBase(
                         rounds: usageRounds + (lastRoundUsage.map { [$0] } ?? []),
                         countedPromptTokens: await promptTokens.resolve() + promptAdjustment)
-                    completionTokens = base.priorCompletionTokens + await TokenCounter.shared.count(
+                    let refusalTokens = await TokenCounter.shared.count(
                         StreamErrorResolver.refusalCompletionText(prev: prev, explanation: explanation))
+                    completionTokens = base.priorCompletionTokens + refusalTokens
                     if includeUsage {
                         let usageChunk = sseUsageChunk(
                             id: id, created: created,
@@ -1352,7 +1353,8 @@ private func refusalNonStreamingResponse(
     events: [String]
 ) async -> (response: Response, trace: ChatRequestTrace) {
     let responseMessage = OpenAIMessage(role: "assistant", content: nil, refusal: refusal)
-    let completionTokens = priorCompletionTokens + await TokenCounter.shared.count(refusal)
+    let refusalTokens = await TokenCounter.shared.count(refusal)
+    let completionTokens = priorCompletionTokens + refusalTokens
     let finishReason = FinishReason.contentFilter.openAIValue
     let payload = ChatCompletionResponse(
         id: id,
@@ -1395,7 +1397,8 @@ private func refusalStreamingResponse(
     requestBody: String?,
     events: [String]
 ) async -> (response: Response, trace: ChatRequestTrace) {
-    let completionTokens = priorCompletionTokens + await TokenCounter.shared.count(refusal)
+    let refusalTokens = await TokenCounter.shared.count(refusal)
+    let completionTokens = priorCompletionTokens + refusalTokens
     let finishReason = FinishReason.contentFilter.openAIValue
     var chunks: [String] = [
         sseDataLine(sseRoleChunk(id: id, created: created, includeUsage: includeUsage)),

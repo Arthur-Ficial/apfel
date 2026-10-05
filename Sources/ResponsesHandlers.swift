@@ -296,7 +296,8 @@ private func responsesNonStreamingResponse(
             // Wire parity with chat: a refusal is a 200 with a refusal part.
             // On macOS 27 prior rounds reported usage; fold it in (#516).
             let base = TokenUsage.refusalBase(rounds: usageRounds, countedPromptTokens: await promptTokens.resolve())
-            let completionTokens = base.priorCompletionTokens + await TokenCounter.shared.count(explanation)
+            let refusalTokens = await TokenCounter.shared.count(explanation)
+            let completionTokens = base.priorCompletionTokens + refusalTokens
             let envelope = echo.envelope(
                 id: id, created: created, status: "completed",
                 output: [.message(id: "msg_\(UUID().uuidString.prefix(12).lowercased())",
