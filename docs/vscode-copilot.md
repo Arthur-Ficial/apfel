@@ -38,7 +38,7 @@ On **macOS 26** (4096-token window), add this to your VSCode settings:
 ]
 ```
 
-If `apfel --model-info` reports a larger window on your machine, set `maxInputTokens` to that window minus the 512-token output reserve (`maxOutputTokens`). On macOS 26 and macOS 27.0 the measured window is 4096, so the values above are correct as-is.
+On macOS 27 with an M3 or newer chip and 12 GB+ the on-device window is 8192: set `maxInputTokens` to `7680` there (window minus the 512-token `maxOutputTokens` reserve). `apfel --model-info` prints the live value for your machine; the values above are right for macOS 26 and for M1/M2 Macs.
 
 If you raise `maxOutputTokens`, lower `maxInputTokens` by the same amount so the two still sum to
 the window. apfel's own 512-token reserve needs no change: it only caps how much input the server

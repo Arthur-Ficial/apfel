@@ -20,13 +20,13 @@ Apple Silicon Macs ship a built-in LLM via [Apple FoundationModels](https://deve
 
 `apfel --chat` - interactive REPL.
 
-Tool calling works in all contexts. On-device context window: 4096 tokens (measured on macOS 26 and 27.0) - read at runtime, see [Limitations](#limitations).
+Tool calling works in all contexts. On-device context window: 4096 tokens on macOS 26 and on M1/M2 Macs, 8192 on M3+ Macs with 12 GB+ running macOS 27 - read at runtime, see [Limitations](#limitations).
 
 ![apfel CLI](screenshots/cli.png)
 
 ## Requirements & Install
 
-macOS 26 Tahoe+, Apple Silicon (M1+), [Apple Intelligence enabled](https://support.apple.com/en-us/121115).
+macOS 26 Tahoe+, Apple Silicon (M1+), [Apple Intelligence enabled](https://support.apple.com/en-us/121115). On macOS 27, Macs with an M3 or newer chip and 12 GB+ run Apple's larger on-device model with an 8192-token window; M1/M2 Macs and every Mac on macOS 26 have 4096. `apfel --model-info` shows yours.
 
 ```bash
 brew install apfel
@@ -246,7 +246,7 @@ Full API spec: [openai/openai-openapi](https://github.com/openai/openai-openapi)
 
 When `max_tokens` is omitted, **CLI and OpenAI-compatible server behave identically**: the value flows through as `nil` and the model uses whatever room is left in the context window. This is drop-in OpenAI semantics - no arbitrary fallback constant.
 
-The on-device context window holds input *and* output combined: **4096 tokens (measured on macOS 26 and macOS 27.0)**. apfel reads the real size at runtime via `SystemLanguageModel.contextSize` - check yours with `apfel --model-info`. If generation runs into the ceiling, the response ends cleanly with `finish_reason: "length"` and the partial content is returned (server: HTTP 200; CLI: exit 0 with a stderr warning). Pass `max_tokens` explicitly when you want a tighter latency budget or a known cap for your client.
+The on-device context window holds input *and* output combined: **4096 tokens on macOS 26 and on M1/M2 Macs, 8192 tokens on macOS 27 with an M3 or newer chip and 12 GB+**. apfel reads the real size at runtime via `SystemLanguageModel.contextSize` - check yours with `apfel --model-info`. If generation runs into the ceiling, the response ends cleanly with `finish_reason: "length"` and the partial content is returned (server: HTTP 200; CLI: exit 0 with a stderr warning). Pass `max_tokens` explicitly when you want a tighter latency budget or a known cap for your client.
 
 ### Examples
 
@@ -274,7 +274,7 @@ curl -sS http://localhost:11434/v1/chat/completions \
 | Long paragraph / structured JSON       | 1024 - 2048   |
 | As long as the context window allows   | omit it       |
 
-Keep `input_tokens + max_tokens` comfortably below the context window (4096 tokens, measured on macOS 26 and 27.0). If the prompt itself exceeds the window, generation cannot start and the request fails with `[context overflow]` (HTTP 400 / CLI exit 4). The validator rejects non-positive values (`max_tokens <= 0`).
+Keep `input_tokens + max_tokens` comfortably below the context window (4096 tokens on macOS 26 and on M1/M2 Macs, 8192 on macOS 27 with an M3 or newer chip and 12 GB+ (Apple's AFM 3 Core Advanced model)). If the prompt itself exceeds the window, generation cannot start and the request fails with `[context overflow]` (HTTP 400 / CLI exit 4). The validator rejects non-positive values (`max_tokens <= 0`).
 
 ### CLI parity
 
@@ -298,7 +298,7 @@ apfel --serve --permissive             # every request uses permissive guardrail
 
 | Constraint | Detail |
 |------------|--------|
-| Context window | **4096 tokens (measured on macOS 26 and macOS 27.0)** (input + output combined). Not a hardcoded constant - apfel reads `SystemLanguageModel.contextSize` at runtime; `apfel --model-info` prints the live value |
+| Context window | **4096 tokens on macOS 26 and on M1/M2 Macs, 8192 tokens on macOS 27 with an M3 or newer chip and 12 GB+** (input + output combined). Not a hardcoded constant - apfel reads `SystemLanguageModel.contextSize` at runtime; `apfel --model-info` prints the live value |
 | Platform | macOS 26+, Apple Silicon only |
 | Model | One model (`apple-foundationmodel`, ~3B params on-device), not configurable |
 | Guardrails | Apple's safety system may block benign prompts. `--permissive` reduces false positives ([docs/PERMISSIVE.md](docs/PERMISSIVE.md)) |

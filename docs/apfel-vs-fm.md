@@ -4,14 +4,18 @@ macOS 27 ships Apple's own command-line front end for the on-device Foundation M
 
 This page is the single source of truth for the comparison. Every number below was measured, and the exact commands are listed at the end so you can re-run them.
 
-**Measured on:** apfel 1.12.0 (main, 2026-10-05, built against the macOS 27.0 SDK, deployment floor macOS 26.0), Apple `fm` 1.0 (`/usr/bin/fm` as shipped with macOS 27.0.1, build 26A434), MacBook Air, Apple Silicon, 24 GB, 2026-10-05. Numbers are re-measured for every apfel release and after every macOS point update.
+**Measured on:** apfel 1.12.0 (main, 2026-10-05, built against the macOS 27.0 SDK, deployment floor macOS 26.0), Apple `fm` 1.0 (`/usr/bin/fm` as shipped with macOS 27.0.1, build 26A434), MacBook Air with Apple M2 and 24 GB (this chip gets the 4096-token AFM 3 Core model; M3+ Macs with 12 GB+ get the 8192-token AFM 3 Core Advanced model - see #509 for that run), 2026-10-05. Numbers are re-measured for every apfel release and after every macOS point update.
 
 ## TL;DR
 
-- **Same model, same limits.** 4096-token context window on this machine (both tools read it at runtime), same languages, same safety guardrails, same tokenizer. Neither is "smarter".
+- **Same model, same limits.** Both read the same on-device model: 4096-token context window on this M2 Air (8192 on M3 or newer Macs with 12 GB+, which get Apple's larger AFM 3 Core Advanced model), same languages, same safety guardrails, same tokenizer. Neither is "smarter".
 - **`fm` is the zero-install option.** It is already on every macOS 27 Mac, Apple-signed, with image input (OCR, barcode) and persistent chat transcripts. If you want to type one prompt once, use `fm`.
 - **apfel is the integration option.** OpenAI-compatible server that real clients accept as a drop-in (non-streaming responses, `usage`, tool calling, `response_format: json_schema`, the Responses API, bearer auth, CORS), MCP tool servers, JSON Schema constrained output from the CLI, honest exit codes for scripts, file and PDF extraction, and it runs on macOS 26 as well as 27.
 - **`fm serve` is close, but not a drop-in OpenAI server today.** It streams by default when `stream` is omitted (OpenAI clients expect JSON), ignores `max_tokens`, has no tool calling (the `tools` field makes it leak `<start_of_turn>model` template tokens into `content`), returns HTTP 500 for guardrail hits, and has no `/v1/responses`, no auth and no `usage` in streams. Explicit `stream: false` and `response_format: json_schema` work.
+
+## A short history
+
+apfel came first. Its first commit and v0.1.0 landed on 2026-03-24, the first GitHub release (v0.6.4) on 2026-03-31, and it reached the Hacker News front page on 2026-04-03 - at that point the only way to use Apple's on-device model from a terminal or from an OpenAI client. Apple announced `fm` at WWDC on 2026-06-08 (session 334, "Build AI-powered scripts with the fm CLI and Python SDK") and shipped it with macOS 27 on 2026-09-14. Both tools sit on the same FoundationModels framework; `fm` is Apple's first-party take, apfel is the open-source one and the one that also runs on macOS 26.
 
 ## What they are
 
@@ -23,7 +27,8 @@ This page is the single source of truth for the comparison. Every number below w
 | License | MIT, open source | Apple SLA, closed |
 | Binary | 21.1 MB (arm64 only, Developer ID signed + notarized, statically includes the HTTP stack) | 3.4 MB (universal x86_64 / arm64e, Apple platform binary) |
 | Model | Apple on-device Foundation Model via FoundationModels | same |
-| Context window | read at runtime (`apfel --model-info`); 4096 tokens measured here | same model, same window; not surfaced by any `fm` command |
+| Cloud model (Private Cloud Compute, 32k context) | never: apfel is 100 % on-device by principle | advertised as `--model pcc` at WWDC26; the shipped 27.0.1 `fm` accepts only `--model system` |
+| Context window | read at runtime (`apfel --model-info`, `/health`); 4096 tokens on this M2, 8192 on M3+ Macs with 12 GB+ on macOS 27 | same model, same window on the same Mac; no `fm` command prints it. Empirically `fm respond` accepts 3988 prompt tokens and rejects 4039 here |
 
 ## Command-line tool
 
@@ -39,6 +44,7 @@ This page is the single source of truth for the comparison. Every number below w
 | Multi-turn in one shot | `--messages file.json` (OpenAI messages array) | `--resume transcript.json` + `--save-transcript` |
 | Interactive chat | `apfel --chat` with context trimming strategies | `fm chat` with named sessions (`--resume name`, `--continue`) |
 | Attach files | `-f` text, PDF, images (Vision OCR + image understanding), repeatable | `--image` (image input to the model), `--text` segments |
+| Image understanding | OCR text via Vision today (works on 26 and 27); native image input to the model on macOS 27 is planned, see [#510](https://github.com/Arthur-Ficial/apfel/issues/510) | yes on macOS 27: `--image photo.jpg` goes to the model itself (the 3B model's descriptions are coarse: it called a metal plaque "a glass bottle wrapped in foil") |
 | Built-in vision tools | no | `--tool ocr`, `--tool barcode` |
 | External tools | MCP servers, local (`--mcp ./server.py`) and remote (`--mcp https://...`, bearer token, OAuth) | none |
 | Sampling | `--temperature`, `--top-p`, `--seed`, `--max-tokens` | `--greedy` only |
@@ -169,4 +175,4 @@ Context window as the model reports it:
 apfel --model-info
 ```
 
-`fm` has no command that prints the context window.
+`fm` has no command that prints the context window. To find the limit empirically with `fm`, send prompts of known size (`fm count-tokens -q`) and watch for "The session's transcript exceeded the model's context size": on this M2 the boundary sits between 3988 and 4039 prompt tokens.

@@ -96,7 +96,7 @@ Why this split works:
 - `apfel-review` is restricted to `chat`, so it becomes the local review lane.
 - `gpt-5.1-apply` handles `edit` and `apply`, where a stronger hosted model is more useful.
 - `temperature: 0.0` keeps both lanes deterministic.
-- `contextLength: 4096` matches the window measured on macOS 26 and macOS 27.0. `apfel --model-info` prints the live value for your machine - if it ever differs, set `contextLength` to that number. The window covers input and output combined.
+- `contextLength: 4096` is the window on macOS 26 and on M1/M2 Macs. On macOS 27 with an M3 or newer chip and 12 GB+ the on-device window is 8192, so set `contextLength: 8192` there - `apfel --model-info` prints the live value for your machine. The window covers input and output combined.
 
 ## 4. Provide `OPENAI_API_KEY` to Continue
 

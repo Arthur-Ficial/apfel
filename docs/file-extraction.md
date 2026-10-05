@@ -57,7 +57,7 @@ apfel --count-tokens -f report.pdf "Summarize this"
 ## Honest limits
 
 - On macOS 27 the default guardrails sometimes block prompts whose attached text came from OCR (measured: the Apollo 11 plaque photo was refused 3 times out of 5 on 27.0.1, never on macOS 26.1). If `apfel -f photo.jpg ...` exits 3 with `[guardrail]`, add `--permissive`: it selects Apple's guardrail set for transforming user-provided content, which is what file extraction is ([docs/PERMISSIVE.md](PERMISSIVE.md)).
-- The on-device model has a small context window (4096 tokens, measured on macOS 26 and 27.0 -
+- The on-device model has a small context window (4096 tokens on macOS 26 and on M1/M2 Macs, 8192 on macOS 27 with an M3 or newer chip and 12 GB+ (Apple's AFM 3 Core Advanced model) -
   read at runtime). A large PDF can exceed it; use `--count-tokens` to check.
 - OCR quality depends on the image. Engraved, handwritten, or low-contrast text may come out
   partial. apfel reports what Vision actually read and never invents text.

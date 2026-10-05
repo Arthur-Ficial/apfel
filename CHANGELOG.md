@@ -9,7 +9,7 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ### Changed
 
-- Documentation no longer claims an 8192-token context window on macOS 27. That figure came from a macOS 27 beta; on the shipped macOS 27.0.1 the model reports 4096 tokens (`context_window_measured: true`), the same as macOS 26. README and docs now say "4096 tokens, measured on macOS 26 and 27.0" and point to `apfel --model-info` for the live value. New page [docs/apfel-vs-fm.md](docs/apfel-vs-fm.md) compares apfel with Apple's `fm` CLI that ships in macOS 27 (#192, #193).
+- Documentation no longer claims an 8192-token context window on macOS 27. That figure came from a macOS 27 beta; on the shipped macOS 27.0.1 the model reports 4096 tokens (`context_window_measured: true`), the same as macOS 26. README and docs now say "4096 tokens on macOS 26 and on M1/M2 Macs, 8192 on macOS 27 with an M3 or newer chip and 12 GB+ (Apple's AFM 3 Core Advanced model)" and point to `apfel --model-info` for the live value. New page [docs/apfel-vs-fm.md](docs/apfel-vs-fm.md) compares apfel with Apple's `fm` CLI that ships in macOS 27 (#192, #193).
 
 - `docs/file-extraction.md` documents that macOS 27's default guardrails sometimes refuse prompts built from OCR'd image text (3 of 5 runs on the Apollo 11 plaque fixture, none on macOS 26) and that `--permissive` is the intended remedy; the OCR integration test now runs with `--permissive` for that reason (#193).
 

@@ -1,6 +1,6 @@
 # Context Strategies
 
-apfel manages the on-device context window (4096 tokens, measured on macOS 26 and 27.0 - read at runtime via `SystemLanguageModel.contextSize`) automatically so chat sessions and long prompts do not crash. Choose a strategy with `--context-strategy` based on what you want apfel to keep when history approaches the limit.
+apfel manages the on-device context window (4096 tokens on macOS 26 and on M1/M2 Macs, 8192 on macOS 27 with an M3 or newer chip and 12 GB+ (Apple's AFM 3 Core Advanced model) - read at runtime via `SystemLanguageModel.contextSize`) automatically so chat sessions and long prompts do not crash. Choose a strategy with `--context-strategy` based on what you want apfel to keep when history approaches the limit.
 
 ```bash
 apfel --chat --context-strategy newest-first     # default: keep recent turns
@@ -33,7 +33,7 @@ An assistant `tool_calls` message and the `tool` messages that answer it are one
 
 ## Output token reserve
 
-`--context-output-reserve N` (default `512`) reserves `N` tokens of the window for the model's response. The remaining `4096 - N` tokens are available for input + history (4096 is the window measured on macOS 26 and 27.0, read dynamically at runtime). Lower the reserve if your prompts are long and your answers are short, raise it if answers get cut off.
+`--context-output-reserve N` (default `512`) reserves `N` tokens of the window for the model's response. The remaining `4096 - N` tokens are available for input + history (4096 is the window on macOS 26 and on M1/M2 Macs, 8192 on M3+ Macs with macOS 27; read dynamically at runtime, so on an 8192 machine it is `8192 - N`). Lower the reserve if your prompts are long and your answers are short, raise it if answers get cut off.
 
 ## Context status
 
