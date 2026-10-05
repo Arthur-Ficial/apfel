@@ -20,7 +20,7 @@ Apple Silicon Macs ship a built-in LLM via [Apple FoundationModels](https://deve
 
 `apfel --chat` - interactive REPL.
 
-Tool calling works in all contexts. On-device context window: 4096 tokens on macOS 26 and on M1/M2 Macs, 8192 on M3+ Macs with 12 GB+ running macOS 27 - read at runtime, see [Limitations](#limitations).
+Tool calling works in all contexts.
 
 ![apfel CLI](screenshots/cli.png)
 
@@ -146,6 +146,8 @@ apfel --chat --debug                                # debug output to stderr
 ```
 
 Ctrl-C exits. Context is trimmed automatically ([docs/context-strategies.md](docs/context-strategies.md)).
+
+Constraints worth knowing before you script against it (context window per Mac, guardrails, no embeddings): [Limitations](#limitations).
 
 ## Demos
 
