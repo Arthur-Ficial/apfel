@@ -675,6 +675,9 @@ private func signature(for entries: [Transcript.Entry]) -> [String] {
             let serialized = calls.map { "\($0.id):\($0.toolName)" }.joined(separator: "|")
             return "toolCalls:\(serialized)"
         @unknown default:
+            if #available(macOS 27, *), case .reasoning(let r) = entry {
+                return "reasoning:\(r.segments.compactMap(textFromSegment).joined(separator: "|"))"
+            }
             return "unknown"
         }
     }
