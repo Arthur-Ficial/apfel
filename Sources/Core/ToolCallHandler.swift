@@ -367,9 +367,11 @@ public enum ToolCallHandler {
                 stack.removeLast()
             }
         }
-        guard inString || !stack.isEmpty else { return nil }
+        // A truncated string value is not repairable: closing it would hand
+        // the tool a fabricated value ("/usr/lo" for "/usr/local"). Leave it
+        // for the invalidArguments path (#241) so the model retries instead.
+        guard !inString, !stack.isEmpty else { return nil }
         var repaired = json
-        if inString { repaired.append("\"") }
         for open in stack.reversed() {
             repaired.append(open == "{" ? "}" : "]")
         }

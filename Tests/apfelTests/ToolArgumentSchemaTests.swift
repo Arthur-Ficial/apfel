@@ -44,6 +44,11 @@ func runToolArgumentSchemaTests() {
             ["multiply", "numbers", "a", "b"])
     }
 
+    test("validateToolArguments treats a schema-valued additionalProperties as permissive (JSON Schema)") {
+        let schema = #"{"type":"object","properties":{"a":{"type":"number"}},"required":["a"],"additionalProperties":{"type":"string"}}"#
+        try MCPProtocol.validateToolArguments(name: "t", arguments: #"{"a": 1, "note": "x"}"#, inputSchemaJSON: schema)
+    }
+
     test("additionalProperties true permits extra keys") {
         let schema = """
         {"type": "object", "properties": {"a": {"type": "number"}}, "required": ["a"], "additionalProperties": true}

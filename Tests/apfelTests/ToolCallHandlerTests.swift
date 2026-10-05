@@ -405,8 +405,18 @@ func runToolCallHandlerTests() {
         try assertEqual((parsed?["items"] as? [Int])?.count, 2)
     }
 
-    test("ensureJSONArguments ignores braces inside strings when repairing") {
-        let result = ToolCallHandler.ensureJSONArguments(#"{"path": "dir{weird"#)
+    test("ensureJSONArguments never invents a string terminator (truncated value must fail loud)") {
+        // `{"path": "/usr/lo` is a truncated call. Closing the string would
+        // execute the tool with a fabricated value "/usr/lo"; leave it alone
+        // so #241's invalidArguments path rejects it and the model retries.
+        let truncated = #"{"path": "/usr/lo"#
+        try assertEqual(ToolCallHandler.ensureJSONArguments(truncated), truncated)
+        let truncatedNested = #"{"a": {"path": "dir{weird"#
+        try assertEqual(ToolCallHandler.ensureJSONArguments(truncatedNested), truncatedNested)
+    }
+
+    test("ensureJSONArguments repairs a dropped closing brace after a complete string value") {
+        let result = ToolCallHandler.ensureJSONArguments(#"{"path": "dir{weird""#)
         let parsed = try JSONSerialization.jsonObject(with: Data(result.utf8)) as? [String: Any]
         try assertEqual(parsed?["path"] as? String, "dir{weird")
     }

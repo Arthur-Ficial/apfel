@@ -141,6 +141,11 @@ func runApfelErrorTests() {
             throw TestFailure("expected .unknown")
         }
     }
+    test("classify string fallback: 'rate limit exceeded' is rateLimited, not contextOverflow") {
+        let err = NSError(domain: "FM", code: 0,
+            userInfo: [NSLocalizedDescriptionKey: "Rate limit exceeded, try again later"])
+        try assertEqual(ApfelError.classify(err), .rateLimited)
+    }
     test("classify string fallback detects refusal keywords") {
         for keyword in ["refused", "refusal", "declined"] {
             let err = NSError(domain: "FM", code: 0,

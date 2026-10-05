@@ -70,11 +70,13 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
         if desc.contains(anyOf: ["guardrail", "content policy", "unsafe"]) {
             return .guardrailViolation
         }
-        if desc.contains(anyOf: ["context window", "exceeded"]) {
-            return .contextOverflow
-        }
+        // Rate-limit wording often contains "exceeded" too ("rate limit
+        // exceeded"), so it must be checked before the overflow keywords.
         if desc.contains(anyOf: ["rate limit", "ratelimited", "rate_limit"]) {
             return .rateLimited
+        }
+        if desc.contains(anyOf: ["context window", "exceeded"]) {
+            return .contextOverflow
         }
         if desc.contains("concurrent") {
             return .concurrentRequest

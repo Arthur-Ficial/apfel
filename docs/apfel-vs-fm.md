@@ -4,7 +4,7 @@ macOS 27 ships Apple's own command-line front end for the on-device Foundation M
 
 This page is the single source of truth for the comparison. Every number below was measured, and the exact commands are listed at the end so you can re-run them.
 
-**Measured on:** apfel 1.12.0 (main, 2026-10-05, built against the macOS 27.0 SDK, deployment floor macOS 26.0), Apple `fm` 1.0 (`/usr/bin/fm` as shipped with macOS 27.0.1, build 26A434), MacBook Air with Apple M2 and 24 GB (this chip gets the 4096-token AFM 3 Core model; M3+ Macs with 12 GB+ get the 8192-token AFM 3 Core Advanced model - see #509 for that run), 2026-10-05. Numbers are re-measured for every apfel release and after every macOS point update.
+**Measured on:** apfel 1.12.0 (main, 2026-10-05, built against the macOS 27.0 SDK, deployment floor macOS 26.0), Apple `fm` 1.0 (`/usr/bin/fm` as shipped with macOS 27.0.1, build 26A434), MacBook Air with Apple M2 and 24 GB (this chip gets the 4096-token AFM 3 Core model; M3+ Macs with 12 GB+ get the 8192-token AFM 3 Core Advanced model - the 8192 reading is [#192](https://github.com/Arthur-Ficial/apfel/issues/192), the first GA run on such a Mac is [#509](https://github.com/Arthur-Ficial/apfel/issues/509)), 2026-10-05. Numbers are re-measured for every apfel release and after every macOS point update.
 
 ## TL;DR
 
@@ -25,7 +25,7 @@ apfel came first. Its first commit and v0.1.0 landed on 2026-03-24, the first Gi
 | macOS support | **26 and 27**, one binary | 27 only |
 | First run | works immediately | `sudo fm license` in a terminal, type `yes` (machine-wide) |
 | License | MIT, open source | Apple SLA, closed |
-| Binary | 21.1 MB (arm64 only, Developer ID signed + notarized, statically includes the HTTP stack) | 3.4 MB (universal x86_64 / arm64e, Apple platform binary) |
+| Binary | 22.1 MB (arm64 only, Developer ID signed + notarized, statically includes the HTTP stack) | 3.4 MB (universal x86_64 / arm64e, Apple platform binary) |
 | Model | Apple on-device Foundation Model via FoundationModels | same |
 | Cloud model (Private Cloud Compute, 32k context) | never: apfel is 100 % on-device by principle | advertised as `--model pcc` at WWDC26; the shipped 27.0.1 `fm` accepts only `--model system` |
 | Context window | read at runtime (`apfel --model-info`, `/health`); 4096 tokens on this M2, 8192 on M3+ Macs with 12 GB+ on macOS 27 | same model, same window on the same Mac; no `fm` command prints it. Empirically `fm respond` accepts 3988 prompt tokens and rejects 4039 here |
@@ -100,7 +100,7 @@ All measurements on the machine in the "Measured on" line above, warm model, no 
 | CLI one-shot, "List five European capitals, one per line." | 1.89 s (best 1.79 s) | 1.69 s (best 1.59 s) |
 | Process start without the model (`apfel --version` / `fm --help`), median of 10 | 0.08 s | 0.13 s |
 | HTTP `/v1/chat/completions`, "Reply with exactly: hello", non-streaming, median of 5 | 1.30 s | 0.73 s (`stream: false`) |
-| Binary size on disk | 21.1 MB | 3.4 MB |
+| Binary size on disk (SI megabytes) | 22.1 MB | 3.4 MB |
 
 The CLI gap of 0.1 to 0.3 s per call is apfel's pre-flight work: it counts prompt tokens with the real tokenizer to budget the context window and reports `usage`, `fm respond` does not. The larger server gap (about 0.6 s on this request) is on apfel's side and tracked as a performance issue; the model time itself is identical.
 

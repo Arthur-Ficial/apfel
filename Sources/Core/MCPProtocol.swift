@@ -139,7 +139,13 @@ public enum MCPProtocol {
         // declare exactly `{"type": "object", "properties": {}}`). Enforce
         // unknown-key rejection only when there are declared property names
         // the model could use instead.
-        if let properties, !properties.isEmpty, schema["additionalProperties"] as? Bool != true {
+        // `additionalProperties: true` or a schema object for it both mean
+        // "extra keys are allowed" in JSON Schema; only `false`/absent closes
+        // the object for our purposes (absent is where the model's invented
+        // keys show up, see the doc comment above).
+        let extraKeysAllowed = (schema["additionalProperties"] as? Bool == true)
+            || (schema["additionalProperties"] is [String: Any])
+        if let properties, !properties.isEmpty, !extraKeysAllowed {
             unexpected = argsObject.keys.filter { properties[$0] == nil }.sorted()
         }
 

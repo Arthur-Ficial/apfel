@@ -25,7 +25,7 @@ confirms (not press speculation):
   an official bridge to drive any model through the FoundationModels session API. This makes a
   bring-your-own-model path tractable (#195).
 - **`ToolCallingMode`** and **improved error types** - adoption candidates for apfel (#197).
-- **On-device context window DOUBLED from 4096 to 8192 on OS 27 - CONFIRMED on real hardware**
+- **On-device context window DOUBLED from 4096 to 8192 on OS 27 - CONFIRMED on real hardware** (an M3 Pro; device-dependent, M1/M2 stay at 4096 - see the correction above)
   (M3 Pro, macOS 27, via `apfel --model-info` and `apfel --count-tokens`). apfel already handles it
   correctly because it reads `SystemLanguageModel.contextSize` at runtime. The hardcoded "4096" doc
   references have been rewritten to describe the dynamic window (#192). See item #1 below.
@@ -155,7 +155,7 @@ Core AI per se, but they ship in the same window and Core AI is the headline tha
 > [Foundation Models updates](https://developer.apple.com/documentation/updates/foundationmodels)
 > page (June 2026 / OS 27 entries), not just press reporting.** Details folded into the items below.
 
-1. **FoundationModels context window - on-device window DOUBLED to 8192 on OS 27 (CONFIRMED).**
+1. **FoundationModels context window - on-device window DOUBLED to 8192 on OS 27 (CONFIRMED on an M3 Pro; M1/M2 stay at 4096, see the correction above).**
    **Confirmed 2026-07-22 on real hardware (M3 Pro, macOS 27):** `apfel --model-info` reports
    `context: 8192 tokens` and `apfel --count-tokens` budgets against the same value; the same
    commands report 4096 on macOS 26. This matches the WWDC26 session-241
@@ -257,5 +257,5 @@ FoundationModels OS 27 updates (official, fetched 2026-06-09):
 Context / reporting: WWDC 2026 keynote coverage (2026-06-08) on the Core ML to Core AI rename, the
 FoundationModels coexistence story, and the Apple/Google Gemini base-model collaboration. The
 on-device base-model change and the new APIs above are confirmed by Apple's updates page; the
-on-device context window has since been confirmed on OS 27 hardware (8192 tokens) and is always read
+on-device context window has since been confirmed on OS 27 hardware (8192 tokens on an M3 Pro, 4096 on an M2; device-dependent) and is always read
 at runtime via `SystemLanguageModel.contextSize` rather than hardcoded.
