@@ -294,17 +294,18 @@ private func responsesNonStreamingResponse(
         let classified = ApfelError.classify(error)
         if case .refusal(let explanation) = classified {
             // Wire parity with chat: a refusal is a 200 with a refusal part.
-            // A thrown refusal carries no runtime-reported usage: count.
-            let refusalPromptTokens = await promptTokens.resolve()
-            let completionTokens = await TokenCounter.shared.count(explanation)
+            // On macOS 27 prior rounds reported usage; fold it in (#516).
+            let base = TokenUsage.refusalBase(rounds: usageRounds, countedPromptTokens: await promptTokens.resolve())
+            let refusalTokens = await TokenCounter.shared.count(explanation)
+            let completionTokens = base.priorCompletionTokens + refusalTokens
             let envelope = echo.envelope(
                 id: id, created: created, status: "completed",
                 output: [.message(id: "msg_\(UUID().uuidString.prefix(12).lowercased())",
                                   text: nil, refusal: explanation, status: "completed")],
-                usage: ResponsesUsage(input_tokens: refusalPromptTokens, output_tokens: completionTokens))
+                usage: ResponsesUsage(input_tokens: base.promptTokens, output_tokens: completionTokens))
             return encodeEnvelope(envelope, requestBody: requestBody,
                                   events: events + ["refusal delivered"],
-                                  estimatedTokens: refusalPromptTokens + completionTokens)
+                                  estimatedTokens: base.promptTokens + completionTokens)
         }
         return openAIFailure(
             status: .init(code: classified.httpStatusCode),

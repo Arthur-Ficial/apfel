@@ -339,16 +339,19 @@ private func mcpAutoExecuteResponse(
     } catch {
         let classified = ApfelError.classify(error)
         if case .refusal(let explanation) = classified {
+            let base = TokenUsage.refusalBase(rounds: usageRounds, countedPromptTokens: await promptTokens.resolve())
             if streaming {
                 return await refusalStreamingResponse(
-                    id: id, created: created, promptTokens: await promptTokens.resolve(),
+                    id: id, created: created, promptTokens: base.promptTokens,
+                    priorCompletionTokens: base.priorCompletionTokens,
                     refusal: explanation, includeUsage: includeUsage,
                     requestBody: requestBody,
                     events: events + ["refusal: \(classified.cliLabel)"]
                 )
             }
             return await refusalNonStreamingResponse(
-                id: id, created: created, promptTokens: await promptTokens.resolve(),
+                id: id, created: created, promptTokens: base.promptTokens,
+                priorCompletionTokens: base.priorCompletionTokens,
                 refusal: explanation, requestBody: requestBody,
                 events: events + ["refusal: \(classified.cliLabel)"]
             )
@@ -535,8 +538,10 @@ private func nonStreamingResponse(
     } catch {
         let classified = ApfelError.classify(error)
         if case .refusal(let explanation) = classified {
+            let base = TokenUsage.refusalBase(rounds: usageRounds, countedPromptTokens: await promptTokens.resolve() + promptAdjustment)
             return await refusalNonStreamingResponse(
-                id: id, created: created, promptTokens: await promptTokens.resolve() + promptAdjustment,
+                id: id, created: created, promptTokens: base.promptTokens,
+                priorCompletionTokens: base.priorCompletionTokens,
                 refusal: explanation, requestBody: requestBody,
                 events: events + ["refusal: \(classified.cliLabel)"]
             )
@@ -940,14 +945,17 @@ private func streamingResponse(
                     // the pre-refusal streamed content. The pure helper returns the
                     // concatenation so we make a single `count()` call (avoiding
                     // double-counting tokens at the join boundary).
-                    // A thrown refusal carries no runtime-reported usage on
-                    // either OS: count the pre-refusal content + explanation.
-                    completionTokens = await TokenCounter.shared.count(
+                    // On macOS 27 prior rounds reported usage; fold it in (#516).
+                    let base = TokenUsage.refusalBase(
+                        rounds: usageRounds + (lastRoundUsage.map { [$0] } ?? []),
+                        countedPromptTokens: await promptTokens.resolve() + promptAdjustment)
+                    let refusalTokens = await TokenCounter.shared.count(
                         StreamErrorResolver.refusalCompletionText(prev: prev, explanation: explanation))
+                    completionTokens = base.priorCompletionTokens + refusalTokens
                     if includeUsage {
                         let usageChunk = sseUsageChunk(
                             id: id, created: created,
-                            promptTokens: await promptTokens.resolve() + promptAdjustment,
+                            promptTokens: base.promptTokens,
                             completionTokens: completionTokens
                         )
                         let usageLine = sseDataLine(usageChunk)
@@ -1339,12 +1347,14 @@ private func refusalNonStreamingResponse(
     id: String,
     created: Int,
     promptTokens: Int,
+    priorCompletionTokens: Int = 0,
     refusal: String,
     requestBody: String?,
     events: [String]
 ) async -> (response: Response, trace: ChatRequestTrace) {
     let responseMessage = OpenAIMessage(role: "assistant", content: nil, refusal: refusal)
-    let completionTokens = await TokenCounter.shared.count(refusal)
+    let refusalTokens = await TokenCounter.shared.count(refusal)
+    let completionTokens = priorCompletionTokens + refusalTokens
     let finishReason = FinishReason.contentFilter.openAIValue
     let payload = ChatCompletionResponse(
         id: id,
@@ -1381,12 +1391,14 @@ private func refusalStreamingResponse(
     id: String,
     created: Int,
     promptTokens: Int,
+    priorCompletionTokens: Int = 0,
     refusal: String,
     includeUsage: Bool,
     requestBody: String?,
     events: [String]
 ) async -> (response: Response, trace: ChatRequestTrace) {
-    let completionTokens = await TokenCounter.shared.count(refusal)
+    let refusalTokens = await TokenCounter.shared.count(refusal)
+    let completionTokens = priorCompletionTokens + refusalTokens
     let finishReason = FinishReason.contentFilter.openAIValue
     var chunks: [String] = [
         sseDataLine(sseRoleChunk(id: id, created: created, includeUsage: includeUsage)),

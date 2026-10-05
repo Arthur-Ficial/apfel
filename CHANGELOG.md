@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Refusal after a repair round under-reported `usage` on macOS 27: the repair round's runtime-reported tokens were in `usageRounds` but the refusal paths ignored them, reporting only the counted refusal text. All five refusal sites (non-streaming, streaming, tool-call handler, and `/v1/responses`) now fold `TokenUsage.sum(usageRounds)` into prompt and completion tokens when non-nil; macOS 26 behaviour is unchanged (the counted `promptAdjustment` path still applies). New `ApfelCore` surface: `TokenUsage.refusalBase(rounds:countedPromptTokens:)` (#516).
+
 ## [1.14.0] - 2026-10-05
 
 ### Changed
