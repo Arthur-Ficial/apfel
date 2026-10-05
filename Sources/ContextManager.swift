@@ -45,7 +45,15 @@ enum ContextManager {
             // exchange whole and in the window (#482).
             pinLast: prepared.pinsTrailingExchange
         ) else {
-            throw ApfelError.contextOverflow
+            // Overflow with the same detail the runtime's typed
+            // contextSizeExceeded would carry (macOS 27): the counted input
+            // tokens and the runtime-reported window. On macOS 26 this is
+            // the unchanged generic .contextOverflow (#510, #197).
+            let inputTokens = await TokenCounter.shared.count(
+                entries: prepared.base + prepared.history + [prepared.final])
+            throw contextOverflowError(
+                tokenCount: inputTokens,
+                contextSize: await TokenCounter.shared.contextSize)
         }
 
         let session = makeTranscriptSession(model: makeModel(permissive: options.permissive), entries: entries)

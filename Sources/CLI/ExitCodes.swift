@@ -31,7 +31,9 @@ public enum ApfelExitCodes {
         case .guardrailViolation:  return guardrail
         case .refusal:             return guardrail
         case .contextOverflow:     return contextOverflow
+        case .contextWindowExceeded: return contextOverflow
         case .rateLimited:         return rateLimited
+        case .rateLimitedUntil:    return rateLimited
         case .concurrentRequest:   return rateLimited
         case .assetsUnavailable:   return runtimeError
         case .unsupportedGuide:    return runtimeError

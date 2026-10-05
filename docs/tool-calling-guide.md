@@ -54,6 +54,19 @@ the model did not do what the request demanded - retry (a different seed changes
 relax the choice. The named-choice scope check runs against the effective tool set, so a client may
 name an MCP tool attached with `--mcp` without repeating its definition.
 
+### macOS 27: the runtime hears about `tool_choice` too
+
+On macOS 27 apfel additionally sets `GenerationOptions.ToolCallingMode` for the request: `auto`
+(or an omitted `tool_choice` with tools in scope) becomes `.allowed` and `none` becomes
+`.disallowed`, a runtime-side backstop on top of the table above. Two honest limitations,
+measured on macOS 27.0.1: the SDK has no per-tool mode, so a named function keeps apfel's
+prompt steering plus the name check above; and the SDK's `.required` mode is deliberately not
+used, because with apfel's out-of-band tool calling (tool definitions in the transcript, no
+registered `FoundationModels.Tool` implementations) the runtime rejects every `.required`
+request with "An unsupported generation guide was used" (10/10 seeds), while apfel's prompt
+steering already satisfied `tool_choice: "required"` on 10/10 of the same requests. macOS 26
+behavior is unchanged - the table above is the whole contract there.
+
 ---
 
 ## Experiment 1: Simple Single Tool Call

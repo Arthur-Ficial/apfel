@@ -2063,3 +2063,22 @@ def test_streaming_through_head_prints_first_line_cleanly():
     assert proc.stdout.strip(), "head -1 should still receive the first line"
     assert "Terminating app" not in proc.stderr, proc.stderr[:400]
     assert "NSFileHandleOperationException" not in proc.stderr, proc.stderr[:400]
+
+
+@pytest.mark.model
+def test_context_overflow_exits_4_and_names_the_counts_on_macos_27():
+    """#510/#197: a prompt far beyond any window exits 4. On macOS 27 the
+    typed LanguageModelError payload puts the runtime's own token count and
+    window size into the message; macOS 26 keeps the generic wording."""
+    import platform
+    require_model()
+    result = run_cli(["x " * 40000], timeout=120)
+    assert result.returncode == 4, f"expected exit 4, got {result.returncode}: {result.stderr}"
+    assert "[context overflow]" in result.stderr, result.stderr
+    mac_ver = tuple(int(x) for x in platform.mac_ver()[0].split(".")[:2])
+    if mac_ver >= (27, 0):
+        assert re.search(r"the input is \d+ tokens, the window is \d+ tokens", result.stderr), (
+            f"macOS 27 overflow must name the counts: {result.stderr!r}"
+        )
+    else:
+        assert "Input exceeds the model's context window." in result.stderr, result.stderr

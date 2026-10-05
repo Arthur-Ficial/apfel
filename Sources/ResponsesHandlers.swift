@@ -179,7 +179,7 @@ func handleResponses(_ request: Request, context: some RequestContext) async thr
             messages: messages, tools: toolPolicy.scopedTools(from: tools), options: sessionOpts,
             jsonMode: jsonMode, toolChoice: responsesRequest.tool_choice)
     } catch {
-        let classified = ApfelError.classify(error)
+        let classified = classifyModelError(error)
         return openAIFailure(
             status: .init(code: classified.httpStatusCode),
             message: classified.openAIMessage,
@@ -188,7 +188,12 @@ func handleResponses(_ request: Request, context: some RequestContext) async thr
             event: "context build failed: \(classified.openAIMessage)")
     }
 
-    let genOpts = makeGenerationOptions(sessionOpts)
+    // macOS 27 runtime-side tool_choice (#510), same mapping as chat
+    // completions; a no-op on macOS 26 and for tool-free requests.
+    let genOpts = makeGenerationOptions(
+        sessionOpts,
+        toolCalling: ToolCallingDirective.resolve(
+            toolChoice: responsesRequest.tool_choice, toolsInScope: toolPolicy.toolsInScope))
     // Prompt tokens: counted up front on macOS 26; deferred on macOS 27, where
     // the response itself reports input tokens (#510, #504).
     let promptTokens = await PromptTokens.make(
@@ -295,7 +300,7 @@ private func responsesNonStreamingResponse(
             }
         }
     } catch {
-        let classified = ApfelError.classify(error)
+        let classified = classifyModelError(error)
         if case .refusal(let explanation) = classified {
             // Wire parity with chat: a refusal is a 200 with a refusal part.
             // A thrown refusal carries no runtime-reported usage: count.
@@ -315,7 +320,8 @@ private func responsesNonStreamingResponse(
             message: classified.openAIMessage,
             type: classified.openAIType,
             stream: false, requestBody: requestBody, events: events,
-            event: "model error: \(classified.cliLabel)")
+            event: "model error: \(classified.cliLabel)",
+            retryAfterSeconds: classified.retryAfterSeconds)
     }
 
     // Usage: the summed runtime-reported rounds (macOS 27+), else the counted
@@ -486,7 +492,7 @@ private func responsesStreamingResponse(
                 streamCancelled = true
                 await eventBox.append("responses stream cancelled by client")
             } catch {
-                let classified = ApfelError.classify(error)
+                let classified = classifyModelError(error)
                 if case .truncated(let truncatedContent) = StreamErrorResolver.resolve(prev: prev, error: classified) {
                     // Output-side overflow with content already streamed is a
                     // graceful incomplete, mirroring the chat path. The last

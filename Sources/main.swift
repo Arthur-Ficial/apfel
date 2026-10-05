@@ -487,7 +487,7 @@ do {
         break   // Already handled above; exhaustive switch.
     }
 } catch {
-    let classified = ApfelError.classify(error)
+    let classified = classifyModelError(error)
     // --debug shows the raw FoundationModels error so a new OS release that
     // changes error types (macOS 27: LanguageModelError) can be diagnosed
     // from the terminal instead of a Swift probe (#193).

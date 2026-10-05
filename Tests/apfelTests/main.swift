@@ -117,6 +117,8 @@ suite("NestingDepthTests") { runNestingDepthTests() }
 suite("BufferedLineReaderConcurrencyTests") { runBufferedLineReaderConcurrencyTests() }
 suite("DebugFlagBaselineTests") { runDebugFlagBaselineTests() }
 suite("ApfelErrorMessageTests") { runApfelErrorMessageTests() }
+suite("TypedErrorMappingTests") { runTypedErrorMappingTests() }
+suite("ToolCallingDirectiveTests") { runToolCallingDirectiveTests() }
 suite("OpenAIWireFormatTests") { runOpenAIWireFormatTests() }
 suite("SSEResponseHeadersTests") { runSSEResponseHeadersTests() }
 suite("ApfelCorePublicAPIUsageTests") { runApfelCorePublicAPIUsageTests() }

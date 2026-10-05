@@ -43,17 +43,34 @@ func makeSamplingMode(_ decision: SamplingDecision) -> GenerationOptions.Samplin
     }
 }
 
-func makeGenerationOptions(_ opts: SessionOptions) -> GenerationOptions {
+/// Build the SDK generation options for one request.
+///
+/// `init(samplingMode:)` replaced the deprecated `init(sampling:)` in the
+/// macOS 27 SDK and is back-deployed to macOS 26 (`@backDeployed(before:
+/// macOS 27)`, forwarding to `init(sampling:)`), so one unconditional call
+/// maps the sampling decision identically on both OSes - no #available
+/// split, no deprecation warning (#510 item 5).
+///
+/// `toolCalling` is macOS 27's runtime-side tool_choice (#510 item 3): the
+/// resolved directive is applied under #available(macOS 27, *) and ignored
+/// on macOS 26 (see ToolCallingSupport.swift). Tool-free requests pass nil
+/// and get byte-identical options to before.
+func makeGenerationOptions(
+    _ opts: SessionOptions,
+    toolCalling directive: ToolCallingDirective? = nil
+) -> GenerationOptions {
     let decision = SamplingDecision.resolve(
         temperature: opts.temperature,
         topP: opts.topP,
         seed: opts.seed
     )
-    return GenerationOptions(
-        sampling: makeSamplingMode(decision),
+    var options = GenerationOptions(
+        samplingMode: makeSamplingMode(decision),
         temperature: opts.temperature,
         maximumResponseTokens: opts.maxTokens
     )
+    applyToolCallingDirective(directive, to: &options)
+    return options
 }
 
 // MARK: - Model Selection
@@ -585,8 +602,7 @@ func executeMCPToolCallsForServer(
     mcpManager: MCPManager?,
     userPrompt: String,
     messages: [OpenAIMessage],
-    sessionOptions: SessionOptions,
-    options: GenerationOptions
+    sessionOptions: SessionOptions
 ) async throws -> (content: String, toolLog: [(name: String, args: String, result: String, isError: Bool)], usage: [TokenUsage])? {
     // `firstRound` is the policy-validated call set for the model's first
     // response (#480); empty means the model answered in plain text.
@@ -639,8 +655,13 @@ func executeMCPToolCallsForServer(
             jsonMode: false,
             toolChoice: nil
         )
+        // Follow-up options are rebuilt directive-free: the tool-result round
+        // answers in plain text (or legitimately chains another call), so a
+        // request-scoped tool-calling directive must not leak into it. On
+        // macOS 26 this is the exact same value as the caller's options.
         let followUpResponse = try await followUpSession.respond(
-            to: makeUserPrompt(text: followUpPrompt, pieces: followUpPieces), options: options)
+            to: makeUserPrompt(text: followUpPrompt, pieces: followUpPieces),
+            options: makeGenerationOptions(sessionOptions))
         finalContent = followUpResponse.content
         if let roundUsage = reportedUsage(of: followUpResponse) {
             usageRounds.append(roundUsage)
@@ -757,7 +778,7 @@ func collectStream(
         )
         return GenerationOutcome(content: prev, finishReason: reason, usage: reported)
     } catch {
-        let classified = ApfelError.classify(error)
+        let classified = classifyModelError(error)
         switch StreamErrorResolver.resolve(prev: prev, error: classified) {
         case .truncated(let content):
             // The last snapshot's reported usage prices the truncated content.

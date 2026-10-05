@@ -671,3 +671,34 @@ def test_tool_parameters_with_unsupported_keyword_are_not_a_400():
         "tool_choice": "none",
     }, timeout=120)
     assert resp.status_code != 400, resp.text
+
+
+# ---------------------------------------------------------------------------
+# #510/#197 - context overflow names the real token counts on macOS 27. The
+# window and the input count are runtime numbers, never hardcoded: on macOS 27
+# the 400 names both, on macOS 26 the wording is the unchanged generic one.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.model
+def test_context_overflow_message_names_the_counts_on_macos_27():
+    """A prompt far beyond the window is a 400 whose message carries the
+    counted input tokens and the runtime-reported window on macOS 27 (#510);
+    macOS 26 keeps the generic wording byte-identical to before."""
+    window = httpx.get(f"{BASE_URL}/health", timeout=10).json()["context_window"]
+    resp = _post({
+        "model": MODEL,
+        "messages": [{"role": "user", "content": "x " * (window * 4)}],
+    }, timeout=60)
+    assert resp.status_code == 400, resp.text
+    err = _assert_openai_error(resp, expected_type="context_length_exceeded")
+    mac_ver = tuple(int(x) for x in platform.mac_ver()[0].split(".")[:2])
+    if mac_ver >= (27, 0):
+        import re
+        m = re.search(r"the input is (\d+) tokens, the window is (\d+) tokens", err["message"])
+        assert m, f"macOS 27 overflow must name the counts: {err['message']!r}"
+        assert int(m.group(2)) == window, (m.group(2), window)
+        assert int(m.group(1)) > window, m.group(1)
+    else:
+        assert err["message"] == (
+            "Input exceeds the model's context window. Shorten the conversation history."
+        ), err["message"]

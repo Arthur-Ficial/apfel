@@ -548,7 +548,7 @@ func chat(systemPrompt: String?, initialContext: String? = nil, options: Session
                 }
             }
         } catch {
-            let classified = ApfelError.classify(error)
+            let classified = classifyModelError(error)
             printError("\(classified.cliLabel) \(classified.openAIMessage)")
         }
     }

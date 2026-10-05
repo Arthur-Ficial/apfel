@@ -180,7 +180,11 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
     // and nothing is auto-executed, so tool-shaped output stays content.
     let effectiveTools = toolPolicy.scopedTools(from: resolvedTools.tools)
     let toolsAreMCPInjected = resolvedTools.injected && toolPolicy.toolsInScope
-    events.append("tool policy mode=\(toolPolicy.mode) in_scope=\(toolPolicy.allowedNames.count) max_calls=\(toolPolicy.maxCalls.map(String.init) ?? "unlimited")")
+    // macOS 27 runtime-side tool_choice (#510): resolved here, applied to the
+    // generation options below; a no-op on macOS 26 and for tool-free requests.
+    let toolDirective = ToolCallingDirective.resolve(
+        toolChoice: chatRequest.tool_choice, toolsInScope: toolPolicy.toolsInScope)
+    events.append("tool policy mode=\(toolPolicy.mode) in_scope=\(toolPolicy.allowedNames.count) max_calls=\(toolPolicy.maxCalls.map(String.init) ?? "unlimited") runtime_mode=\(toolDirective?.rawValue ?? "default")")
 
     // Build session + extract final prompt via ContextManager (Transcript API)
     let session: LanguageModelSession
@@ -196,7 +200,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
             toolChoice: chatRequest.tool_choice
         )
     } catch {
-        let classified = ApfelError.classify(error)
+        let classified = classifyModelError(error)
         let msg = classified.openAIMessage
         return openAIFailure(
             status: .init(code: classified.httpStatusCode),
@@ -210,7 +214,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
     }
     events.append("context built history=\(max(0, chatRequest.messages.count - 1)) final_prompt_chars=\(finalPrompt.count)")
 
-    let genOpts = makeGenerationOptions(sessionOpts)
+    let genOpts = makeGenerationOptions(sessionOpts, toolCalling: toolDirective)
     // Prompt tokens: counted up front on macOS 26; deferred on macOS 27, where
     // the response itself reports input tokens (#510, #504). Counting uses the
     // entries we actually built (native tool definitions intact), not the
@@ -341,7 +345,7 @@ private func mcpAutoExecuteResponse(
             verdict = policy.evaluate(ToolCallHandler.detectToolCall(in: rawContent), enforceNames: false)
         }
     } catch {
-        let classified = ApfelError.classify(error)
+        let classified = classifyModelError(error)
         if case .refusal(let explanation) = classified {
             if streaming {
                 return await refusalStreamingResponse(
@@ -365,7 +369,8 @@ private func mcpAutoExecuteResponse(
             stream: streaming,
             requestBody: requestBody,
             events: events,
-            event: "model error: \(classified.cliLabel)"
+            event: "model error: \(classified.cliLabel)",
+            retryAfterSeconds: classified.retryAfterSeconds
         )
     }
 
@@ -387,8 +392,7 @@ private func mcpAutoExecuteResponse(
             mcpManager: serverState.mcpManager,
             userPrompt: userPrompt,
             messages: originalMessages,
-            sessionOptions: sessionOptions,
-            options: genOpts
+            sessionOptions: sessionOptions
         ) {
             for log in executed.toolLog {
                 if serverState.config.debug {
@@ -404,7 +408,7 @@ private func mcpAutoExecuteResponse(
             content = rawContent
         }
     } catch {
-        let classified = ApfelError.classify(error)
+        let classified = classifyModelError(error)
         let msg = classified.openAIMessage
         return openAIFailure(
             status: .init(code: classified.httpStatusCode),
@@ -413,7 +417,8 @@ private func mcpAutoExecuteResponse(
             stream: streaming,
             requestBody: requestBody,
             events: events,
-            event: "mcp execution failed: \(msg)"
+            event: "mcp execution failed: \(msg)",
+            retryAfterSeconds: classified.retryAfterSeconds
         )
     }
 
@@ -537,7 +542,7 @@ private func nonStreamingResponse(
             verdict = policy.evaluate(ToolCallHandler.detectToolCall(in: outcome.content))
         }
     } catch {
-        let classified = ApfelError.classify(error)
+        let classified = classifyModelError(error)
         if case .refusal(let explanation) = classified {
             return await refusalNonStreamingResponse(
                 id: id, created: created, promptTokens: await promptTokens.resolve() + promptAdjustment,
@@ -553,7 +558,8 @@ private func nonStreamingResponse(
             stream: false,
             requestBody: requestBody,
             events: events,
-            event: "model error: \(classified.cliLabel)"
+            event: "model error: \(classified.cliLabel)",
+            retryAfterSeconds: classified.retryAfterSeconds
         )
     }
     let rawContent = outcome.content
@@ -883,7 +889,7 @@ private func streamingResponse(
                 streamError = violation.message
                 await eventBox.append("tool policy violation: \(violation.code)")
             } catch {
-                let classified = ApfelError.classify(error)
+                let classified = classifyModelError(error)
                 // Output-side context overflow with content already streamed is
                 // a graceful length-finish, not an error. See StreamErrorResolver.
                 if case .truncated(let truncatedContent) = StreamErrorResolver.resolve(prev: prev, error: classified) {
@@ -1048,7 +1054,7 @@ private func structuredNonStreamingResponse(
         content = generated.content
         reportedRound = generated.usage
     } catch {
-        let classified = ApfelError.classify(error)
+        let classified = classifyModelError(error)
         if case .refusal(let explanation) = classified {
             return await refusalNonStreamingResponse(
                 id: id, created: created, promptTokens: await promptTokens.resolve(),
@@ -1064,7 +1070,8 @@ private func structuredNonStreamingResponse(
             stream: false,
             requestBody: requestBody,
             events: events,
-            event: "structured model error: \(classified.cliLabel)"
+            event: "structured model error: \(classified.cliLabel)",
+            retryAfterSeconds: classified.retryAfterSeconds
         )
     }
 
@@ -1207,7 +1214,7 @@ private func structuredStreamingResponse(
                 streamCancelled = true
                 await eventBox.append("structured stream cancelled by client")
             } catch {
-                let classified = ApfelError.classify(error)
+                let classified = classifyModelError(error)
                 if case .refusal(let explanation) = classified {
                     let refusalLine = sseDataLine(sseRefusalChunk(id: id, created: created, refusal: explanation, includeUsage: includeUsage))
                     responseLines?.append(refusalLine.trimmingCharacters(in: .whitespacesAndNewlines))
@@ -1296,10 +1303,11 @@ func openAIFailure(
     events: [String],
     event: String,
     code: String? = nil,
-    param: String? = nil
+    param: String? = nil,
+    retryAfterSeconds: Int? = nil
 ) -> (response: Response, trace: ChatRequestTrace) {
     (
-        openAIError(status: status, message: message, type: type, code: code, param: param),
+        openAIError(status: status, message: message, type: type, code: code, param: param, retryAfterSeconds: retryAfterSeconds),
         ChatRequestTrace(
             stream: stream,
             estimatedTokens: nil,
@@ -1424,7 +1432,13 @@ private func refusalStreamingResponse(
 // MARK: - Error Helper
 
 /// Create an OpenAI-formatted error response (with CORS headers when enabled).
-func openAIError(status: HTTPResponse.Status, message: String, type: String, code: String? = nil, param: String? = nil) -> Response {
+func openAIError(status: HTTPResponse.Status, message: String, type: String, code: String? = nil, param: String? = nil, retryAfterSeconds: Int? = nil) -> Response {
     let error = OpenAIErrorResponse(error: .init(message: message, type: type, param: param, code: code))
-    return jsonResponse(jsonString(error), status: status)
+    var response = jsonResponse(jsonString(error), status: status)
+    // A 429 with a runtime-reported reset tells clients when to come back
+    // (macOS 27's rateLimited.resetDate, #510).
+    if let retryAfterSeconds {
+        response.headers[.retryAfter] = String(retryAfterSeconds)
+    }
+    return response
 }

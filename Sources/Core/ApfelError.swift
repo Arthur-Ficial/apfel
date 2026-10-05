@@ -4,7 +4,18 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
     case guardrailViolation
     case refusal(String)
     case contextOverflow
+    /// Context overflow with the real numbers: on macOS 27 the runtime's
+    /// typed `LanguageModelError.contextSizeExceeded` carries the prompt's
+    /// token count and the window size, and apfel's own pre-generation
+    /// budget check knows the same two numbers. The wire shape (type,
+    /// status, exit code) is identical to `.contextOverflow`; only the
+    /// message gains the counts (#510, #197).
+    case contextWindowExceeded(tokenCount: Int, contextSize: Int)
     case rateLimited
+    /// Rate limited with a known reset: macOS 27's typed
+    /// `LanguageModelError.rateLimited` can carry a `resetDate`, which the
+    /// server surfaces as a `Retry-After` header on the 429 (#510, #197).
+    case rateLimitedUntil(retryAfterSeconds: Int)
     case concurrentRequest
     case assetsUnavailable
     case unsupportedGuide
@@ -96,7 +107,9 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
         case .guardrailViolation:  return "[guardrail]"
         case .refusal:             return "[refusal]"
         case .contextOverflow:     return "[context overflow]"
+        case .contextWindowExceeded: return "[context overflow]"
         case .rateLimited:         return "[rate limited]"
+        case .rateLimitedUntil:    return "[rate limited]"
         case .concurrentRequest:   return "[busy]"
         case .assetsUnavailable:   return "[model loading]"
         case .unsupportedGuide:    return "[unsupported guide]"
@@ -113,7 +126,9 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
         case .guardrailViolation:  return "content_policy_violation"
         case .refusal:             return "content_policy_violation"
         case .contextOverflow:     return "context_length_exceeded"
+        case .contextWindowExceeded: return "context_length_exceeded"
         case .rateLimited:         return "rate_limit_error"
+        case .rateLimitedUntil:    return "rate_limit_error"
         case .concurrentRequest:   return "rate_limit_error"
         case .assetsUnavailable:   return "server_error"
         case .unsupportedGuide:    return "invalid_request_error"
@@ -136,7 +151,9 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
         case .guardrailViolation:  return 400
         case .refusal:             return 200
         case .contextOverflow:     return 400
+        case .contextWindowExceeded: return 400
         case .rateLimited:         return 429
+        case .rateLimitedUntil:    return 429
         case .concurrentRequest:   return 429
         case .assetsUnavailable:   return 503
         case .unsupportedGuide:    return 400
@@ -158,8 +175,14 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
             // No hardcoded size: the window is dynamic (TokenCounter.contextSize)
             // and this string must stay true if the OS changes it (#330, #192).
             return "Input exceeds the model's context window. Shorten the conversation history."
+        case .contextWindowExceeded(let tokenCount, let contextSize):
+            // The numbers are runtime-reported (or runtime-counted), never
+            // hardcoded - the window stays dynamic (#330, #192).
+            return "Input exceeds the model's context window: the input is \(tokenCount) tokens, the window is \(contextSize) tokens. Shorten the conversation history."
         case .rateLimited:
             return "Apple Intelligence is rate limited. Retry after a few seconds."
+        case .rateLimitedUntil(let seconds):
+            return "Apple Intelligence is rate limited. Retry after \(seconds) second\(seconds == 1 ? "" : "s")."
         case .concurrentRequest:
             return "Apple Intelligence is busy with another request. Retry shortly."
         case .assetsUnavailable:
@@ -183,11 +206,24 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
     /// Uses typed matching (locale-independent) — safe on any macOS language.
     public var isRetryable: Bool {
         switch self {
-        case .rateLimited, .concurrentRequest, .assetsUnavailable:
+        case .rateLimited, .rateLimitedUntil, .concurrentRequest, .assetsUnavailable:
             return true
         default:
             return false
         }
+    }
+
+    /// The `Retry-After` value for the server's 429, when the runtime
+    /// reported a reset date (macOS 27, #510). Nil for every other case.
+    public var retryAfterSeconds: Int? {
+        if case .rateLimitedUntil(let seconds) = self { return seconds }
+        return nil
+    }
+
+    /// Seconds until `resetDate`, rounded up and clamped to at least 1 -
+    /// a `Retry-After: 0` (or a negative value) would tell clients to hammer.
+    public static func retryAfterSeconds(until resetDate: Date, now: Date = Date()) -> Int {
+        max(1, Int(resetDate.timeIntervalSince(now).rounded(.up)))
     }
 }
 
@@ -249,8 +285,12 @@ extension ApfelError: LocalizedError, CustomStringConvertible, CustomDebugString
             return "ApfelError.refusal(\(String(reflecting: message)))"
         case .contextOverflow:
             return "ApfelError.contextOverflow"
+        case .contextWindowExceeded(let tokenCount, let contextSize):
+            return "ApfelError.contextWindowExceeded(tokenCount: \(tokenCount), contextSize: \(contextSize))"
         case .rateLimited:
             return "ApfelError.rateLimited"
+        case .rateLimitedUntil(let seconds):
+            return "ApfelError.rateLimitedUntil(retryAfterSeconds: \(seconds))"
         case .concurrentRequest:
             return "ApfelError.concurrentRequest"
         case .assetsUnavailable:
