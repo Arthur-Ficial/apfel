@@ -32,7 +32,13 @@ public struct StreamOutcome: Sendable, Equatable, Hashable {
     /// instead of re-counting the same text (#504).
     public let completionTokens: Int
 
-    public init(content: String, finishReason: FinishReason, completionTokens: Int = 0) {
+    public init(content: String, finishReason: FinishReason) {
+        self.content = content
+        self.finishReason = finishReason
+        self.completionTokens = 0
+    }
+
+    public init(content: String, finishReason: FinishReason, completionTokens: Int) {
         self.content = content
         self.finishReason = finishReason
         self.completionTokens = completionTokens
