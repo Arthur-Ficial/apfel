@@ -34,7 +34,7 @@ Attribute name is `apfel-llm` because nixpkgs already has an unrelated `apfel` p
 
 ## Option 3: Build from source
 
-Requires Swift 6.3+ with developer tools that include the **macOS 26.4 SDK**. Command Line Tools are enough - `make install` handles the SwiftPM 6.4 build-system workaround automatically. If you run `swift build` directly (outside the Makefile), add `--build-system native` - see the troubleshooting section below.
+Requires Swift 6.3+ with developer tools that include the **macOS 27 SDK** (Command Line Tools 27 or Xcode 27; since apfel 1.15.0 the sources use macOS 27 FoundationModels API behind runtime availability checks, so a 26.x SDK no longer compiles them - the binary still runs on macOS 26). Command Line Tools are enough - `make install` handles the SwiftPM 6.4 build-system workaround automatically. If you run `swift build` directly (outside the Makefile), add `--build-system native` - see the troubleshooting section below.
 
 ```bash
 git clone https://github.com/Arthur-Ficial/apfel.git

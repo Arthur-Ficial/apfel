@@ -1,11 +1,11 @@
 // ============================================================================
-// TypedErrorSupport.swift — macOS 27 typed LanguageModelError classification
+// TypedErrorSupport.swift - macOS 27 typed LanguageModelError classification
 // (#510 item 4, #197).
 //
 // A binary linked against the macOS 27 SDK receives FoundationModels'
 // typed `LanguageModelError` from the runtime on macOS 27. macOS 26 keeps
 // throwing `GenerationError`, and a 26-SDK-linked binary running on 27
-// receives a case-less `GenerationError` — both stay classified by
+// receives a case-less `GenerationError` - both stay classified by
 // ApfelCore's pure `ApfelError.classify` (mirror + keyword fallback,
 // #181/#193), which also remains the fallback here for anything that is
 // not a `LanguageModelError`. The availability decision is made HERE, once

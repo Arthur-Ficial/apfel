@@ -13,6 +13,20 @@ import ApfelCore
 func runStreamErrorResolverTests() {
     // MARK: - Output-side overflow (the only graceful path)
 
+    // macOS 27 typed classification yields .contextWindowExceeded for the same
+    // mid-stream overflow; it must truncate like .contextOverflow, or streamed
+    // content is thrown away (found in the v1.16.0 pre-release review).
+    test("contextWindowExceeded + non-empty prev -> truncated") {
+        let outcome = StreamErrorResolver.resolve(prev: "hello world", error: .contextWindowExceeded(tokenCount: 4098, contextSize: 4096))
+        switch outcome {
+        case .truncated(let content): try assertEqual(content, "hello world")
+        case .fatal: throw TestFailure("expected .truncated, got .fatal")
+        }
+    }
+    test("contextWindowExceeded + empty prev -> fatal") {
+        let outcome = StreamErrorResolver.resolve(prev: "", error: .contextWindowExceeded(tokenCount: 4098, contextSize: 4096))
+        guard case .fatal = outcome else { throw TestFailure("expected .fatal") }
+    }
     test("contextOverflow + non-empty prev -> truncated") {
         let outcome = StreamErrorResolver.resolve(prev: "hello world", error: .contextOverflow)
         switch outcome {

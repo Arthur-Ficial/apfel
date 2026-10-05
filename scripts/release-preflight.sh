@@ -58,6 +58,26 @@ else
     fail "release build"
 fi
 
+# --- 4b. Binary stamp: floor macOS 26.0, linked against SDK >= 27.0 ---
+# The macOS 27 runtime hands typed LanguageModelError (and other 27 behaviour)
+# only to binaries whose LC_BUILD_VERSION sdk stamp is >= 27.0; `swift build`
+# without `--build-system native` stamps 26.0 even on a 27 SDK. The release
+# tarball must never ship with the wrong stamp (#510, #205).
+step "Binary stamp"
+stamp=$(vtool -show-build .build/release/apfel 2>/dev/null || true)
+minos=$(echo "$stamp" | awk '/minos/ {print $2}')
+sdk=$(echo "$stamp" | awk '/sdk/ {print $2}')
+if [ "$minos" = "26.0" ]; then
+    pass "binary minos is 26.0 (macOS 26 floor intact)"
+else
+    fail "binary minos is '$minos', expected 26.0 - the macOS 26 floor moved"
+fi
+if [ "${sdk%%.*}" -ge 27 ] 2>/dev/null; then
+    pass "binary linked against SDK $sdk (>= 27.0)"
+else
+    fail "binary sdk stamp is '$sdk' - build with the macOS 27 SDK and --build-system native"
+fi
+
 # --- 4b. Man page exists and lints cleanly ---
 step "Man page"
 if [ -f .build/release/apfel.1 ]; then

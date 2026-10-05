@@ -52,7 +52,8 @@ public enum StreamErrorResolver {
     ///   `prev` is non-empty. Everything else is fatal.
     public static func resolve(prev: String, error: ApfelError) -> StreamErrorResolution {
         switch error {
-        case .contextOverflow where !prev.isEmpty:
+        case .contextOverflow where !prev.isEmpty,
+             .contextWindowExceeded where !prev.isEmpty:
             return .truncated(prev)
         default:
             return .fatal(error)

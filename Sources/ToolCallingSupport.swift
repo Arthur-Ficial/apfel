@@ -1,5 +1,5 @@
 // ============================================================================
-// ToolCallingSupport.swift — macOS 27 GenerationOptions.ToolCallingMode (#510)
+// ToolCallingSupport.swift - macOS 27 GenerationOptions.ToolCallingMode (#510)
 //
 // macOS 27's generation options can tell the runtime whether the model may
 // (.allowed) or must not (.disallowed) call the tools presented through
