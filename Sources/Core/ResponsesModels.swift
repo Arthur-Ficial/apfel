@@ -91,14 +91,39 @@ public struct ResponsesInputItem: Decodable, Sendable {
     /// `output_text` parts joined with newlines).
     public let textContent: String?
     /// True when any content part has a type other than `input_text` /
-    /// `output_text` (e.g. `input_image`). The validator rejects these.
+    /// `output_text` (e.g. `input_image`). Under the `.unsupported` image
+    /// policy the validator rejects these wholesale; under `.dataURL` it
+    /// uses `imageParts` / `unsupportedPartTypes` instead (#510).
     public let hasNonTextParts: Bool
+    /// The `input_image` payloads, in part order (#510). `image_url` is a
+    /// plain string in the Responses API; an `{"url": ...}` object is also
+    /// accepted.
+    public let imageParts: [ImageURLContent]
+    /// Content part types that are neither text nor `input_image`
+    /// (e.g. `input_file`, `input_audio`) - never silently dropped (#510).
+    public let unsupportedPartTypes: [String]
 
     enum CodingKeys: String, CodingKey { case type, role, content }
 
     private struct Part: Decodable {
         let type: String?
         let text: String?
+        let image_url: ImageURLValue?
+        let detail: String?
+    }
+
+    /// The Responses-API `image_url` value: a string, or an object with `url`.
+    private struct ImageURLValue: Decodable {
+        let url: String
+        init(from decoder: Decoder) throws {
+            let c = try decoder.singleValueContainer()
+            if let s = try? c.decode(String.self) {
+                url = s
+                return
+            }
+            struct Obj: Decodable { let url: String }
+            url = try c.decode(Obj.self).url
+        }
     }
 
     private static let textPartTypes: Set<String> = ["input_text", "output_text"]
@@ -111,6 +136,8 @@ public struct ResponsesInputItem: Decodable, Sendable {
             if let s = try? c.decode(String.self, forKey: .content) {
                 textContent = s
                 hasNonTextParts = false
+                imageParts = []
+                unsupportedPartTypes = []
             } else {
                 let parts = try c.decode([Part].self, forKey: .content)
                 textContent = parts.compactMap(\.text).joined(separator: "\n")
@@ -118,10 +145,23 @@ public struct ResponsesInputItem: Decodable, Sendable {
                     guard let partType = part.type else { return false }
                     return !Self.textPartTypes.contains(partType)
                 }
+                imageParts = parts
+                    .filter { $0.type == "input_image" }
+                    .compactMap { part in
+                        part.image_url.map { ImageURLContent(url: $0.url, detail: part.detail) }
+                    }
+                unsupportedPartTypes = parts.compactMap { part -> String? in
+                    guard let partType = part.type,
+                          !Self.textPartTypes.contains(partType),
+                          partType != "input_image" else { return nil }
+                    return partType
+                }
             }
         } else {
             textContent = nil
             hasNonTextParts = false
+            imageParts = []
+            unsupportedPartTypes = []
         }
     }
 }
@@ -167,7 +207,21 @@ public enum ResponsesMapper {
             for item in items {
                 guard let role = item.role else { continue }
                 let mapped = role == "developer" ? "system" : role
-                messages.append(OpenAIMessage(role: mapped, content: .text(item.textContent ?? "")))
+                if item.imageParts.isEmpty {
+                    messages.append(OpenAIMessage(role: mapped, content: .text(item.textContent ?? "")))
+                } else {
+                    // Image-bearing items become chat-style part arrays so the
+                    // whole vision pipeline is shared with /v1/chat/completions
+                    // (#510). Text first, then the images, in part order.
+                    var parts: [ContentPart] = []
+                    if let text = item.textContent, !text.isEmpty {
+                        parts.append(ContentPart(type: "text", text: text))
+                    }
+                    for image in item.imageParts {
+                        parts.append(ContentPart(type: "image_url", text: nil, image_url: image))
+                    }
+                    messages.append(OpenAIMessage(role: mapped, content: .parts(parts)))
+                }
             }
         case nil:
             break
@@ -208,6 +262,12 @@ public enum ResponsesRequestValidator {
         case invalidLastRole(String)
         case emptyLastMessageContent
         case imageContent
+        /// An `input_image` value was rejected (see `ImageInput.Failure`).
+        case imageInput(ImageInput.Failure)
+        /// An `input_image` part appeared outside a user item (#510).
+        case imagePartInRole(String)
+        /// A content part type that is neither text nor `input_image` (#510).
+        case unsupportedContentPart(String)
         case invalidTextFormat(String)
         case missingSchema
         case invalidRange(String)
@@ -241,7 +301,13 @@ public enum ResponsesRequestValidator {
             case .emptyLastMessageContent:
                 return "The last message must have non-empty 'content'"
             case .imageContent:
-                return "Image content is not supported by the Apple on-device model"
+                return "Image content is not supported by the Apple on-device model - image input requires macOS 27"
+            case .imageInput(let failure):
+                return failure.message
+            case .imagePartInRole(let role):
+                return "Image parts are only supported in user input items, found one in a '\(role)' item."
+            case .unsupportedContentPart(let type):
+                return "Input content part type '\(type)' is not supported (supported: input_text, input_image)."
             case .invalidTextFormat(let t):
                 return "Unsupported text.format.type '\(t)' (supported: text, json_object, json_schema)."
             case .missingSchema:
@@ -288,7 +354,14 @@ public enum ResponsesRequestValidator {
         }
     }
 
+    /// Validates with images rejected (the pre-#510 behavior, and the
+    /// macOS 26 policy).
     public static func validate(_ r: ResponsesRequest) -> Failure? {
+        validate(r, imagePolicy: .unsupported)
+    }
+
+    /// Validates under an image-input policy decided by the caller (#510).
+    public static func validate(_ r: ResponsesRequest, imagePolicy: ImageInputPolicy) -> Failure? {
         // Model first (matches the chat handler's 404 behavior).
         guard let model = r.model, !model.isEmpty else { return .missingModel }
         guard model == validModel else { return .invalidModel(model) }
@@ -329,9 +402,31 @@ public enum ResponsesRequestValidator {
                 }
             }
             if last.role != "user" { return .invalidLastRole(last.role ?? "none") }
-            if items.contains(where: \.hasNonTextParts) { return .imageContent }
+            switch imagePolicy {
+            case .unsupported:
+                if items.contains(where: \.hasNonTextParts) { return .imageContent }
+            case .dataURL(let maxBase64Bytes):
+                for item in items {
+                    if let bad = item.unsupportedPartTypes.first {
+                        return .unsupportedContentPart(bad)
+                    }
+                    guard !item.imageParts.isEmpty else { continue }
+                    guard item.role == "user" else {
+                        return .imagePartInRole(item.role ?? "none")
+                    }
+                    for image in item.imageParts {
+                        if image.url.isEmpty { return .imageInput(.missingURL) }
+                        if case .failure(let failure) = ImageInput.parseDataURL(image.url, maxBase64Bytes: maxBase64Bytes) {
+                            return .imageInput(failure)
+                        }
+                    }
+                }
+            }
             let lastText = last.textContent
-            if lastText == nil || lastText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true {
+            // An image-only final user item is a complete prompt when images
+            // are accepted (#510).
+            let lastHasImages = imagePolicy.allowsImages && !last.imageParts.isEmpty
+            if (lastText == nil || lastText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true) && !lastHasImages {
                 return .emptyLastMessageContent
             }
         }

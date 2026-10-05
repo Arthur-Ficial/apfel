@@ -11,6 +11,10 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
     case decodingFailure(String)
     case unsupportedLanguage(String)
     case toolExecution(String)
+    /// Image input that passed wire validation but could not be used
+    /// (undecodable bytes, or image content reaching generation on an OS
+    /// without vision support) - always a client-input 400 (#510).
+    case invalidImageInput(String)
     case unknown(String)
 
     /// Classify any thrown error into a typed ApfelError.
@@ -99,6 +103,7 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
         case .decodingFailure:     return "[decoding failure]"
         case .unsupportedLanguage: return "[unsupported language]"
         case .toolExecution:       return "[tool error]"
+        case .invalidImageInput:   return "[image input]"
         case .unknown:             return "[error]"
         }
     }
@@ -115,6 +120,7 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
         case .decodingFailure:     return "server_error"
         case .unsupportedLanguage: return "invalid_request_error"
         case .toolExecution:       return "server_error"
+        case .invalidImageInput:   return "invalid_request_error"
         case .unknown:             return "server_error"
         }
     }
@@ -137,6 +143,7 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
         case .decodingFailure:     return 500
         case .unsupportedLanguage: return 400
         case .toolExecution:       return 500
+        case .invalidImageInput:   return 400
         case .unknown:             return 500
         }
     }
@@ -164,6 +171,8 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
         case .unsupportedLanguage(let msg):
             return "Unsupported language: \(msg)"
         case .toolExecution(let msg):
+            return msg
+        case .invalidImageInput(let msg):
             return msg
         case .unknown(let msg):
             return msg
@@ -254,6 +263,8 @@ extension ApfelError: LocalizedError, CustomStringConvertible, CustomDebugString
             return "ApfelError.unsupportedLanguage(\(String(reflecting: message)))"
         case .toolExecution(let message):
             return "ApfelError.toolExecution(\(String(reflecting: message)))"
+        case .invalidImageInput(let message):
+            return "ApfelError.invalidImageInput(\(String(reflecting: message)))"
         case .unknown(let message):
             return "ApfelError.unknown(\(String(reflecting: message)))"
         }

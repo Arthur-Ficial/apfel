@@ -87,6 +87,23 @@ actor TokenCounter {
         model.isAvailable
     }
 
+    /// Cached capabilities. `.notReported` (macOS 26) is final; a macOS 27
+    /// report is cached once it names at least one capability - an empty
+    /// report during SDK cold start would otherwise stick for the process
+    /// lifetime (same cold-start behavior as contextSize, #192).
+    private var _capabilitiesCache: CapabilitiesReport?
+
+    /// The model's reported capabilities (#510). macOS 27 reads them from
+    /// the SDK; macOS 26 returns the honest `reported == false` marker.
+    var capabilitiesReport: CapabilitiesReport {
+        if let cached = _capabilitiesCache { return cached }
+        let report = readModelCapabilities()
+        if !report.reported || !report.names.isEmpty {
+            _capabilitiesCache = report
+        }
+        return report
+    }
+
     /// Whether the real tokenCount API is usable (model available AND macOS 26.4+).
     /// When false, token counts fall back to chars/4 approximation.
     var isTokenCountingAvailable: Bool {

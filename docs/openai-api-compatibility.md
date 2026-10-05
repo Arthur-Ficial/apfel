@@ -27,8 +27,39 @@
 | `POST /v1/completions` | 501 | Legacy text completions not supported |
 | `POST /v1/embeddings` | 501 | Embeddings not available on-device |
 | `logprobs=true`, `n>1`, `stop`, `presence_penalty`, `frequency_penalty` | 400 | Rejected explicitly. `n=1` and `logprobs=false` are accepted as no-ops |
-| Multi-modal (images) | 400 | Rejected with clear error |
+| Multi-modal (images) | Supported on macOS 27 | `image_url` parts as base64 data URLs reach the model natively; `detail` is accepted and ignored. On macOS 26: 400 ("image input requires macOS 27"). See [Images](#images) |
 | `Authorization` header | Supported | Required when `--token` is set. See [server-security.md](server-security.md) |
+
+## Images
+
+On macOS 27 the on-device model accepts image input, and apfel forwards it through the standard OpenAI shape: a `content` array with `image_url` parts. On macOS 26 the same request gets an honest 400 ("Image content is not supported by the Apple on-device model - image input requires macOS 27") - feature-detect via `capabilities` on `/health` or `/v1/models` (`capabilities_reported: false` means the OS does not report capabilities at all).
+
+The rules, all enforced before the model runs:
+
+- **Base64 data URLs only** (`data:image/png;base64,...`). Accepted media types: `image/png`, `image/jpeg`, `image/webp`, `image/heic`, `image/gif` (first frame).
+- **Remote `http(s)` URLs are rejected** - apfel does not fetch remote images; it is 100% on-device.
+- **`file://` URLs and local paths are rejected** - an HTTP client must not make the server read arbitrary local files.
+- **20 MB base64 cap per image**; the request-body cap is 24 MiB on macOS 27 (1 MiB on macOS 26, unchanged). Images are downscaled to at most 4096 px on the longest side while decoding.
+- **`detail` is accepted and ignored** - the on-device model has no detail levels.
+- Image parts are allowed in `user` messages only; images in earlier user turns stay in the conversation across tool-calling rounds and retries.
+- The image's token cost appears in `prompt_tokens` (the macOS 27 runtime prices it; a 64x64 PNG adds roughly 60-70 tokens, a photo roughly 120-220).
+
+```bash
+IMG=$(base64 -i photo.jpg)
+curl -s http://localhost:11434/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d @- << EOF
+{
+  "model": "apple-foundationmodel",
+  "messages": [{"role": "user", "content": [
+    {"type": "text", "text": "Describe this image in one sentence."},
+    {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,$IMG"}}
+  ]}]
+}
+EOF
+```
+
+Be honest about what to expect: the ~3B on-device model's scene understanding is coarse. Asked to describe the Apollo 11 plaque photo, it answered "A bottle of amber liquid is wrapped in clear plastic and placed on a metal shelf surrounded by leaves." Unambiguous content works well (a solid red square is reliably "Red"); for reading print, the CLI's OCR path (`apfel -f photo.jpg`) remains the reliable channel - on macOS 27 the CLI sends both.
 
 ## Responses API
 
@@ -37,6 +68,7 @@
 | Feature | Status | Notes |
 |---------|--------|-------|
 | `input` as a string or message list | Supported | Roles `system`, `developer` (folded into system), `user`, `assistant`; string content or `input_text` parts |
+| `input_image` parts | Supported on macOS 27 | Base64 data URLs only, same rules as [Images](#images); `detail` accepted and ignored. On macOS 26: 400 |
 | `instructions` | Supported | Becomes the system prompt |
 | `stream: true` | Supported | Canonical event sequence: `response.created` ... `response.output_text.delta` ... `response.completed`, with `sequence_number` |
 | `temperature`, `top_p`, `max_output_tokens`, `metadata` | Supported | Same semantics as chat; metadata echoed back |

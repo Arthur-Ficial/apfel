@@ -44,7 +44,7 @@ apfel came first. Its first commit and v0.1.0 landed on 2026-03-24, the first Gi
 | Multi-turn in one shot | `--messages file.json` (OpenAI messages array) | `--resume transcript.json` + `--save-transcript` |
 | Interactive chat | `apfel --chat` with context trimming strategies | `fm chat` with named sessions (`--resume name`, `--continue`) |
 | Attach files | `-f` text, PDF, images (Vision OCR + image understanding), repeatable | `--image` (image input to the model), `--text` segments |
-| Image understanding | OCR text via Vision today (works on 26 and 27); native image input to the model on macOS 27 is planned, see [#510](https://github.com/Arthur-Ficial/apfel/issues/510) | yes on macOS 27: `--image photo.jpg` goes to the model itself (the 3B model's descriptions are coarse: it called a metal plaque "a glass bottle wrapped in foil") |
+| Image understanding | Native image input to the model on macOS 27 (`-f photo.jpg`, piped bytes, server `image_url` data URLs - #510) PLUS OCR text via Vision on both 26 and 27 | yes on macOS 27: `--image photo.jpg` goes to the model itself (the 3B model's descriptions are coarse: it called a metal plaque "a glass bottle wrapped in foil") |
 | Built-in vision tools | no | `--tool ocr`, `--tool barcode` |
 | External tools | MCP servers, local (`--mcp ./server.py`) and remote (`--mcp https://...`, bearer token, OAuth) | none |
 | Sampling | `--temperature`, `--top-p`, `--seed`, `--max-tokens` | `--greedy` only |
@@ -73,7 +73,7 @@ Both tools start a local server. apfel: `apfel --serve` (port 11434). `fm`: `fm 
 | `response_format: json_schema` | yes, schema-guaranteed, `$ref` and bounds supported, also streaming | yes (`{"fruit": "apple"}` for the test schema) |
 | `response_format: json_object` | yes | not tested |
 | `POST /v1/responses` (Responses API) | yes, incl. streaming and `text.format` | no |
-| `GET /v1/models` | yes, with `context_window` and `context_window_measured` | yes (`id: "system"`) |
+| `GET /v1/models` | yes, with `context_window`, `context_window_measured`, `capabilities`, `capabilities_reported` | yes (`id: "system"`) |
 | `GET /health` | model availability, context window, languages, active requests, version | `{"status":"fm serve is running"}` plus model list |
 | `max_tokens` | honoured, `finish_reason: length` at the cap | **ignored**: `max_tokens: 5` returned 141 completion tokens with `finish_reason: stop` |
 | `temperature`, `top_p`, `seed` | mapped to `GenerationOptions`; `temperature: 0` is greedy | `temperature` accepted silently (effect not verified); `top_p`, `seed` not documented |

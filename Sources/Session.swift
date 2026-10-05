@@ -87,6 +87,16 @@ func makePromptEntry(_ prompt: String, options: SessionOptions = .defaults) -> T
     return .prompt(prompt)
 }
 
+/// Prompt entry for a user turn with ordered text/image pieces (#510).
+/// Text-only pieces produce the same entry as `makePromptEntry(_:options:)`;
+/// images become native attachment segments (macOS 27, see VisionSupport).
+func makePromptEntry(pieces: [PromptPiece], options: SessionOptions = .defaults) -> Transcript.Entry {
+    .prompt(Transcript.Prompt(
+        segments: promptSegments(pieces: pieces),
+        options: makeGenerationOptions(options)
+    ))
+}
+
 func makeTranscriptSession(model: SystemLanguageModel, entries: [Transcript.Entry]) -> LanguageModelSession {
     guard !entries.isEmpty else {
         return LanguageModelSession(model: model)
@@ -106,10 +116,17 @@ func transcriptEntries(_ transcript: Transcript) -> [Transcript.Entry] {
 func sessionInputEntries(
     builtEntries: [Transcript.Entry],
     finalPrompt: String,
-    options: SessionOptions = .defaults
+    options: SessionOptions = .defaults,
+    finalPieces: [PromptPiece]? = nil
 ) -> [Transcript.Entry] {
     var entries = builtEntries
-    entries.append(makePromptEntry(finalPrompt, options: options))
+    // An image-bearing final turn is accounted as the entry actually sent
+    // (text + attachment segments, #510); the text-only path is unchanged.
+    if let finalPieces, hasImagePiece(finalPieces) {
+        entries.append(makePromptEntry(pieces: finalPieces, options: options))
+    } else {
+        entries.append(makePromptEntry(finalPrompt, options: options))
+    }
     return entries
 }
 
@@ -297,6 +314,7 @@ func trimSlidingWindow(
 /// Used by BOTH singlePrompt() and chat() - ONE code path, no duplication.
 func processPrompt(
     prompt: String,
+    pieces: [PromptPiece]? = nil,
     systemPrompt: String?,
     session: LanguageModelSession,
     options: SessionOptions,
@@ -307,8 +325,11 @@ func processPrompt(
     hasMCPTools: Bool
 ) async throws -> ProcessPromptResult {
     let retryMax = options.retryEnabled ? options.retryCount : 0
+    // Image-bearing turns attach natively (macOS 27, #510); text-only turns
+    // build the exact same prompt as before.
+    let promptValue = makeUserPrompt(text: prompt, pieces: pieces ?? [.text(prompt)])
 
-    debugLog("prompt", "stream=\(stream) retry=\(retryMax) mcp=\(hasMCPTools)")
+    debugLog("prompt", "stream=\(stream) retry=\(retryMax) mcp=\(hasMCPTools) images=\(pieces.map { p in p.reduce(0) { if case .image = $1 { return $0 + 1 } else { return $0 } } } ?? 0)")
 
     var content: String
     var finishReason: FinishReason = .stop
@@ -320,7 +341,7 @@ func processPrompt(
     let shouldPrint = stream && printDelta && !hasMCPTools
     let printSink = shouldPrint ? StreamPrintSink() : nil
     let outcome = try await withRetry(maxRetries: retryMax) {
-        try await collectStream(session, prompt: prompt, sink: printSink, options: genOpts)
+        try await collectStream(session, prompt: promptValue, sink: printSink, options: genOpts)
     }
     content = outcome.content
     finishReason = outcome.finishReason
@@ -611,14 +632,15 @@ func executeMCPToolCallsForServer(
         // tools: nil, unchanged.
         let followUpTools: [OpenAITool]? = currentExecuted.retryInstructions.isEmpty
             ? nil : await mcpManager.allTools()
-        let (followUpSession, followUpPrompt, _) = try await ContextManager.makeSession(
+        let (followUpSession, followUpPrompt, _, followUpPieces) = try await ContextManager.makeSession(
             messages: followUpMessages,
             tools: followUpTools,
             options: sessionOptions,
             jsonMode: false,
             toolChoice: nil
         )
-        let followUpResponse = try await followUpSession.respond(to: followUpPrompt, options: options)
+        let followUpResponse = try await followUpSession.respond(
+            to: makeUserPrompt(text: followUpPrompt, pieces: followUpPieces), options: options)
         finalContent = followUpResponse.content
         if let roundUsage = reportedUsage(of: followUpResponse) {
             usageRounds.append(roundUsage)
@@ -690,6 +712,17 @@ private func appendExecutedToolResults(
 func collectStream(
     _ session: LanguageModelSession,
     prompt: String,
+    sink: StreamPrintSink? = nil,
+    options: GenerationOptions = GenerationOptions()
+) async throws -> GenerationOutcome {
+    try await collectStream(session, prompt: Prompt(prompt), sink: sink, options: options)
+}
+
+/// Prompt-typed variant so an image-bearing user turn (macOS 27, #510)
+/// streams through the same path as text.
+func collectStream(
+    _ session: LanguageModelSession,
+    prompt: Prompt,
     sink: StreamPrintSink? = nil,
     options: GenerationOptions = GenerationOptions()
 ) async throws -> GenerationOutcome {

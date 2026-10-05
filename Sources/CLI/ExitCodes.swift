@@ -38,6 +38,10 @@ public enum ApfelExitCodes {
         case .decodingFailure:     return runtimeError
         case .unsupportedLanguage: return runtimeError
         case .toolExecution:       return runtimeError
+        // Bad image input (undecodable data URL in --messages, or image
+        // content on an OS without vision) is a usage problem, like every
+        // other invalid-input parse error (#510).
+        case .invalidImageInput:   return usageError
         case .unknown:             return runtimeError
         }
     }

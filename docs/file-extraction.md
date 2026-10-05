@@ -46,6 +46,10 @@ cat report.pdf | apfel "Summarize this"
 cat photo.jpg | apfel "What is in this picture?"
 ```
 
+## Native image input on macOS 27
+
+On macOS 27 the model itself accepts images, so `apfel -f photo.jpg` (and piped image bytes) sends BOTH: the extracted OCR/classification text stays in the prompt - small print is only reliable through OCR - and the image rides along as a native attachment for the model to look at. `--debug` says which happened (`image attached natively` vs `image sent text-only`). On macOS 26 nothing changes: images are text-only. `--count-tokens` does not include the attachment (the runtime prices it at generation time) and says so on stderr. One macOS 27 extra: an image Vision can neither read nor label no longer errors out - it still reaches the model natively, as long as the bytes decode as an image.
+
 ## Check the token budget first
 
 Extraction is model-free, so you can preflight how much a file adds to the prompt:

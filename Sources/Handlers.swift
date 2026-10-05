@@ -45,9 +45,9 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
     // with an OpenAI error object, CORS headers, and a log entry (#234).
     let body: ByteBuffer
     do {
-        body = try await request.body.collect(upTo: BodyLimits.maxRequestBodyBytes)
+        body = try await request.body.collect(upTo: serverMaxRequestBodyBytes)
     } catch {
-        let mib = BodyLimits.maxRequestBodyBytes / (1024 * 1024)
+        let mib = serverMaxRequestBodyBytes / (1024 * 1024)
         return openAIFailure(
             status: .init(code: 413),
             message: "Request body exceeds the \(mib) MiB limit.",
@@ -55,7 +55,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
             stream: false,
             requestBody: nil,
             events: events,
-            event: "request body too large (limit \(BodyLimits.maxRequestBodyBytes) bytes)"
+            event: "request body too large (limit \(serverMaxRequestBodyBytes) bytes)"
         )
     }
     let requestBodyString = capturedRequestBody(body, debugEnabled: serverState.config.debug)
@@ -81,7 +81,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
     let jsonMode = chatRequest.response_format?.type == "json_object"
     let wantsJSONSchema = chatRequest.response_format?.type == "json_schema"
 
-    if let failure = ChatRequestValidator.validate(chatRequest) {
+    if let failure = ChatRequestValidator.validate(chatRequest, imagePolicy: serverImagePolicy) {
         return openAIFailure(
             status: .init(code: failure.httpStatusCode),
             message: failure.message,
@@ -186,8 +186,9 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
     let session: LanguageModelSession
     let finalPrompt: String
     let inputEntries: [Transcript.Entry]
+    let finalPieces: [PromptPiece]
     do {
-        (session, finalPrompt, inputEntries) = try await ContextManager.makeSession(
+        (session, finalPrompt, inputEntries, finalPieces) = try await ContextManager.makeSession(
             messages: chatRequest.messages,
             tools: effectiveTools,
             options: sessionOpts,
@@ -215,8 +216,11 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
     // entries we actually built (native tool definitions intact), not the
     // session's transcript, which drops Instructions.toolDefinitions (#176).
     let promptTokens = await PromptTokens.make(
-        entries: sessionInputEntries(builtEntries: inputEntries, finalPrompt: finalPrompt, options: sessionOpts)
+        entries: sessionInputEntries(builtEntries: inputEntries, finalPrompt: finalPrompt, options: sessionOpts, finalPieces: finalPieces)
     )
+    // The respond() prompt: plain text, plus native image attachments when
+    // the final turn carries images (macOS 27, #510).
+    let finalUserPrompt = makeUserPrompt(text: finalPrompt, pieces: finalPieces)
     let requestId = "chatcmpl-\(UUID().uuidString.prefix(12).lowercased())"
     let created = Int(Date().timeIntervalSince1970)
 
@@ -237,7 +241,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
         }
         let userPrompt = chatRequest.messages.last(where: { $0.role == "user" })?.textContent ?? finalPrompt
         let result = try await mcpAutoExecuteResponse(
-            session: session, prompt: finalPrompt, userPrompt: userPrompt,
+            session: session, prompt: finalUserPrompt, userPrompt: userPrompt,
             originalMessages: chatRequest.messages, sessionOptions: sessionOpts,
             id: requestId, created: created, genOpts: genOpts,
             promptTokens: promptTokens, streaming: isStreaming,
@@ -251,21 +255,21 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
     if let schema = structuredSchema {
         if isStreaming {
             let result = structuredStreamingResponse(
-                session: session, prompt: finalPrompt, schema: schema,
+                session: session, prompt: finalUserPrompt, schema: schema,
                 id: requestId, created: created, genOpts: genOpts,
                 promptTokens: promptTokens, includeUsage: includeUsage,
                 requestBody: requestBodyString, events: events)
             return (result.response, result.trace)
         }
         let result = try await structuredNonStreamingResponse(
-            session: session, prompt: finalPrompt, schema: schema,
+            session: session, prompt: finalUserPrompt, schema: schema,
             id: requestId, created: created, genOpts: genOpts,
             promptTokens: promptTokens, requestBody: requestBodyString, events: events)
         return (result.response, result.trace)
     }
 
     if isStreaming {
-        let result = streamingResponse(session: session, prompt: finalPrompt,
+        let result = streamingResponse(session: session, prompt: finalUserPrompt,
                                        id: requestId, created: created,
                                        genOpts: genOpts, promptTokens: promptTokens,
                                        includeUsage: includeUsage, jsonMode: jsonMode,
@@ -273,7 +277,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
                                        requestBody: requestBodyString, events: events)
         return (result.response, result.trace)
     } else {
-        let result = try await nonStreamingResponse(session: session, prompt: finalPrompt,
+        let result = try await nonStreamingResponse(session: session, prompt: finalUserPrompt,
                                                      id: requestId, created: created,
                                                      genOpts: genOpts, promptTokens: promptTokens,
                                                      jsonMode: jsonMode, policy: toolPolicy,
@@ -288,7 +292,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
 /// via MCPManager, re-prompt for a final text answer, then wrap as JSON or SSE.
 private func mcpAutoExecuteResponse(
     session: LanguageModelSession,
-    prompt: String,
+    prompt: Prompt,
     userPrompt: String,
     originalMessages: [OpenAIMessage],
     sessionOptions: SessionOptions,
@@ -488,7 +492,7 @@ private func mcpAutoExecuteResponse(
 
 private func nonStreamingResponse(
     session: LanguageModelSession,
-    prompt: String,
+    prompt: Prompt,
     id: String,
     created: Int,
     genOpts: GenerationOptions,
@@ -618,7 +622,7 @@ private func nonStreamingResponse(
 
 private func streamingResponse(
     session: LanguageModelSession,
-    prompt: String,
+    prompt: Prompt,
     id: String,
     created: Int,
     genOpts: GenerationOptions,
@@ -737,7 +741,7 @@ private func streamingResponse(
                     } else {
                         promptAdjustment += await TokenCounter.shared.count(prev) + TokenCounter.shared.count(repair)
                     }
-                    currentPrompt = repair
+                    currentPrompt = Prompt(repair)
                     await eventBox.append("tool policy repair: \(violation.code)")
                     continue generation
                 }
@@ -1024,7 +1028,7 @@ private func streamingResponse(
 /// the message content.
 private func structuredNonStreamingResponse(
     session: LanguageModelSession,
-    prompt: String,
+    prompt: Prompt,
     schema: GenerationSchema,
     id: String,
     created: Int,
@@ -1104,7 +1108,7 @@ private func structuredNonStreamingResponse(
 /// suffix as content deltas, so the concatenated stream is valid, conforming JSON.
 private func structuredStreamingResponse(
     session: LanguageModelSession,
-    prompt: String,
+    prompt: Prompt,
     schema: GenerationSchema,
     id: String,
     created: Int,

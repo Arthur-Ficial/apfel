@@ -628,7 +628,7 @@ private func benchmarkRequestPipelineResult(
     request: ChatCompletionRequest,
     options: SessionOptions
 ) async throws -> (finalPrompt: String, promptTokens: Int, responseBytes: Int) {
-    let (_, finalPrompt, inputEntries) = try await ContextManager.makeSession(
+    let (_, finalPrompt, inputEntries, _) = try await ContextManager.makeSession(
         messages: request.messages,
         tools: request.tools,
         options: options,

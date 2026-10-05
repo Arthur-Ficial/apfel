@@ -189,7 +189,7 @@ func runApfelErrorMessageTests() {
         )
         try assertEqual(
             ChatRequestValidationFailure.imageContent.message,
-            "Image content is not supported by the Apple on-device model"
+            "Image content is not supported by the Apple on-device model - image input requires macOS 27"
         )
         try assertEqual(
             ChatRequestValidationFailure.invalidParameterValue("nope").message,

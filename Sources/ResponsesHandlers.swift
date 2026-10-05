@@ -76,9 +76,9 @@ func handleResponses(_ request: Request, context: some RequestContext) async thr
     // Body collect with a proper 413 (#234).
     let body: ByteBuffer
     do {
-        body = try await request.body.collect(upTo: BodyLimits.maxRequestBodyBytes)
+        body = try await request.body.collect(upTo: serverMaxRequestBodyBytes)
     } catch {
-        let mib = BodyLimits.maxRequestBodyBytes / (1024 * 1024)
+        let mib = serverMaxRequestBodyBytes / (1024 * 1024)
         return openAIFailure(
             status: .init(code: 413),
             message: "Request body exceeds the \(mib) MiB limit.",
@@ -101,7 +101,7 @@ func handleResponses(_ request: Request, context: some RequestContext) async thr
     }
     let isStreaming = responsesRequest.stream == true
 
-    if let failure = ResponsesRequestValidator.validate(responsesRequest) {
+    if let failure = ResponsesRequestValidator.validate(responsesRequest, imagePolicy: serverImagePolicy) {
         return openAIFailure(
             status: .init(code: failure.httpStatusCode),
             message: failure.message,
@@ -173,8 +173,9 @@ func handleResponses(_ request: Request, context: some RequestContext) async thr
     let session: LanguageModelSession
     let finalPrompt: String
     let inputEntries: [Transcript.Entry]
+    let finalPieces: [PromptPiece]
     do {
-        (session, finalPrompt, inputEntries) = try await ContextManager.makeSession(
+        (session, finalPrompt, inputEntries, finalPieces) = try await ContextManager.makeSession(
             messages: messages, tools: toolPolicy.scopedTools(from: tools), options: sessionOpts,
             jsonMode: jsonMode, toolChoice: responsesRequest.tool_choice)
     } catch {
@@ -191,7 +192,10 @@ func handleResponses(_ request: Request, context: some RequestContext) async thr
     // Prompt tokens: counted up front on macOS 26; deferred on macOS 27, where
     // the response itself reports input tokens (#510, #504).
     let promptTokens = await PromptTokens.make(
-        entries: sessionInputEntries(builtEntries: inputEntries, finalPrompt: finalPrompt, options: sessionOpts))
+        entries: sessionInputEntries(builtEntries: inputEntries, finalPrompt: finalPrompt, options: sessionOpts, finalPieces: finalPieces))
+    // The respond() prompt: plain text, plus native image attachments when
+    // the final turn carries images (macOS 27, #510).
+    let finalUserPrompt = makeUserPrompt(text: finalPrompt, pieces: finalPieces)
     let requestId = "resp_\(UUID().uuidString.prefix(12).lowercased())"
     let created = Int(Date().timeIntervalSince1970)
     let echo = ResponsesEcho(responsesRequest, formatType: formatType)
@@ -199,7 +203,7 @@ func handleResponses(_ request: Request, context: some RequestContext) async thr
     if isStreaming {
         // Validator guarantees: no tools, no json_schema on this path.
         let result = responsesStreamingResponse(
-            session: session, prompt: finalPrompt, jsonMode: jsonMode,
+            session: session, prompt: finalUserPrompt, jsonMode: jsonMode,
             id: requestId, created: created, genOpts: genOpts,
             promptTokens: promptTokens, echo: echo,
             requestBody: requestBodyString, events: events)
@@ -207,7 +211,7 @@ func handleResponses(_ request: Request, context: some RequestContext) async thr
     }
 
     let result = try await responsesNonStreamingResponse(
-        session: session, prompt: finalPrompt, schema: structuredSchema,
+        session: session, prompt: finalUserPrompt, schema: structuredSchema,
         jsonMode: jsonMode, policy: toolPolicy, id: requestId, created: created, genOpts: genOpts,
         promptTokens: promptTokens, echo: echo,
         requestBody: requestBodyString, events: events)
@@ -218,7 +222,7 @@ func handleResponses(_ request: Request, context: some RequestContext) async thr
 
 private func responsesNonStreamingResponse(
     session: LanguageModelSession,
-    prompt: String,
+    prompt: Prompt,
     schema: GenerationSchema?,
     jsonMode: Bool,
     policy: ToolPolicy,
@@ -359,7 +363,7 @@ private func encodeEnvelope(
 
 private func responsesStreamingResponse(
     session: LanguageModelSession,
-    prompt: String,
+    prompt: Prompt,
     jsonMode: Bool,
     id: String,
     created: Int,

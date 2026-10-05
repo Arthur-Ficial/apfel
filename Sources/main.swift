@@ -209,10 +209,16 @@ if parsed.messagesFromStdin {
 }
 
 // Read stdin when piped (single/stream/count-tokens) -- as the prompt (no args) or prepended to the prompt.
+var pipedImageData: Data? = nil
 if messagesJSON == nil && parsed.mode.acceptsStdinInput && isatty(STDIN_FILENO) == 0 {
     let stdinContent: String
     do {
-        stdinContent = try stdinPromptText(try readStdinData())
+        let stdinData = try readStdinData()
+        stdinContent = try stdinPromptText(stdinData)
+        // Piped image bytes additionally attach natively on macOS 27 (#510).
+        if LesbarFileReader.isImageData(stdinData) {
+            pipedImageData = stdinData
+        }
     } catch let error as CLIParseError {
         printError(error.message)
         exit(exitUsageError)
@@ -249,6 +255,41 @@ if ApfelDebugConfiguration.isEnabled {
         debugLog("extract", "\(attachment.path) -> \(attachment.content.count) chars:\n\(attachment.content)")
     }
     debugLog("prompt", "final prompt to model (\(prompt.count) chars):\n\(prompt)")
+}
+
+// Native image attachment (#510): on macOS 27 every attached or piped image
+// ALSO goes to the model natively - the extracted OCR/classification text
+// stays in the prompt (small print needs OCR), the pixels ride along as an
+// attachment. On macOS 26 nothing changes: images stay text-only.
+var promptImages: [PromptImage] = []
+do {
+    var imageSources: [(label: String, data: Data)] = []
+    for attachment in parsed.fileAttachments {
+        if let data = FileManager.default.contents(atPath: attachment.path),
+           LesbarFileReader.isImageData(data, filename: attachment.path) {
+            imageSources.append((label: attachment.path, data: data))
+        }
+    }
+    if let pipedImageData {
+        imageSources.append((label: "piped image", data: pipedImageData))
+    }
+    if !imageSources.isEmpty {
+        if runtimeSupportsVision {
+            for source in imageSources {
+                do {
+                    promptImages.append(try decodePromptImage(data: source.data, label: source.label))
+                    debugLog("vision", "\(source.label): image attached natively (macOS 27 vision) in addition to the extracted text")
+                } catch {
+                    // Extraction already produced text; degrade loudly to text-only.
+                    if !quietMode {
+                        printStderr("\(styledErr("apfel:", .yellow)) could not decode \(source.label) for native attachment - sending the extracted text only")
+                    }
+                }
+            }
+        } else {
+            debugLog("vision", "image sent text-only (OCR/classification); native image input requires macOS 27")
+        }
+    }
 }
 
 // MARK: - Dispatch
@@ -380,7 +421,7 @@ do {
                 await shutdownMCP()
                 exit(exitUsageError)
             }
-            try await singlePrompt(prompt, systemPrompt: parsed.systemPrompt, stream: true, options: sessionOpts, mcpManager: mcpManager)
+            try await singlePrompt(prompt, systemPrompt: parsed.systemPrompt, stream: true, options: sessionOpts, mcpManager: mcpManager, images: promptImages)
         }
 
     case .single:
@@ -414,7 +455,7 @@ do {
         } else {
             // The bare-pipe case (`echo hi | apfel`) streams to preserve its
             // historical output behavior; an explicit prompt does not (#222).
-            let status = try await singlePrompt(prompt, systemPrompt: effectiveSystemPrompt, stream: noArgsPipe, options: sessionOpts, mcpManager: mcpManager, codeOnly: parsed.codeOnly)
+            let status = try await singlePrompt(prompt, systemPrompt: effectiveSystemPrompt, stream: noArgsPipe, options: sessionOpts, mcpManager: mcpManager, codeOnly: parsed.codeOnly, images: promptImages)
             if status != 0 {
                 await shutdownMCP()
                 exit(status)
@@ -434,7 +475,8 @@ do {
             fileAttachments: parsed.fileAttachments,
             systemPrompt: parsed.systemPrompt,
             options: sessionOpts,
-            mcpManager: mcpManager
+            mcpManager: mcpManager,
+            nativeImageCount: promptImages.count
         )
         if parsed.strictCount && !report.fits {
             await shutdownMCP()

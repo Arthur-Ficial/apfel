@@ -224,7 +224,7 @@ alias apfel=apfel-run                 # optional, every apfel flag still works
 | `POST /v1/chat/completions` | Supported | Streaming + non-streaming |
 | `POST /v1/responses` | Supported | OpenAI Responses API: string/message input, `instructions`, streaming (canonical event sequence), `text.format` (incl. `json_schema`), function tools (non-streaming). Stateful features (`previous_response_id`, `store: true`, `background`, `reasoning`, hosted tools) return honest 501s |
 | `GET /v1/models` | Supported | Returns `apple-foundationmodel` |
-| `GET /health` | Supported | Model availability, context window, languages |
+| `GET /health` | Supported | Model availability, context window, languages, reported model capabilities (`capabilities`, `capabilities_reported`) |
 | `GET /v1/logs`, `/v1/logs/stats` | Debug only | Requires `--debug` |
 | Tool calling | Supported | Native `ToolDefinition` + JSON detection. See [docs/tool-calling-guide.md](docs/tool-calling-guide.md) |
 | `response_format: json_object` | Supported | System-prompt injection; markdown fences stripped from output |
@@ -238,7 +238,7 @@ alias apfel=apfel-run                 # optional, every apfel flag still works
 | `POST /v1/completions` | 501 | Legacy text completions not supported |
 | `POST /v1/embeddings` | 501 | Embeddings not available on-device |
 | `logprobs=true`, `n>1`, `stop`, `presence_penalty`, `frequency_penalty` | 400 | Rejected explicitly. `n=1` and `logprobs=false` are accepted as no-ops |
-| Multi-modal (images) | 400 | Rejected with clear error |
+| Multi-modal (images) | Supported on macOS 27 | `image_url` parts as base64 data URLs go to the on-device model natively (20 MB base64 cap, longest side downscaled to 4096 px). Remote `http(s)` URLs and file paths are always 400 - apfel never fetches images and never reads files for an HTTP client. On macOS 26: 400 with a clear error. See [docs/openai-api-compatibility.md](docs/openai-api-compatibility.md) |
 | `Authorization` header | Supported | Required when `--token` is set. See [docs/server-security.md](docs/server-security.md) |
 
 Full API spec: [openai/openai-openapi](https://github.com/openai/openai-openapi).
@@ -304,7 +304,8 @@ apfel --serve --permissive             # every request uses permissive guardrail
 | Model | One model (`apple-foundationmodel`, ~3B params on-device), not configurable |
 | Guardrails | Apple's safety system may block benign prompts. `--permissive` reduces false positives ([docs/PERMISSIVE.md](docs/PERMISSIVE.md)) |
 | Speed | On-device, not cloud-scale - a few seconds per response |
-| No embeddings / vision | Not available on-device |
+| No embeddings | Not available on-device |
+| Vision | Image input reaches the model only on macOS 27 (server: data URLs; CLI: `-f photo.jpg` and piped images, on top of the OCR text). On macOS 26 images are text-only via OCR/classification. The 3B model's scene descriptions are coarse - OCR remains the reliable channel for reading print |
 | Training data / knowledge cutoff | Apple has not published a precise cutoff for the on-device model. When pushed to name one, the model **confabulates a different date each sample** (e.g. "October 2023", "April 2023"). Treat all model self-reports about its own training as unreliable. |
 | No current date or real-time awareness | The model does not know today's date and has no network/clock access. If asked, it will either refuse or invent a date. Inject the current date via system prompt when arithmetic depends on it (see workaround below). |
 

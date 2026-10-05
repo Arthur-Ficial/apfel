@@ -53,7 +53,16 @@ enum LesbarFileReader {
             let labels = (try? runLesbar { try ImageClassifier.classify(at: url) }) ?? []
             let summary = ImageInsight.summary(labels)
             if ocr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && summary.isEmpty {
-                throw CLIParseError("could not extract text or identify image: \(name)")
+                // macOS 27 attaches the image natively (#510), so an image
+                // Vision could neither read nor label still reaches the
+                // model - but only when the bytes actually decode as an
+                // image; corrupt files keep the clear error on both OSes.
+                // macOS 26 keeps the hard error always - text is all the
+                // model would ever have seen there.
+                guard runtimeSupportsVision,
+                      (try? decodePromptImage(data: data, label: name)) != nil else {
+                    throw CLIParseError("could not extract text or identify image: \(name)")
+                }
             }
             return FileFraming.image(name: name, whatItShows: summary, ocrText: ocr)
 
@@ -81,6 +90,13 @@ enum LesbarFileReader {
         catch { throw CLIParseError("could not stage piped input for extraction") }
         defer { try? FileManager.default.removeItem(at: tmp) }
         return try extract(data: data, name: name, url: tmp)
+    }
+
+    /// True when the bytes are an image apfel's extractor recognizes.
+    /// Used by the CLI to decide whether to ALSO attach the image natively
+    /// on macOS 27 (#510).
+    static func isImageData(_ data: Data, filename: String? = nil) -> Bool {
+        FileKind.detect(data: data, filename: filename) == .image
     }
 
     private static func runLesbar<T>(_ body: () throws -> T) throws -> T {

@@ -38,11 +38,11 @@ func printHeader() {
 /// `codeOnly` found no fenced block. Discardable because the `--stream` call
 /// sites cannot set `codeOnly` (rejected at parse time) and always get 0.
 @discardableResult
-func singlePrompt(_ prompt: String, systemPrompt: String?, stream: Bool, options: SessionOptions = .defaults, mcpManager: MCPManager? = nil, codeOnly: Bool = false) async throws -> Int32 {
+func singlePrompt(_ prompt: String, systemPrompt: String?, stream: Bool, options: SessionOptions = .defaults, mcpManager: MCPManager? = nil, codeOnly: Bool = false, images: [PromptImage] = []) async throws -> Int32 {
     let mcpTools = await mcpManager?.allTools() ?? []
     let hasMCPTools = !mcpTools.isEmpty
 
-    debugLog("single", "prompt_length=\(prompt.count) stream=\(stream) mcp=\(hasMCPTools) code=\(codeOnly)")
+    debugLog("single", "prompt_length=\(prompt.count) stream=\(stream) mcp=\(hasMCPTools) code=\(codeOnly) images=\(images.count)")
 
     let session: LanguageModelSession
     let finalPrompt: String
@@ -50,7 +50,7 @@ func singlePrompt(_ prompt: String, systemPrompt: String?, stream: Bool, options
         var msgs: [OpenAIMessage] = []
         if let sys = systemPrompt { msgs.append(OpenAIMessage(role: "system", content: .text(sys))) }
         msgs.append(OpenAIMessage(role: "user", content: .text(prompt)))
-        (session, finalPrompt, _) = try await ContextManager.makeSession(
+        (session, finalPrompt, _, _) = try await ContextManager.makeSession(
             messages: msgs, tools: mcpTools, options: options, jsonMode: false, toolChoice: nil)
     } else {
         session = makeSession(systemPrompt: systemPrompt, options: options)
@@ -60,8 +60,13 @@ func singlePrompt(_ prompt: String, systemPrompt: String?, stream: Bool, options
 
     // --code buffers the whole response (the crop needs the closing fence),
     // so delta printing is off even on the bare-pipe streaming path.
+    // Native image attachment (macOS 27, #510): the extracted OCR text stays
+    // in the prompt, and the image itself rides along as an attachment.
+    let pieces: [PromptPiece]? = images.isEmpty
+        ? nil
+        : [PromptPiece.text(finalPrompt)] + images.map { PromptPiece.image($0) }
     let result = try await processPrompt(
-        prompt: finalPrompt, systemPrompt: systemPrompt, session: session,
+        prompt: finalPrompt, pieces: pieces, systemPrompt: systemPrompt, session: session,
         options: options, genOpts: genOpts, stream: stream,
         printDelta: outputFormat == .plain && !codeOnly, mcpManager: mcpManager, hasMCPTools: hasMCPTools)
     printToolLog(result.toolLog)
@@ -181,7 +186,7 @@ func messagesPrompt(
     let hasMCPTools = !mcpTools.isEmpty
     debugLog("messages", "count=\(messages.count) stream=\(stream) mcp=\(hasMCPTools) schema=\(schemaJSON != nil)")
 
-    let (session, finalPrompt, _) = try await ContextManager.makeSession(
+    let (session, finalPrompt, _, finalPieces) = try await ContextManager.makeSession(
         messages: messages, tools: mcpTools, options: options, jsonMode: false, toolChoice: nil)
     let genOpts = makeGenerationOptions(options)
 
@@ -189,7 +194,9 @@ func messagesPrompt(
         let schema = try SchemaConverter.generationSchema(fromJSON: schemaJSON, name: schemaName ?? "schema")
         let retryMax = options.retryEnabled ? options.retryCount : 0
         let content = try await withRetry(maxRetries: retryMax) {
-            try await session.respond(to: finalPrompt, schema: schema, options: genOpts).content.jsonString
+            try await session.respond(
+                to: makeUserPrompt(text: finalPrompt, pieces: finalPieces),
+                schema: schema, options: genOpts).content.jsonString
         }
         switch outputFormat {
         case .plain:
@@ -204,7 +211,7 @@ func messagesPrompt(
     }
 
     let result = try await processPrompt(
-        prompt: finalPrompt, systemPrompt: systemPrompt, session: session,
+        prompt: finalPrompt, pieces: finalPieces, systemPrompt: systemPrompt, session: session,
         options: options, genOpts: genOpts, stream: stream,
         printDelta: outputFormat == .plain && !codeOnly, mcpManager: mcpManager, hasMCPTools: hasMCPTools)
     printToolLog(result.toolLog)
@@ -239,7 +246,8 @@ func countTokens(
     fileAttachments: [FileAttachment],
     systemPrompt: String?,
     options: SessionOptions = .defaults,
-    mcpManager: MCPManager? = nil
+    mcpManager: MCPManager? = nil,
+    nativeImageCount: Int = 0
 ) async throws -> TokenBudgetReport {
     let mcpTools = await mcpManager?.allTools() ?? []
     let outputReserve = options.contextConfig.outputReserve
@@ -265,11 +273,11 @@ func countTokens(
         var msgs: [OpenAIMessage] = []
         if let sys = systemPrompt { msgs.append(OpenAIMessage(role: "system", content: .text(sys))) }
         msgs.append(OpenAIMessage(role: "user", content: .text(mergedPrompt)))
-        let (_, _, withTools) = try await ContextManager.makeSession(
+        let (_, _, withTools, _) = try await ContextManager.makeSession(
             messages: msgs, tools: mcpTools, options: options, jsonMode: false, toolChoice: nil)
         inputEntries = sessionInputEntries(
             builtEntries: withTools, finalPrompt: mergedPrompt, options: options)
-        let (_, _, withoutTools) = try await ContextManager.makeSession(
+        let (_, _, withoutTools, _) = try await ContextManager.makeSession(
             messages: msgs, tools: nil, options: options, jsonMode: false, toolChoice: nil)
         noToolEntries = sessionInputEntries(
             builtEntries: withoutTools, finalPrompt: mergedPrompt, options: options)
@@ -344,6 +352,11 @@ func countTokens(
         printStderr("\(styledErr("apfel:", .yellow)) \(tokenCountFallback.message)")
     } else if fellBackAtRuntime, !quietMode {
         printStderr("\(styledErr("apfel:", .yellow)) token count is approximate (the on-device tokenizer failed at runtime; using chars/4 fallback)")
+    }
+    if nativeImageCount > 0, !quietMode {
+        // Image attachments cannot be priced without a model call; the
+        // runtime reports their real cost in usage at generation time (#510).
+        printStderr("\(styledErr("apfel:", .yellow)) \(nativeImageCount) image attachment\(nativeImageCount == 1 ? "" : "s") not included in this count - the runtime reports image token cost at generation time")
     }
 
     switch outputFormat {
@@ -600,6 +613,7 @@ func printModelInfo() async {
     let availability = await tc.availability
     let contextWindow = await tc.contextWindow
     let languages = await tc.supportedLanguages
+    let capabilities = await tc.capabilitiesReport
 
     let availabilityLine = availability.isAvailable
         ? styled(availability.shortLabel, .green)
@@ -611,6 +625,7 @@ func printModelInfo() async {
     \(styled("├", .dim)) on-device:  true (always)
     \(styled("├", .dim)) available:  \(availabilityLine)
     \(styled("├", .dim)) context:    \(contextWindow.displayText)
+    \(styled("├", .dim)) capabilities: \(capabilities.displayText)
     \(styled("├", .dim)) languages:  \(languages.joined(separator: ", "))
     \(styled("└", .dim)) framework:  FoundationModels (macOS 26+)
     """)

@@ -9,6 +9,12 @@ package enum BodyLimits {
     /// Prevents OOM from a malicious or misconfigured client.
     public static let maxRequestBodyBytes: Int = 1024 * 1024
 
+    /// Request body cap when image input is accepted (macOS 27, #510):
+    /// room for one full-size 20 MB base64 image (`ImageInput.maxBase64Bytes`)
+    /// plus JSON overhead. The main target picks this or
+    /// `maxRequestBodyBytes` based on the runtime; macOS 26 keeps 1 MiB.
+    public static let visionMaxRequestBodyBytes: Int = 24 * 1024 * 1024
+
     /// Tokens reserved for the model's response when fitting the prompt
     /// into the 4096-token context window.
     public static let defaultOutputReserveTokens: Int = 512

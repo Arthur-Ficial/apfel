@@ -65,6 +65,32 @@ public enum UnsupportedChatParameter: String, Sendable, Equatable, Hashable, Cus
         }
         return nil
     }
+
+    /// Image-part checks under the `.dataURL` policy: image parts only in
+    /// `user` messages, every `image_url` a well-formed base64 data URL of
+    /// an accepted media type under the size cap (#510).
+    private static func validateImageParts(
+        _ messages: [OpenAIMessage],
+        maxBase64Bytes: Int
+    ) -> ChatRequestValidationFailure? {
+        for message in messages {
+            guard case .parts(let parts) = message.content else { continue }
+            let imageParts = parts.filter { $0.type == "image_url" }
+            guard !imageParts.isEmpty else { continue }
+            guard message.role == "user" else {
+                return .imagePartInRole(message.role)
+            }
+            for part in imageParts {
+                guard let payload = part.image_url, !payload.url.isEmpty else {
+                    return .imageInput(.missingURL)
+                }
+                if case .failure(let failure) = ImageInput.parseDataURL(payload.url, maxBase64Bytes: maxBase64Bytes) {
+                    return .imageInput(failure)
+                }
+            }
+        }
+        return nil
+    }
 }
 
 /// Stable validation failures for OpenAI-compatible chat-completions requests.
@@ -81,6 +107,12 @@ public enum ChatRequestValidationFailure: Sendable, Equatable, Hashable, CustomS
     case emptyLastMessageContent
     /// The request included image content.
     case imageContent
+    /// An `image_url` value was rejected (bad scheme, media type, base64,
+    /// or size - see `ImageInput.Failure`). Only reachable when images are
+    /// accepted at all (#510).
+    case imageInput(ImageInput.Failure)
+    /// An image part appeared outside a `user` message (#510).
+    case imagePartInRole(String)
     /// A numeric or string parameter had an invalid value.
     case invalidParameterValue(String)
     /// Both `max_tokens` and `max_completion_tokens` were provided with
@@ -103,7 +135,11 @@ public enum ChatRequestValidationFailure: Sendable, Equatable, Hashable, CustomS
         case .emptyLastMessageContent:
             return "The last message must have non-empty 'content'"
         case .imageContent:
-            return "Image content is not supported by the Apple on-device model"
+            return "Image content is not supported by the Apple on-device model - image input requires macOS 27"
+        case .imageInput(let failure):
+            return failure.message
+        case .imagePartInRole(let role):
+            return "Image parts are only supported in 'user' messages, found one in a '\(role)' message."
         case .invalidParameterValue(let detail):
             return detail
         case .conflictingMaxTokens(let legacy, let modern):
@@ -128,6 +164,10 @@ public enum ChatRequestValidationFailure: Sendable, Equatable, Hashable, CustomS
             return "validation failed: empty last message content"
         case .imageContent:
             return "rejected: image content"
+        case .imageInput(let failure):
+            return "rejected: image input (\(failure.message))"
+        case .imagePartInRole(let role):
+            return "rejected: image part in role \(role)"
         case .invalidParameterValue(let detail):
             return "validation failed: \(detail)"
         case .conflictingMaxTokens(let legacy, let modern):
@@ -184,11 +224,27 @@ public enum ChatRequestValidator {
     /// `ContextManager.historyEntry` and `buildInstructions`.
     public static let knownRoles: Set<String> = ["system", "developer", "user", "assistant", "tool"]
 
-    /// Validates a decoded chat-completions request.
+    /// Validates a decoded chat-completions request with images rejected
+    /// (the pre-#510 behavior, and the macOS 26 policy).
     ///
     /// - Parameter request: The request to validate.
     /// - Returns: The first validation failure encountered, or `nil`.
     public static func validate(_ request: ChatCompletionRequest) -> ChatRequestValidationFailure? {
+        validate(request, imagePolicy: .unsupported)
+    }
+
+    /// Validates a decoded chat-completions request under an image-input
+    /// policy. The policy is decided by the caller (the server passes
+    /// `.dataURL` on macOS 27, `.unsupported` on macOS 26 - #510).
+    ///
+    /// - Parameters:
+    ///   - request: The request to validate.
+    ///   - imagePolicy: Whether and how image parts are accepted.
+    /// - Returns: The first validation failure encountered, or `nil`.
+    public static func validate(
+        _ request: ChatCompletionRequest,
+        imagePolicy: ImageInputPolicy
+    ) -> ChatRequestValidationFailure? {
         guard !request.messages.isEmpty else {
             return .emptyMessages
         }
@@ -209,8 +265,15 @@ public enum ChatRequestValidator {
             return .unknownRole(unknown.role)
         }
 
-        if request.messages.contains(where: \.containsImageContent) {
-            return .imageContent
+        switch imagePolicy {
+        case .unsupported:
+            if request.messages.contains(where: \.containsImageContent) {
+                return .imageContent
+            }
+        case .dataURL(let maxBase64Bytes):
+            if let failure = validateImageParts(request.messages, maxBase64Bytes: maxBase64Bytes) {
+                return failure
+            }
         }
 
         // A non-tool final message (last role is guaranteed user/tool here) must
@@ -218,8 +281,11 @@ public enum ChatRequestValidator {
         // not a server fault: without this check it surfaces downstream as a 500
         // ("Last message has no text content") instead of a 400 (#233).
         if let last = request.messages.last, last.role != "tool" {
-            let text = last.textContent
-            if text == nil || text?.isEmpty == true {
+            let text = last.textIgnoringImages
+            // An image-only final user message is a complete prompt when
+            // images are accepted (#510).
+            let hasImages = imagePolicy.allowsImages && last.containsImageContent
+            if (text == nil || text?.isEmpty == true) && !hasImages {
                 return .emptyLastMessageContent
             }
         }
@@ -275,6 +341,32 @@ public enum ChatRequestValidator {
             }
         }
 
+        return nil
+    }
+
+    /// Image-part checks under the `.dataURL` policy: image parts only in
+    /// `user` messages, every `image_url` a well-formed base64 data URL of
+    /// an accepted media type under the size cap (#510).
+    private static func validateImageParts(
+        _ messages: [OpenAIMessage],
+        maxBase64Bytes: Int
+    ) -> ChatRequestValidationFailure? {
+        for message in messages {
+            guard case .parts(let parts) = message.content else { continue }
+            let imageParts = parts.filter { $0.type == "image_url" }
+            guard !imageParts.isEmpty else { continue }
+            guard message.role == "user" else {
+                return .imagePartInRole(message.role)
+            }
+            for part in imageParts {
+                guard let payload = part.image_url, !payload.url.isEmpty else {
+                    return .imageInput(.missingURL)
+                }
+                if case .failure(let failure) = ImageInput.parseDataURL(payload.url, maxBase64Bytes: maxBase64Bytes) {
+                    return .imageInput(failure)
+                }
+            }
+        }
         return nil
     }
 }

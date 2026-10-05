@@ -138,6 +138,8 @@ suite("ResponsesModelsTests") { runResponsesModelsTests() }
 suite("ShellOutputTests") { runShellOutputTests() }
 suite("ToolArgumentSchemaTests") { runToolArgumentSchemaTests() }
 suite("TokenUsageTests") { runTokenUsageTests() }
+suite("ImageInputTests") { runImageInputTests() }
+suite("ModelCapabilityTests") { runModelCapabilityTests() }
 
 // MARK: - Summary
 

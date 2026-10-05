@@ -10,6 +10,8 @@ Run: python3 -m pytest Tests/integration/server_validation_test.py -v
 """
 
 import httpx
+import platform
+
 import pytest
 
 BASE_URL = "http://localhost:11434"
@@ -46,9 +48,14 @@ def _assert_openai_error(resp, expected_type=None):
 # #234 - oversized request body
 # ============================================================================
 
+# The request-body cap is 1 MiB on macOS 26 and 24 MiB on macOS 27, where a
+# full-size 20 MB base64 image must fit (#510).
+_BODY_CAP = (24 if int(platform.mac_ver()[0].split(".")[0]) >= 27 else 1) * 1024 * 1024
+
+
 def test_oversized_body_returns_413_with_error_object():
-    """A body over 1 MiB returns 413 with an OpenAI error object, not a bare 413."""
-    big = "x" * (1024 * 1024 + 1024)  # > 1 MiB
+    """A body over the cap returns 413 with an OpenAI error object, not a bare 413."""
+    big = "x" * (_BODY_CAP + 1024)  # > the OS's cap
     payload = {"model": MODEL, "messages": [{"role": "user", "content": big}]}
     resp = _post(payload)
     assert resp.status_code == 413, resp.status_code
@@ -58,7 +65,7 @@ def test_oversized_body_returns_413_with_error_object():
 
 def test_oversized_body_includes_cors_header_for_allowed_origin():
     """The 413 must carry CORS headers so browser clients can read it (#234)."""
-    big = "x" * (1024 * 1024 + 1024)
+    big = "x" * (_BODY_CAP + 1024)
     payload = {"model": MODEL, "messages": [{"role": "user", "content": big}]}
     resp = _post(payload, headers={"Origin": LOCAL_ORIGIN})
     assert resp.status_code == 413

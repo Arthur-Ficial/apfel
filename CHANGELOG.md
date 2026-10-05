@@ -7,6 +7,11 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Image input on macOS 27 (#510 item 2). `/v1/chat/completions` and `/v1/responses` accept OpenAI-shape image parts (`image_url` / `input_image`) as base64 data URLs (`image/png`, `image/jpeg`, `image/webp`, `image/heic`, `image/gif` first frame; 20 MB base64 cap per image; longest side downscaled to 4096 px; `detail` accepted and ignored) and attach them to the on-device model natively - streaming, `json_schema`, tool-calling rounds and history turns included, with image turns surviving session rebuilds and retries. Remote `http(s)` URLs are always 400 ("apfel does not fetch remote images - send a data URL"; 100% on-device), and `file://` URLs / local paths are always 400 (the server never reads files for an HTTP client). The request-body cap is 24 MiB where images are accepted; macOS 26 keeps the 1 MiB cap and its exact existing 400, extended with "image input requires macOS 27". CLI: `-f photo.jpg` and piped image bytes on macOS 27 attach the image natively IN ADDITION to the extracted OCR/classification text (`--debug` reports which), and `--count-tokens` says on stderr that the attachment is priced by the runtime at generation time. New `ApfelCore` surface (additive): `ImageInput`, `ImageInputPolicy`, `ImageURLContent`, `ContentPart.image_url`, `OpenAIMessage.textIgnoringImages` / `imageParts`, `ResponsesInputItem.imageParts` / `unsupportedPartTypes`, validator `imagePolicy` overloads, `ApfelError.invalidImageInput`, `BodyLimits.visionMaxRequestBodyBytes` (#510)
+- Model capabilities on the wire (#510 item 6, capabilities half). `apfel --model-info` gains a `capabilities:` line, `/health` and `/v1/models` gain a `capabilities` array (snake_case names read from `LanguageModelCapabilities` on macOS 27: `vision`, `tool_calling`, `guided_generation`, `reasoning` when present) plus a `capabilities_reported` boolean that is `false` on macOS 26 - mirroring `context_window_measured` so clients can feature-detect instead of guessing. New `ApfelCore` surface (additive): `ModelCapability`, `CapabilitiesReport` (#510)
+
 ## [1.14.0] - 2026-10-05
 
 ### Changed

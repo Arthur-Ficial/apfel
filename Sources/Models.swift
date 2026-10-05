@@ -218,6 +218,13 @@ struct ModelsListResponse: Encodable, Sendable {
         /// reading from the model (#491). Additive: `context_window` itself
         /// stays a positive integer (#192).
         let context_window_measured: Bool
+        /// Capability names reported by the OS (macOS 27: e.g. vision,
+        /// tool_calling, guided_generation). Empty on macOS 26 (#510).
+        let capabilities: [String]
+        /// False when this macOS does not report capabilities at all
+        /// (macOS 26) - mirrors `context_window_measured` so clients can
+        /// feature-detect (#510).
+        let capabilities_reported: Bool
         let supported_parameters: [String]
         let unsupported_parameters: [String]
         let notes: String

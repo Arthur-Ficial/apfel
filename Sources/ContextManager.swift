@@ -31,7 +31,7 @@ enum ContextManager {
         options: SessionOptions,
         jsonMode: Bool = false,
         toolChoice: ToolChoice? = nil
-    ) async throws -> (session: LanguageModelSession, finalPrompt: String, inputEntries: [Transcript.Entry]) {
+    ) async throws -> (session: LanguageModelSession, finalPrompt: String, inputEntries: [Transcript.Entry], finalPieces: [PromptPiece]) {
         let prepared = try await prepareEntries(
             messages: messages, tools: tools, options: options, jsonMode: jsonMode, toolChoice: toolChoice)
         let budget = await TokenCounter.shared.inputBudget(reservedForOutput: options.contextConfig.outputReserve)
@@ -53,7 +53,7 @@ enum ContextManager {
         // intact) so callers can count prompt tokens accurately. Reading them
         // back from `session.transcript` drops `Instructions.toolDefinitions`,
         // which would undercount prompt tokens for tool-augmented requests (#176).
-        return (session, prepared.finalPrompt, entries)
+        return (session, prepared.finalPrompt, entries, prepared.finalPieces)
     }
 
     /// The transcript entries for a conversation before any trimming: the
@@ -65,6 +65,10 @@ enum ContextManager {
         let history: [Transcript.Entry]
         let final: Transcript.Entry
         let finalPrompt: String
+        /// The final user turn's ordered text/image pieces (#510). Callers
+        /// build the respond() prompt from these; text-only turns carry one
+        /// text piece and behave exactly as before.
+        let finalPieces: [PromptPiece]
         /// True when the conversation ends with a tool result, whose exchange
         /// must stay whole and in the window (#482).
         let pinsTrailingExchange: Bool
@@ -95,15 +99,26 @@ enum ContextManager {
         // We put all messages (including the tool result) into history and use a
         // synthetic prompt asking the model to respond based on the tool output.
         let finalPrompt: String
+        let finalPieces: [PromptPiece]
         let history: [OpenAIMessage]
         if conversation.last?.role == "tool" {
             finalPrompt = "Respond to the user based on the tool result above."
+            finalPieces = [.text(finalPrompt)]
             history = conversation
+        } else if let last = conversation.last, last.containsImageContent {
+            // An image-bearing final user turn (#510): decode the images and
+            // keep the pieces in part order. Text may legitimately be empty -
+            // the image IS the prompt then.
+            let pieces = try promptPieces(of: last)
+            finalPrompt = last.textIgnoringImages ?? ""
+            finalPieces = pieces
+            history = Array(conversation.dropLast())
         } else {
             guard let text = conversation.last?.textContent, !text.isEmpty else {
                 throw ApfelError.unknown("Last message has no text content")
             }
             finalPrompt = text
+            finalPieces = [.text(text)]
             history = Array(conversation.dropLast())
         }
 
@@ -139,12 +154,19 @@ enum ContextManager {
 
         // Tool results resolve their name through the call they answer (#482).
         let callNames = ToolExchangeGrouping.callNames(in: history)
-        let historyEntries = history.compactMap { historyEntry(for: $0, options: options, callNames: callNames) }
+        let historyEntries = try history.compactMap { try historyEntry(for: $0, options: options, callNames: callNames) }
+        // Image-bearing final turns are built from their pieces so the entry
+        // matches what respond() will actually send (#510); the text-only
+        // path is byte-identical to before.
+        let finalEntry = hasImagePiece(finalPieces)
+            ? makePromptEntry(pieces: finalPieces, options: options)
+            : makePromptEntry(finalPrompt, options: options)
         return PreparedEntries(
             base: baseEntries,
             history: historyEntries,
-            final: makePromptEntry(finalPrompt, options: options),
+            final: finalEntry,
             finalPrompt: finalPrompt,
+            finalPieces: finalPieces,
             pinsTrailingExchange: conversation.last?.role == "tool"
         )
     }
@@ -200,9 +222,17 @@ enum ContextManager {
         for message: OpenAIMessage,
         options: SessionOptions,
         callNames: [String: String]
-    ) -> Transcript.Entry? {
+    ) throws -> Transcript.Entry? {
         switch message.role {
         case "user":
+            // An image-bearing history turn keeps its images as native
+            // attachment segments (macOS 27, #510) so they survive trimming,
+            // tool-round session rebuilds, and retries.
+            if message.containsImageContent {
+                let pieces = try promptPieces(of: message)
+                guard !pieces.isEmpty else { return nil }
+                return makePromptEntry(pieces: pieces, options: options)
+            }
             guard let text = message.textContent else { return nil }
             return makePromptEntry(text, options: options)
 

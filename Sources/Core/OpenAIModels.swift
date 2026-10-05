@@ -292,6 +292,27 @@ public struct OpenAIMessage: Codable, Sendable, Equatable, Hashable {
         guard case .parts(let parts) = content else { return false }
         return parts.contains(where: { $0.type == "image_url" })
     }
+
+    /// Plain text of the message with image parts skipped - unlike
+    /// `textContent`, which goes nil as soon as an image is present (#510).
+    /// Returns nil when the message carries no text at all.
+    public var textIgnoringImages: String? {
+        switch content {
+        case .text(let text):
+            return text
+        case .parts(let parts):
+            let segments = parts.filter { $0.type != "image_url" }.compactMap(\.text)
+            return segments.isEmpty ? nil : segments.joined()
+        case .none:
+            return nil
+        }
+    }
+
+    /// The `image_url` payloads of every image part, in message order (#510).
+    public var imageParts: [ImageURLContent] {
+        guard case .parts(let parts) = content else { return [] }
+        return parts.filter { $0.type == "image_url" }.compactMap(\.image_url)
+    }
 }
 
 extension Array where Element == OpenAIMessage {
@@ -351,11 +372,35 @@ public struct ContentPart: Codable, Sendable, Equatable, Hashable {
     public let type: String
     /// The text payload for text parts.
     public let text: String?
+    /// The image payload for `image_url` parts (#510).
+    public let image_url: ImageURLContent?
 
-    /// Creates a content part.
+    /// Creates a text-style content part.
     public init(type: String, text: String?) {
+        self.init(type: type, text: text, image_url: nil)
+    }
+
+    /// Creates a content part with an optional image payload.
+    public init(type: String, text: String?, image_url: ImageURLContent?) {
         self.type = type
         self.text = text
+        self.image_url = image_url
+    }
+}
+
+/// The `image_url` object of an OpenAI image content part. apfel accepts
+/// base64 data URLs only (see `ImageInput`); `detail` is accepted for wire
+/// compatibility and ignored - the on-device model has no detail levels.
+public struct ImageURLContent: Codable, Sendable, Equatable, Hashable {
+    /// The image URL. Must be a `data:image/...;base64,...` URL.
+    public let url: String
+    /// The OpenAI detail hint (`low` / `high` / `auto`). Accepted and ignored.
+    public let detail: String?
+
+    /// Creates an image payload.
+    public init(url: String, detail: String? = nil) {
+        self.url = url
+        self.detail = detail
     }
 }
 
