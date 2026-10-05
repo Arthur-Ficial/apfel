@@ -4,7 +4,7 @@ macOS 27 ships Apple's own command-line front end for the on-device Foundation M
 
 This page is the single source of truth for the comparison. Every number below was measured, and the exact commands are listed at the end so you can re-run them.
 
-**Measured on:** apfel 1.13.0 (the released binary, built against the macOS 27.0 SDK, deployment floor macOS 26.0), Apple `fm` 1.0 (`/usr/bin/fm` as shipped with macOS 27.0.1, build 26A434), MacBook Air with Apple M2 and 24 GB (this chip gets the 4096-token AFM 3 Core model; M3+ Macs with 12 GB+ get the 8192-token AFM 3 Core Advanced model - the 8192 reading is [#192](https://github.com/Arthur-Ficial/apfel/issues/192), the first GA run on such a Mac is [#509](https://github.com/Arthur-Ficial/apfel/issues/509)), 2026-10-05. Numbers are re-measured for every apfel release and after every macOS point update.
+**Measured on:** apfel 1.14.0 (the released binary, built against the macOS 27.0 SDK, deployment floor macOS 26.0), Apple `fm` 1.0 (`/usr/bin/fm` as shipped with macOS 27.0.1, build 26A434), MacBook Air with Apple M2 and 24 GB (this chip gets the 4096-token AFM 3 Core model; M3+ Macs with 12 GB+ get the 8192-token AFM 3 Core Advanced model - the 8192 reading is [#192](https://github.com/Arthur-Ficial/apfel/issues/192), the first GA run on such a Mac is [#509](https://github.com/Arthur-Ficial/apfel/issues/509)), 2026-10-05. Numbers are re-measured for every apfel release and after every macOS point update.
 
 ## TL;DR
 
@@ -95,14 +95,14 @@ All measurements on the machine in the "Measured on" line above, warm model, no 
 
 | Measurement | apfel | `fm` |
 |---|---|---|
-| CLI one-shot, "Reply with exactly: hello", warm model, median of 5 | 0.42 s (best 0.41 s) | 0.32 s (best 0.32 s) |
-| CLI one-shot, "Write a haiku about autumn." | 0.98 s (best 0.96 s) | 0.83 s (best 0.81 s) |
-| CLI one-shot, "List five European capitals, one per line." | 0.87 s (best 0.86 s) | 0.78 s (best 0.73 s) |
+| CLI one-shot, "Reply with exactly: hello", warm model, median of 5 | 0.37 s (best 0.36 s) | 0.32 s (best 0.31 s) |
+| CLI one-shot, "Write a haiku about autumn." | 0.86 s (best 0.83 s) | 0.87 s (best 0.79 s) |
+| CLI one-shot, "List five European capitals, one per line." | 0.82 s (best 0.81 s) | 0.77 s (best 0.77 s) |
 | Process start without the model (`apfel --version` / `fm --help`), median of 10 | 0.008 s | 0.008 s |
-| HTTP `/v1/chat/completions`, "Reply with exactly: hello", non-streaming, median of 5 | 0.48 s | 0.30 s (`stream: false`) |
+| HTTP `/v1/chat/completions`, "Reply with exactly: hello", non-streaming, median of 5 | 0.33 s | 0.29 s (`stream: false`) |
 | Binary size on disk (SI megabytes) | 22.1 MB | 3.4 MB |
 
-The CLI gap of about 0.1 s per call is apfel's pre-flight work: it counts prompt tokens with the real tokenizer to budget the context window and reports `usage`, `fm respond` does not. The server gap (about 0.18 s on this request) is on apfel's side and tracked as [#504](https://github.com/Arthur-Ficial/apfel/issues/504); the model time itself is identical. All numbers were taken on an idle machine; an earlier run of the same script under background load read three times higher across the board, so compare only against measurements taken the same way.
+Since v1.14.0 apfel takes `usage` from the runtime's own `Response.usage` on macOS 27 instead of separate token-count round trips, which closed most of the earlier server gap (0.48 s to 0.33 s on this request; [#504](https://github.com/Arthur-Ficial/apfel/issues/504)). What remains - about 0.05 s per call - is apfel's context-budget pre-flight and the OpenAI response assembly; the model time itself is identical. All numbers were taken on an idle machine; an earlier run of the same script under background load read three times higher across the board, so compare only against measurements taken the same way.
 
 Token counts agree exactly between the two tools because both call `SystemLanguageModel.tokenCount(for:)`:
 
