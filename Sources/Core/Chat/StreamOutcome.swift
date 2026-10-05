@@ -29,7 +29,13 @@ public struct StreamOutcome: Sendable, Equatable, Hashable {
     public let finishReason: FinishReason
     public let completionTokens: Int?
 
-    public init(content: String, finishReason: FinishReason, completionTokens: Int? = nil) {
+    public init(content: String, finishReason: FinishReason) {
+        self.content = content
+        self.finishReason = finishReason
+        self.completionTokens = nil
+    }
+
+    public init(content: String, finishReason: FinishReason, completionTokens: Int?) {
         self.content = content
         self.finishReason = finishReason
         self.completionTokens = completionTokens
