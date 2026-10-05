@@ -4,7 +4,7 @@ macOS 27 ships Apple's own command-line front end for the on-device Foundation M
 
 This page is the single source of truth for the comparison. Every number below was measured, and the exact commands are listed at the end so you can re-run them.
 
-**Measured on:** apfel 1.15.0 (the released binary, built against the macOS 27.0 SDK, deployment floor macOS 26.0), Apple `fm` 1.0 (`/usr/bin/fm` as shipped with macOS 27.0.1, build 26A434), MacBook Air with Apple M2 and 24 GB (this chip gets the 4096-token AFM 3 Core model; M3+ Macs with 12 GB+ get the 8192-token AFM 3 Core Advanced model - the 8192 reading is [#192](https://github.com/Arthur-Ficial/apfel/issues/192), the first GA run on such a Mac is [#509](https://github.com/Arthur-Ficial/apfel/issues/509)), 2026-10-05. Numbers are re-measured for every apfel release and after every macOS point update.
+**Measured on:** apfel 1.16.0 (the released binary, built against the macOS 27.0 SDK, deployment floor macOS 26.0), Apple `fm` 1.0 (`/usr/bin/fm` as shipped with macOS 27.0.1, build 26A434), MacBook Air with Apple M2 and 24 GB (this chip gets the 4096-token AFM 3 Core model; M3+ Macs with 12 GB+ get the 8192-token AFM 3 Core Advanced model - the 8192 reading is [#192](https://github.com/Arthur-Ficial/apfel/issues/192), the first GA run on such a Mac is [#509](https://github.com/Arthur-Ficial/apfel/issues/509)), 2026-10-05. Numbers are re-measured for every apfel release and after every macOS point update.
 
 ## TL;DR
 
@@ -95,9 +95,9 @@ All measurements on the machine in the "Measured on" line above, warm model, no 
 
 | Measurement | apfel | `fm` |
 |---|---|---|
-| CLI one-shot, "Reply with exactly: hello", warm model, median of 5 | 0.35 s (best 0.34 s) | 0.31 s (best 0.30 s) |
-| CLI one-shot, "Write a haiku about autumn." | 0.89 s (best 0.81 s) | 0.83 s (best 0.78 s) |
-| CLI one-shot, "List five European capitals, one per line." | 0.84 s (best 0.83 s) | 0.78 s (best 0.78 s) |
+| CLI one-shot, "Reply with exactly: hello", warm model, median of 5 | 0.35 s (best 0.35 s) | 0.30 s (best 0.30 s) |
+| CLI one-shot, "Write a haiku about autumn." | 0.89 s (best 0.77 s) | 0.80 s (best 0.75 s) |
+| CLI one-shot, "List five European capitals, one per line." | 0.81 s (best 0.79 s) | 0.76 s (best 0.75 s) |
 | Process start without the model (`apfel --version` / `fm --help`), median of 10 | 0.008 s | 0.008 s |
 | HTTP `/v1/chat/completions`, "Reply with exactly: hello", non-streaming, median of 5 | 0.33 s | 0.29 s (`stream: false`) |
 | Binary size on disk (SI megabytes) | 22.1 MB | 3.4 MB |
