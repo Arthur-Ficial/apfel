@@ -118,7 +118,7 @@ Token counts agree exactly between the two tools because both call `SystemLangua
 ## Where fm is the better choice
 
 - You are on macOS 27 and want one prompt answered right now. Nothing to install.
-- You need image input or the built-in OCR / barcode tools from the command line.
+- You need barcode or QR reading from the command line (`--tool barcode`), or want the model to call OCR as a tool itself.
 - You want chat sessions that persist and resume by name without any setup.
 - You trust an Apple-signed binary more than a third-party Homebrew formula.
 
@@ -128,7 +128,7 @@ Token counts agree exactly between the two tools because both call `SystemLangua
 - Tool use: MCP servers, local or remote, with the tool loop handled for you.
 - Scripts: `--code`, `-o json`, exit codes that mean something, `--count-tokens --strict` preflights, `--retry`.
 - Guaranteed-valid JSON from the CLI with your own JSON Schema, including `$ref`.
-- PDFs and text files as input, not just images.
+- PDFs, text files and images as input: images reach the model natively on macOS 27 and always come with Vision OCR text, so small print is readable to a 3B model.
 - macOS 26 machines. `fm` does not exist there.
 - Auditability: open source, no telemetry, reproducible build.
 
