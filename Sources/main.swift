@@ -446,7 +446,8 @@ do {
     }
 } catch {
     let classified = ApfelError.classify(error)
-    printError("\(classified.cliLabel) \(classified.openAIMessage)")
+    let hasFileInput = !parsed.fileAttachments.isEmpty
+    printError(ApfelExitCodes.cliErrorMessage(for: classified, hasFileInput: hasFileInput))
     await shutdownMCP()
     exit(exitCode(for: classified))
 }

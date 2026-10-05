@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Improved
+
+- Guardrail violations with `-f` / `--file` input now suggest `--permissive` in the error message instead of only saying "Try rephrasing". On macOS 27 the default guardrails refuse OCR-shaped file text 60% of the time; the improved message gives users an actionable remedy (#505).
+
 ## [1.12.0] - 2026-09-24
 
 ### Added
