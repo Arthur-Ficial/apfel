@@ -723,7 +723,7 @@ private func appendExecutedToolResults(
 /// Resolves `finishReason` two ways:
 ///   - Natural stream completion: `.length` if `completionTokens >= maxTokens`,
 ///     else `.stop`. Tool-call detection happens at higher layers.
-///   - Output-side context overflow (model ran into the 4096-token ceiling
+///   - Output-side context overflow (model ran into the context window
 ///     after producing content): graceful `.length`. Prompt-side overflow
 ///     (no content produced before the throw) still throws.
 ///

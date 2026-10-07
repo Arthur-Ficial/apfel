@@ -675,6 +675,15 @@ private func signature(for entries: [Transcript.Entry]) -> [String] {
             let serialized = calls.map { "\($0.id):\($0.toolName)" }.joined(separator: "|")
             return "toolCalls:\(serialized)"
         @unknown default:
+            let mirror = Mirror(reflecting: entry)
+            if let first = mirror.children.first, let label = first.label {
+                for child in Mirror(reflecting: first.value).children where child.label == "segments" {
+                    if let segs = child.value as? [Transcript.Segment] {
+                        return "\(label):\(segs.compactMap(textFromSegment).joined(separator: "|"))"
+                    }
+                }
+                return label
+            }
             return "unknown"
         }
     }

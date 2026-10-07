@@ -230,7 +230,16 @@ actor TokenCounter {
                     total += 20 + max(1, call.arguments.jsonString.count / 4)
                 }
             @unknown default:
-                break
+                // Future entry types (e.g. macOS 27 .reasoning) may carry
+                // text segments. Extract them via reflection so the fallback
+                // count works without a compile-time SDK reference.
+                if let assoc = Mirror(reflecting: entry).children.first?.value {
+                    for child in Mirror(reflecting: assoc).children where child.label == "segments" {
+                        if let segs = child.value as? [Transcript.Segment] {
+                            for seg in segs { if case .text(let t) = seg { total += max(1, t.content.count / 4) } }
+                        }
+                    }
+                }
             }
         }
         return total
