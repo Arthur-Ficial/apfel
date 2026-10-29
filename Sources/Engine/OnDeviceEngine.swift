@@ -50,6 +50,19 @@ public actor OnDeviceEngine: Engine {
         await backend.reset(entries: entries)
     }
 
+    /// Snapshot the conversation for persistence.
+    public func transcript() async -> EngineTranscript {
+        EngineTranscript(entries: await backend.entries())
+    }
+
+    /// Replace the conversation with a persisted transcript. Session usage
+    /// restarts at zero - the saved turns were paid for by the session that
+    /// generated them.
+    public func resume(_ transcript: EngineTranscript) async {
+        sessionUsageTotal = TokenUsage(promptTokens: 0, completionTokens: 0)
+        await backend.reset(entries: transcript.entries)
+    }
+
     public func contextStatus(outputReserve: Int = 512) async -> EngineContextStatus {
         let used = await backend.count(entries: backend.entries())
         let budget = await backend.inputBudget(outputReserve: outputReserve)

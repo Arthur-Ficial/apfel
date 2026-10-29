@@ -88,6 +88,11 @@ public protocol Engine: Sendable {
     func contextStatus(outputReserve: Int) async -> EngineContextStatus
     /// Token usage accumulated across this conversation's completed turns.
     func sessionUsage() async -> TokenUsage
+    /// Snapshot the conversation for persistence (`EngineTranscript.encode()`).
+    func transcript() async -> EngineTranscript
+    /// Replace the conversation with a persisted transcript (fresh session
+    /// usage), e.g. after `EngineTranscript.decode(from:)`.
+    func resume(_ transcript: EngineTranscript) async
     /// Drop conversation history (keeps the system prompt), e.g. after the
     /// user clears the chat or changes the system prompt.
     func reset(systemPrompt: String?) async

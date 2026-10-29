@@ -196,6 +196,40 @@ func runOnDeviceEngineTests() {
         try assertEqual(status.contextWindow, ContextWindow(tokens: 2048, isMeasured: true))
     }
 
+    testAsync("transcript() snapshots the conversation as EngineTranscript") {
+        let backend = FakeBackend(turns: [.init(["Hello"])])
+        let engine = OnDeviceEngine(backend: backend)
+        _ = try await collect(await engine.send("hi"))
+        try assertEqual(
+            await engine.transcript(),
+            EngineTranscript(entries: [.prompt("hi"), .response("Hello")]))
+    }
+
+    testAsync("resume installs a persisted transcript and zeroes session usage") {
+        let backend = FakeBackend(turns: [.init(["Hello"])])
+        let engine = OnDeviceEngine(backend: backend)
+        _ = try await collect(await engine.send("hi"))  // non-zero session usage
+        let saved = EngineTranscript(entries: [
+            .instructions("be terse"), .prompt("q"), .response("a"),
+        ])
+        await engine.resume(saved)
+        try assertEqual(await backend.entries(), saved.entries)
+        try assertEqual(await engine.sessionUsage(), TokenUsage(promptTokens: 0, completionTokens: 0))
+    }
+
+    testAsync("save -> encode -> decode -> resume round-trips a conversation") {
+        let source = FakeBackend(turns: [.init(["First answer"])])
+        let sourceEngine = OnDeviceEngine(backend: source)
+        _ = try await collect(await sourceEngine.send("first question"))
+        let data = try await sourceEngine.transcript().encode()
+
+        let target = FakeBackend()
+        let targetEngine = OnDeviceEngine(backend: target)
+        await targetEngine.resume(try EngineTranscript.decode(from: data))
+        // Compare the RE-READ conversation against the source's live one.
+        try assertEqual(await target.entries(), await source.entries())
+    }
+
     testAsync("modelInfo comes from the backend") {
         let backend = FakeBackend(windowTokens: 4096)
         let engine = OnDeviceEngine(backend: backend)
