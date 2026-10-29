@@ -16,15 +16,20 @@ import ApfelCore
 
 public actor OnDeviceEngine: Engine {
     private let backend: any GenerationBackend
+    private let errorRecovery: ErrorRecovery
     private var sessionUsageTotal = TokenUsage(promptTokens: 0, completionTokens: 0)
 
-    public init(backend: any GenerationBackend) {
+    /// `.preserve` is the default: it matches what the macOS 26 runtime does
+    /// on its own, so the policy is opt-in rather than a behavior change.
+    public init(backend: any GenerationBackend, errorRecovery: ErrorRecovery = .preserve) {
         self.backend = backend
+        self.errorRecovery = errorRecovery
     }
 
     /// Production convenience: a FoundationModels-backed conversation.
-    public init(systemPrompt: String? = nil, permissive: Bool = false) {
+    public init(systemPrompt: String? = nil, permissive: Bool = false, errorRecovery: ErrorRecovery = .preserve) {
         self.backend = FoundationModelsBackend(systemPrompt: systemPrompt, permissive: permissive)
+        self.errorRecovery = errorRecovery
     }
 
     public func modelInfo() async -> EngineModelInfo {
@@ -72,10 +77,11 @@ public actor OnDeviceEngine: Engine {
 
     public func send(_ prompt: String) -> AsyncThrowingStream<EngineEvent, Error> {
         let backend = self.backend
+        let errorRecovery = self.errorRecovery
         return AsyncThrowingStream { continuation in
             let task = Task {
+                let before = await backend.entries()
                 do {
-                    let before = await backend.entries()
                     var previous = ""
                     for try await content in await backend.stream(prompt: prompt) {
                         // Snapshots are cumulative; emit only the new suffix.
@@ -99,6 +105,9 @@ public actor OnDeviceEngine: Engine {
                     await self.rotateContextIfNeeded()
                     continuation.finish()
                 } catch {
+                    if errorRecovery == .revert {
+                        await backend.reset(entries: before)
+                    }
                     continuation.finish(throwing: ApfelError.classify(error))
                 }
             }

@@ -111,10 +111,10 @@ public enum EngineFactory {
     /// 27-specialized variant (runtime-reported usage events, tool-calling
     /// mode) requires building against the macOS 27 SDK and is deferred -
     /// the surface above is already shaped for it (`EngineEvent.usage`).
-    public static func make(systemPrompt: String? = nil, permissive: Bool = false) -> any Engine {
+    public static func make(systemPrompt: String? = nil, permissive: Bool = false, errorRecovery: ErrorRecovery = .preserve) -> any Engine {
         if #available(macOS 27, *) {
-            return OnDeviceEngine(systemPrompt: systemPrompt, permissive: permissive)
+            return OnDeviceEngine(systemPrompt: systemPrompt, permissive: permissive, errorRecovery: errorRecovery)
         }
-        return OnDeviceEngine(systemPrompt: systemPrompt, permissive: permissive)
+        return OnDeviceEngine(systemPrompt: systemPrompt, permissive: permissive, errorRecovery: errorRecovery)
     }
 }

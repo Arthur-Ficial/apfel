@@ -238,6 +238,67 @@ func runOnDeviceEngineTests() {
         try assertEqual(info.contextWindow, ContextWindow(tokens: 4096, isMeasured: true))
     }
 
+    test("ErrorRecovery is a two-case pure policy") {
+        try assertEqual(ErrorRecovery.allCases, [.preserve, .revert])
+        try assertEqual(ErrorRecovery.preserve.rawValue, "preserve")
+        try assertEqual(ErrorRecovery.revert.rawValue, "revert")
+    }
+
+    testAsync("a failed turn with .revert restores the pre-turn conversation") {
+        let backend = FakeBackend(
+            initial: [.instructions("sys")],
+            turns: [.init(["partial answ"], error: .unknown("boom"))])
+        let engine = OnDeviceEngine(backend: backend, errorRecovery: .revert)
+        do {
+            _ = try await collect(await engine.send("hi"))
+            throw TestFailure("expected the turn to throw")
+        } catch is TestFailure {
+            throw TestFailure("expected the turn to throw")
+        } catch let e as ApfelError {
+            try assertTrue(e.openAIMessage.contains("boom"), "classified error carries the cause")
+        }
+        try assertEqual(await backend.entries(), [.instructions("sys")])
+    }
+
+    testAsync("a failed turn with .preserve keeps what the runtime left") {
+        let backend = FakeBackend(
+            initial: [.instructions("sys")],
+            turns: [.init(["partial answ"], error: .unknown("boom"))])
+        let engine = OnDeviceEngine(backend: backend, errorRecovery: .preserve)
+        do {
+            _ = try await collect(await engine.send("hi"))
+            throw TestFailure("expected the turn to throw")
+        } catch is TestFailure {
+            throw TestFailure("expected the turn to throw")
+        } catch {
+            // classified ApfelError - asserted in the .revert test
+        }
+        try assertEqual(
+            await backend.entries(),
+            [.instructions("sys"), .prompt("hi"), .response("partial answ")])
+    }
+
+    testAsync("a failed turn never counts toward session usage") {
+        let backend = FakeBackend(
+            turns: [.init(["partial"], error: .unknown("boom"))])
+        let engine = OnDeviceEngine(backend: backend, errorRecovery: .revert)
+        _ = try? await collect(await engine.send("hi"))
+        try assertEqual(await engine.sessionUsage(), TokenUsage(promptTokens: 0, completionTokens: 0))
+    }
+
+    testAsync("after a reverted failure the next turn still works") {
+        let backend = FakeBackend(
+            turns: [
+                .init(["partial"], error: .unknown("boom")),
+                .init(["recovered"]),
+            ])
+        let engine = OnDeviceEngine(backend: backend, errorRecovery: .revert)
+        _ = try? await collect(await engine.send("hi"))
+        let result = try await collect(await engine.send("again"))
+        try assertEqual(result.finished.map(\.text), ["recovered"])
+        try assertEqual(await backend.entries(), [.prompt("again"), .response("recovered")])
+    }
+
     test("EngineModelInfo.variantName defaults to nil (macOS 26: not reported)") {
         let info = EngineModelInfo(
             availability: .available,
