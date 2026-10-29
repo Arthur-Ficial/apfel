@@ -237,4 +237,26 @@ func runOnDeviceEngineTests() {
         try assertEqual(info.availability, .available)
         try assertEqual(info.contextWindow, ContextWindow(tokens: 4096, isMeasured: true))
     }
+
+    test("EngineModelInfo.variantName defaults to nil (macOS 26: not reported)") {
+        let info = EngineModelInfo(
+            availability: .available,
+            contextWindow: ContextWindow(tokens: 4096, isMeasured: true),
+            capabilities: .notReported)
+        try assertNil(info.variantName)
+    }
+
+    test("the variant reader defaults to nil") {
+        try assertNil(TokenCounter.variantReader())
+    }
+
+    testAsync("FoundationModelsBackend.modelInfo carries the injected variant name") {
+        let saved = TokenCounter.variantReader
+        defer { TokenCounter.variantReader = saved }
+        TokenCounter.variantReader = { "AFM 3 Core" }
+        let info = await FoundationModelsBackend().modelInfo()
+        try assertEqual(info.variantName, "AFM 3 Core")
+        // The window still comes from the runtime tracker, never a literal.
+        try assertTrue(info.contextWindow.tokens > 0)
+    }
 }

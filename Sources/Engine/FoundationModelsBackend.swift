@@ -85,7 +85,8 @@ public actor FoundationModelsBackend: GenerationBackend {
         return EngineModelInfo(
             availability: await tc.availability,
             contextWindow: await tc.contextWindow,
-            capabilities: await tc.capabilitiesReport)
+            capabilities: await tc.capabilitiesReport,
+            variantName: TokenCounter.variantReader())
     }
 
     public func prewarm() async {

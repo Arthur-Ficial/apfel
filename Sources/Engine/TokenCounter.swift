@@ -18,6 +18,11 @@ public actor TokenCounter {
     /// compiles against the macOS 26 SDK. The default is the honest
     /// "not reported" marker.
     public nonisolated(unsafe) static var capabilitiesReader: @Sendable () -> CapabilitiesReport = { .notReported }
+
+    /// Reads the model variant's display name (macOS 27's
+    /// `SystemLanguageModel.variant`). Injected by the host process exactly
+    /// like `capabilitiesReader`; the default is the honest macOS 26 answer.
+    public nonisolated(unsafe) static var variantReader: @Sendable () -> String? = { nil }
     private let model = SystemLanguageModel.default
 
     /// Tracks the largest context size the model has reported, and whether a

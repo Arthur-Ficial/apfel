@@ -48,11 +48,16 @@ public struct EngineModelInfo: Sendable {
     public let availability: ModelAvailability
     public let contextWindow: ContextWindow
     public let capabilities: CapabilitiesReport
+    /// Model variant display name (e.g. "AFM 3 Core"), read from the injected
+    /// `TokenCounter.variantReader`; nil where the OS does not report one
+    /// (macOS 26).
+    public let variantName: String?
 
-    public init(availability: ModelAvailability, contextWindow: ContextWindow, capabilities: CapabilitiesReport) {
+    public init(availability: ModelAvailability, contextWindow: ContextWindow, capabilities: CapabilitiesReport, variantName: String? = nil) {
         self.availability = availability
         self.contextWindow = contextWindow
         self.capabilities = capabilities
+        self.variantName = variantName
     }
 }
 
