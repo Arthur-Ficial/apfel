@@ -8,6 +8,7 @@ import Foundation
 import Hummingbird
 import NIOCore
 import ApfelCore
+import ApfelEngine
 
 struct ChatRequestTrace: Sendable {
     let stream: Bool

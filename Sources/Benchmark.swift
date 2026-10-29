@@ -7,6 +7,7 @@ import Foundation
 import FoundationModels
 import NIOCore
 import ApfelCore
+import ApfelEngine
 
 private struct BenchmarkReport: Encodable {
     let version: String

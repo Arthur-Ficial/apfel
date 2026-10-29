@@ -18,6 +18,7 @@ import FoundationModels
 import Hummingbird
 import HTTPTypes
 import ApfelCore
+import ApfelEngine
 
 // MARK: - Echoed request fields
 

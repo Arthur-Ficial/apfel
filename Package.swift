@@ -34,6 +34,13 @@ let package = Package(
             dependencies: ["ApfelCore"],
             path: "Sources/CLI"
         ),
+        // Reusable generation engine — FoundationModels + ApfelCore, print-free.
+        // Consumed by the apfel executable and downstream library consumers.
+        .target(
+            name: "ApfelEngine",
+            dependencies: ["ApfelCore"],
+            path: "Sources/Engine"
+        ),
         // Main executable — depends on ApfelCore + ApfelCLI + Hummingbird + FoundationModels
         .executableTarget(
             name: "apfel",
@@ -41,12 +48,13 @@ let package = Package(
                 .product(name: "Hummingbird", package: "hummingbird"),
                 "ApfelCore",
                 "ApfelCLI",
+                "ApfelEngine",
                 "CReadline",
                 .product(name: "Lesbar", package: "lesbar"),
                 .product(name: "LesbarCore", package: "lesbar"),
             ],
             path: "Sources",
-            exclude: ["Core", "CLI"],
+            exclude: ["Core", "CLI", "Engine"],
             linkerSettings: [
                 .unsafeFlags([
                     "-Xlinker", "-sectcreate",

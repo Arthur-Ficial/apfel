@@ -10,6 +10,7 @@
 import FoundationModels
 import Foundation
 import ApfelCore
+import ApfelEngine
 
 enum ContextManager {
 

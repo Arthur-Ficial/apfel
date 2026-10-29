@@ -18,6 +18,7 @@
 import Foundation
 import FoundationModels
 import ApfelCore
+import ApfelEngine
 
 /// True when the FoundationModels runtime reports token usage on every
 /// response (macOS 27+). Decided once per process.
