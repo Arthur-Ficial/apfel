@@ -142,6 +142,7 @@ suite("ToolArgumentSchemaTests") { runToolArgumentSchemaTests() }
 suite("TokenUsageTests") { runTokenUsageTests() }
 suite("ImageInputTests") { runImageInputTests() }
 suite("ModelCapabilityTests") { runModelCapabilityTests() }
+suite("EngineTranscriptTests") { runEngineTranscriptTests() }
 
 // MARK: - Summary
 
