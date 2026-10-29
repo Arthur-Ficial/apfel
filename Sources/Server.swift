@@ -7,6 +7,7 @@ import Foundation
 import Hummingbird
 import NIOCore
 import ApfelCore
+import ApfelCLI
 
 /// Server configuration passed from CLI argument parsing.
 struct ServerConfig: Sendable {
@@ -75,6 +76,14 @@ func startServer(config: ServerConfig, mcpManager: MCPManager? = nil) async thro
     // unavailable model never crashes startup. The outcome is reported on
     // /health as "prewarmed" (#169).
     let prewarmed = await tc.prewarm()
+
+    // Model unavailable: say so loudly at startup instead of surprising the
+    // first completion client. The server still starts (availability can flip
+    // while running; /health and /v1/models work regardless) - the notice text
+    // is pure ApfelCLI (ServeStartupNotice) and unit-tested.
+    if let notice = ServeStartupNotice.message(availability: await tc.availability) {
+        printStderr("\(styledErr("apfel:", .yellow)) \(notice)")
+    }
 
     let router = Router()
 

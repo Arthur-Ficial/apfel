@@ -1259,4 +1259,109 @@ func runCLIArgumentsTests() {
         try assertEqual(args.outputFormat, .json)
         try assertEqual(args.prompt, "what is Swift?")
     }
+
+    // MARK: - "did you mean" for unknown options
+
+    test("unknown option close to a known flag suggests it") {
+        do {
+            _ = try CLIArguments.parse(["--serv"])
+            try assertTrue(false, "should have thrown")
+        } catch let e as CLIParseError {
+            try assertTrue(e.message.contains("unknown option: --serv"))
+            try assertTrue(e.message.contains("did you mean --serve?"))
+            try assertTrue(e.message.contains("apfel --help"))
+        }
+    }
+
+    test("unknown option with =value suggests based on the flag part") {
+        do {
+            _ = try CLIArguments.parse(["--outpt=json", "hi"])
+            try assertTrue(false, "should have thrown")
+        } catch let e as CLIParseError {
+            try assertTrue(e.message.contains("unknown option"))
+            try assertTrue(e.message.contains("did you mean --output?"))
+        }
+    }
+
+    test("gibberish unknown option gets no suggestion, still points at --help") {
+        do {
+            _ = try CLIArguments.parse(["--zzzzqqqq"])
+            try assertTrue(false, "should have thrown")
+        } catch let e as CLIParseError {
+            try assertTrue(e.message.contains("unknown option: --zzzzqqqq"))
+            try assertTrue(!e.message.contains("did you mean"))
+            try assertTrue(e.message.contains("apfel --help"))
+        }
+    }
+
+    test("FlagSuggestion is conservative: edit distance above threshold suggests nothing") {
+        try assertEqual(FlagSuggestion.suggest(for: "--serv", among: CLIArguments.knownFlags), "--serve")
+        try assertEqual(FlagSuggestion.suggest(for: "--temperture", among: CLIArguments.knownFlags), "--temperature")
+        try assertNil(FlagSuggestion.suggest(for: "--xy", among: CLIArguments.knownFlags))
+        try assertNil(FlagSuggestion.suggest(for: "--frobnicate", among: CLIArguments.knownFlags))
+    }
+
+    // MARK: - no-args launch decision (#welcome)
+
+    test("no-args at a full TTY starts the welcome chat") {
+        try assertEqual(NoArgsLaunch.decide(stdoutIsTTY: true), .welcomeChat)
+    }
+
+    test("no-args with stdout redirected keeps the usage error (exit 2 contract, #250)") {
+        try assertEqual(NoArgsLaunch.decide(stdoutIsTTY: false), .usageError)
+    }
+
+    test("welcome banner is 3-5 lines and shows the three entry points") {
+        let lines = WelcomeBanner.lines(appName: "apfel")
+        try assertTrue(lines.count >= 3 && lines.count <= 5, "got \(lines.count) lines")
+        let joined = lines.joined(separator: "\n")
+        try assertTrue(joined.contains("apfel \""))
+        try assertTrue(joined.contains("apfel --chat"))
+        try assertTrue(joined.contains("apfel --help"))
+    }
+
+    // MARK: - --serve with model unavailable (startup notice)
+
+    test("serve startup notice is nil when the model is available") {
+        try assertNil(ServeStartupNotice.message(availability: .available))
+    }
+
+    test("serve startup notice names the reason, keeps the server up, includes remediation") {
+        let msg = ServeStartupNotice.message(availability: .appleIntelligenceNotEnabled)
+        try assertNotNil(msg)
+        try assertTrue(msg!.contains(ModelAvailability.appleIntelligenceNotEnabled.shortLabel))
+        try assertTrue(msg!.lowercased().contains("server"))
+        try assertTrue(msg!.contains("Apple Intelligence"))
+        // The server must still start: the notice says so explicitly.
+        try assertTrue(msg!.lowercased().contains("starting anyway"))
+    }
+
+    // MARK: - grouped --help text
+
+    test("usage text keeps the parsed section headers intact") {
+        let text = UsageText.render(appName: "apfel", version: "0.0.0", style: { $0 })
+        for header in ["USAGE:", "OPTIONS:", "CONTEXT OPTIONS:", "SERVER OPTIONS:",
+                       "ENVIRONMENT:", "EXIT CODES:", "EXAMPLES:"] {
+            try assertTrue(text.contains(header), "missing header \(header)")
+        }
+    }
+
+    test("usage OPTIONS are grouped: generation, input/output, tools, diagnostics, meta") {
+        let text = UsageText.render(appName: "apfel", version: "0.0.0", style: { $0 })
+        let groups = ["Generation:", "Input & output:", "Tools (MCP):", "Diagnostics:", "Meta:"]
+        var lastIndex = text.startIndex
+        for group in groups {
+            guard let range = text.range(of: group, range: lastIndex..<text.endIndex) else {
+                throw TestFailure("group \(group) missing or out of order")
+            }
+            lastIndex = range.upperBound
+        }
+    }
+
+    test("usage text mentions every flag the parser knows") {
+        let text = UsageText.render(appName: "apfel", version: "0.0.0", style: { $0 })
+        for flag in CLIArguments.knownFlags {
+            try assertTrue(text.contains(flag), "flag \(flag) missing from usage text")
+        }
+    }
 }
