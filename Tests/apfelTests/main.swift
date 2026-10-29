@@ -143,6 +143,7 @@ suite("TokenUsageTests") { runTokenUsageTests() }
 suite("ImageInputTests") { runImageInputTests() }
 suite("ModelCapabilityTests") { runModelCapabilityTests() }
 suite("EngineTranscriptTests") { runEngineTranscriptTests() }
+suite("OnDeviceEngineTests") { runOnDeviceEngineTests() }
 
 // MARK: - Summary
 

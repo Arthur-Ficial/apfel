@@ -67,7 +67,7 @@ let package = Package(
         // Test runner — pure Swift, no XCTest/Testing (Command Line Tools only)
         .executableTarget(
             name: "apfel-tests",
-            dependencies: ["ApfelCore", "ApfelCLI"],
+            dependencies: ["ApfelCore", "ApfelCLI", "ApfelEngine"],
             path: "Tests/apfelTests"
         ),
         .executableTarget(

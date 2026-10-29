@@ -1,77 +1,70 @@
 // ============================================================================
 // OnDeviceEngine.swift - the macOS 26 baseline Engine implementation.
-// Part of ApfelEngine. 100% on-device via FoundationModels; print-free.
+// Part of ApfelEngine. 100% on-device; print-free.
 //
-// One actor instance owns one conversation: a LanguageModelSession whose
-// transcript grows turn by turn. Streaming converts FoundationModels'
-// cumulative snapshots into true deltas. When the transcript outgrows the
-// runtime input budget the oldest turns are dropped (newest-first), keeping
-// the instructions block - the same default strategy as `apfel --chat`.
+// One actor instance owns one conversation, driven through an injected
+// GenerationBackend (FoundationModelsBackend in production, a fake in unit
+// tests). Streaming converts the backend's cumulative snapshots into true
+// deltas; each turn's token usage is counted and accumulated per session.
+// When the conversation outgrows the runtime input budget the oldest turns
+// are dropped (newest-first), keeping the instructions block - the same
+// default strategy as `apfel --chat`.
 // ============================================================================
 
 import Foundation
-import FoundationModels
 import ApfelCore
 
 public actor OnDeviceEngine: Engine {
-    private var session: LanguageModelSession
-    private var systemPrompt: String?
-    private let permissive: Bool
+    private let backend: any GenerationBackend
+    private var sessionUsageTotal = TokenUsage(promptTokens: 0, completionTokens: 0)
 
+    public init(backend: any GenerationBackend) {
+        self.backend = backend
+    }
+
+    /// Production convenience: a FoundationModels-backed conversation.
     public init(systemPrompt: String? = nil, permissive: Bool = false) {
-        self.systemPrompt = systemPrompt
-        self.permissive = permissive
-        self.session = Self.makeSession(systemPrompt: systemPrompt, permissive: permissive)
-    }
-
-    private static func makeModel(permissive: Bool) -> SystemLanguageModel {
-        SystemLanguageModel(guardrails: permissive ? .permissiveContentTransformations : .default)
-    }
-
-    private static func makeSession(systemPrompt: String?, permissive: Bool) -> LanguageModelSession {
-        let model = makeModel(permissive: permissive)
-        guard let systemPrompt, !systemPrompt.isEmpty else {
-            return LanguageModelSession(model: model)
-        }
-        let segment = Transcript.TextSegment(content: systemPrompt)
-        let instructions = Transcript.Instructions(segments: [.text(segment)], toolDefinitions: [])
-        return LanguageModelSession(model: model, transcript: Transcript(entries: [.instructions(instructions)]))
+        self.backend = FoundationModelsBackend(systemPrompt: systemPrompt, permissive: permissive)
     }
 
     public func modelInfo() async -> EngineModelInfo {
-        let tc = TokenCounter.shared
-        return EngineModelInfo(
-            availability: await tc.availability,
-            contextWindow: await tc.contextWindow,
-            capabilities: await tc.capabilitiesReport)
+        await backend.modelInfo()
     }
 
     public func prewarm() async {
-        await TokenCounter.shared.prewarm()
+        await backend.prewarm()
     }
 
-    public func reset(systemPrompt: String?) {
-        self.systemPrompt = systemPrompt
-        self.session = Self.makeSession(systemPrompt: systemPrompt, permissive: permissive)
+    /// Token usage accumulated across every completed turn of this
+    /// conversation (resets with `reset`).
+    public func sessionUsage() -> TokenUsage {
+        sessionUsageTotal
+    }
+
+    public func reset(systemPrompt: String?) async {
+        sessionUsageTotal = TokenUsage(promptTokens: 0, completionTokens: 0)
+        var entries: [EngineTranscript.Entry] = []
+        if let systemPrompt, !systemPrompt.isEmpty {
+            entries = [.instructions(systemPrompt)]
+        }
+        await backend.reset(entries: entries)
     }
 
     public func contextStatus(outputReserve: Int = 512) async -> EngineContextStatus {
-        let tc = TokenCounter.shared
-        let used = await tc.count(entries: Array(session.transcript))
-        let budget = await tc.inputBudget(reservedForOutput: outputReserve)
+        let used = await backend.count(entries: backend.entries())
+        let budget = await backend.inputBudget(outputReserve: outputReserve)
         return EngineContextStatus(
-            usedTokens: used, budgetTokens: budget, contextWindow: await tc.contextWindow)
+            usedTokens: used, budgetTokens: budget, contextWindow: await backend.contextWindow())
     }
 
     public func send(_ prompt: String) -> AsyncThrowingStream<EngineEvent, Error> {
-        let session = self.session
+        let backend = self.backend
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    let stream = session.streamResponse(to: prompt, options: GenerationOptions())
+                    let before = await backend.entries()
                     var previous = ""
-                    for try await snapshot in stream {
-                        let content = snapshot.content
+                    for try await content in await backend.stream(prompt: prompt) {
                         // Snapshots are cumulative; emit only the new suffix.
                         if content.hasPrefix(previous) {
                             let delta = String(content.dropFirst(previous.count))
@@ -84,9 +77,14 @@ public actor OnDeviceEngine: Engine {
                         }
                         previous = content
                     }
-                    continuation.yield(.finished(EngineResponse(text: previous)))
-                    continuation.finish()
+                    let usage = TokenUsage(
+                        promptTokens: await backend.count(entries: before + [.prompt(prompt)]),
+                        completionTokens: await backend.count(text: previous))
+                    self.accumulate(usage)  // Task inherits this actor's isolation
+                    continuation.yield(.usage(usage))
+                    continuation.yield(.finished(EngineResponse(text: previous, usage: usage)))
                     await self.rotateContextIfNeeded()
+                    continuation.finish()
                 } catch {
                     continuation.finish(throwing: ApfelError.classify(error))
                 }
@@ -95,24 +93,25 @@ public actor OnDeviceEngine: Engine {
         }
     }
 
+    private func accumulate(_ usage: TokenUsage) {
+        sessionUsageTotal = sessionUsageTotal.adding(usage)
+    }
+
     /// Newest-first context protection, mirroring `apfel --chat`'s default:
-    /// when the transcript exceeds the runtime input budget, drop the oldest
+    /// when the conversation exceeds the runtime input budget, drop the oldest
     /// non-instruction entries until it fits (the instructions block stays).
     private func rotateContextIfNeeded(outputReserve: Int = 512) async {
-        let tc = TokenCounter.shared
-        var entries = Array(session.transcript)
-        let budget = await tc.inputBudget(reservedForOutput: outputReserve)
-        guard await tc.count(entries: entries) > budget else { return }
+        var entries = await backend.entries()
+        let budget = await backend.inputBudget(outputReserve: outputReserve)
+        guard await backend.count(entries: entries) > budget else { return }
 
-        var base: [Transcript.Entry] = []
+        var base: [EngineTranscript.Entry] = []
         if case .instructions = entries.first {
             base = [entries.removeFirst()]
         }
-        while !entries.isEmpty, await tc.count(entries: base + entries) > budget {
+        while !entries.isEmpty, await backend.count(entries: base + entries) > budget {
             entries.removeFirst()
         }
-        session = LanguageModelSession(
-            model: Self.makeModel(permissive: permissive),
-            transcript: Transcript(entries: base + entries))
+        await backend.reset(entries: base + entries)
     }
 }

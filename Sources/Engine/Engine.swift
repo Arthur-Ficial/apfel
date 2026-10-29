@@ -21,7 +21,8 @@ import ApfelCore
 public enum EngineEvent: Sendable {
     /// The next chunk of assistant text (a true delta, not a cumulative snapshot).
     case delta(String)
-    /// Runtime-reported usage, when the OS provides it (macOS 27+; never on 26).
+    /// The completed turn's token usage: runtime-reported where the OS
+    /// provides it (macOS 27+), counted via TokenCounter on macOS 26.
     case usage(TokenUsage)
     /// The turn completed; carries the full text.
     case finished(EngineResponse)
@@ -30,7 +31,9 @@ public enum EngineEvent: Sendable {
 /// The completed result of one generation turn.
 public struct EngineResponse: Sendable {
     public let text: String
-    /// Runtime-reported usage (macOS 27+); nil on macOS 26.
+    /// The turn's token usage: runtime-reported where the OS provides it
+    /// (macOS 27+), counted via TokenCounter on macOS 26; nil only when no
+    /// number could be produced at all.
     public let usage: TokenUsage?
 
     public init(text: String, usage: TokenUsage? = nil) {
@@ -83,6 +86,8 @@ public protocol Engine: Sendable {
     func send(_ prompt: String) async -> AsyncThrowingStream<EngineEvent, Error>
     /// Current context accounting (reads the runtime window, never a literal).
     func contextStatus(outputReserve: Int) async -> EngineContextStatus
+    /// Token usage accumulated across this conversation's completed turns.
+    func sessionUsage() async -> TokenUsage
     /// Drop conversation history (keeps the system prompt), e.g. after the
     /// user clears the chat or changes the system prompt.
     func reset(systemPrompt: String?) async
