@@ -22,7 +22,7 @@ import ApfelCore
 /// typed `LanguageModelError` cases over string matching. Every main-target
 /// catch site uses this; ApfelCore-internal callers (retry banners) keep the
 /// pure `ApfelError.classify`.
-func classifyModelError(_ error: Error) -> ApfelError {
+public func classifyModelError(_ error: Error) -> ApfelError {
     if #available(macOS 27, *), let typed = error as? LanguageModelError {
         return classifyTypedError(typed)
     }
@@ -70,7 +70,7 @@ private func classifyTypedError(_ error: LanguageModelError) -> ApfelError {
 /// runtime window, matching the detail of the SDK's typed
 /// `contextSizeExceeded`; on macOS 26 the message is byte-identical to
 /// yesterday's generic `.contextOverflow`.
-func contextOverflowError(tokenCount: Int, contextSize: Int) -> ApfelError {
+public func contextOverflowError(tokenCount: Int, contextSize: Int) -> ApfelError {
     if #available(macOS 27, *) {
         return .contextWindowExceeded(tokenCount: tokenCount, contextSize: contextSize)
     }

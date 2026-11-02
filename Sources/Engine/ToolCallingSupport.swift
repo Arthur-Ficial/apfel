@@ -23,7 +23,7 @@ import ApfelCore
 /// Apply a resolved tool-calling directive to the generation options.
 /// No-op on macOS 26 and for directive-free (tool-free) requests, so those
 /// options stay byte-identical to today's.
-func applyToolCallingDirective(_ directive: ToolCallingDirective?, to options: inout GenerationOptions) {
+public func applyToolCallingDirective(_ directive: ToolCallingDirective?, to options: inout GenerationOptions) {
     guard let directive else { return }
     if #available(macOS 27, *) {
         switch directive {

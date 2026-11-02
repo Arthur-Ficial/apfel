@@ -18,7 +18,6 @@
 import Foundation
 import FoundationModels
 import ApfelCore
-import ApfelEngine
 
 /// True when the FoundationModels runtime reports token usage on every
 /// response (macOS 27+). Decided once per process.
@@ -36,7 +35,7 @@ private func tokenUsage(_ usage: LanguageModelSession.Usage) -> TokenUsage {
 }
 
 /// The runtime-reported usage of a non-streaming response; nil on macOS 26.
-func reportedUsage<Content>(of response: LanguageModelSession.Response<Content>) -> TokenUsage? {
+public func reportedUsage<Content>(of response: LanguageModelSession.Response<Content>) -> TokenUsage? {
     if #available(macOS 27, *) {
         return tokenUsage(response.usage)
     }
@@ -49,7 +48,7 @@ func reportedUsage<Content>(of response: LanguageModelSession.Response<Content>)
 /// tokens grow with the content, so the LAST seen snapshot's usage prices
 /// everything accumulated so far - including a stream cut short by an
 /// output-side context overflow.
-func reportedUsage<Content>(of snapshot: LanguageModelSession.ResponseStream<Content>.Snapshot) -> TokenUsage? {
+public func reportedUsage<Content>(of snapshot: LanguageModelSession.ResponseStream<Content>.Snapshot) -> TokenUsage? {
     if #available(macOS 27, *) {
         return tokenUsage(snapshot.usage)
     }
@@ -63,12 +62,12 @@ func reportedUsage<Content>(of snapshot: LanguageModelSession.ResponseStream<Con
 /// - `.deferred` (macOS 27): no up-front count - the happy path takes input
 ///   tokens from the runtime-reported usage, and only paths that answer
 ///   without any model response (refusals, errors) resolve a count lazily.
-enum PromptTokens: Sendable {
+public enum PromptTokens: Sendable {
     case counted(Int)
     case deferred(entries: [Transcript.Entry])
 
     /// Build the accounting input: count now on macOS 26, defer on macOS 27.
-    static func make(entries: [Transcript.Entry]) async -> PromptTokens {
+    public static func make(entries: [Transcript.Entry]) async -> PromptTokens {
         if runtimeReportsUsage {
             return .deferred(entries: entries)
         }
@@ -76,7 +75,7 @@ enum PromptTokens: Sendable {
     }
 
     /// The prompt-token number for a path with no runtime-reported usage.
-    func resolve() async -> Int {
+    public func resolve() async -> Int {
         switch self {
         case .counted(let n):
             return n
@@ -87,7 +86,7 @@ enum PromptTokens: Sendable {
 
     /// The already-counted value, or nil when counting was deferred. Used for
     /// debug-trace estimates that must not trigger a count of their own.
-    var countedValue: Int? {
+    public var countedValue: Int? {
         if case .counted(let n) = self { return n }
         return nil
     }
