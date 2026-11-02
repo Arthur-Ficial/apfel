@@ -43,6 +43,7 @@ func exitCode(for error: ApfelError) -> Int32 {
 // reader (VisionSupport.readModelCapabilities) is injected here, once, at
 // process start - keeping the OS-27 availability decision in the main target.
 TokenCounter.capabilitiesReader = { readModelCapabilities() }
+TokenCounter.variantReader = { readModelVariantName() }
 
 // MARK: - Locale
 
