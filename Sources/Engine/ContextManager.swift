@@ -10,9 +10,8 @@
 import FoundationModels
 import Foundation
 import ApfelCore
-import ApfelEngine
 
-enum ContextManager {
+public enum ContextManager {
 
     // MARK: - Session Factory
 
@@ -26,7 +25,7 @@ enum ContextManager {
     /// - assistant text → Transcript.Response
     /// - tool result messages → Transcript.ToolOutput
     /// - last user message → returned as finalPrompt (caller sends it via respond())
-    static func makeSession(
+    public static func makeSession(
         messages: [OpenAIMessage],
         tools: [OpenAITool]?,
         options: SessionOptions,
@@ -69,21 +68,21 @@ enum ContextManager {
     /// instructions block, one entry per history message, and the final prompt
     /// entry that callers send separately via respond(). Also used to price a
     /// follow-up exactly as it will be built (#221, #482).
-    struct PreparedEntries {
-        let base: [Transcript.Entry]
-        let history: [Transcript.Entry]
-        let final: Transcript.Entry
-        let finalPrompt: String
+    public struct PreparedEntries {
+        public let base: [Transcript.Entry]
+        public let history: [Transcript.Entry]
+        public let final: Transcript.Entry
+        public let finalPrompt: String
         /// The final user turn's ordered text/image pieces (#510). Callers
         /// build the respond() prompt from these; text-only turns carry one
         /// text piece and behave exactly as before.
-        let finalPieces: [PromptPiece]
+        public let finalPieces: [PromptPiece]
         /// True when the conversation ends with a tool result, whose exchange
         /// must stay whole and in the window (#482).
-        let pinsTrailingExchange: Bool
+        public let pinsTrailingExchange: Bool
     }
 
-    static func prepareEntries(
+    public static func prepareEntries(
         messages: [OpenAIMessage],
         tools: [OpenAITool]?,
         options: SessionOptions,
