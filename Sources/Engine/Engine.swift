@@ -85,10 +85,15 @@ public protocol Engine: Sendable {
     func modelInfo() async -> EngineModelInfo
     /// Warm the model up (no-op when unavailable).
     func prewarm() async
-    /// Send one user turn; events stream back (deltas, then `.finished`).
-    /// Thrown errors are always `ApfelError`. Cancelling the consuming task
-    /// stops generation.
-    func send(_ prompt: String) async -> AsyncThrowingStream<EngineEvent, Error>
+    /// Send one user turn, optionally with image attachments (macOS 27,
+    /// capability-gated by the caller - see `EngineModelInfo.capabilities`);
+    /// events stream back (deltas, then `.finished`). Thrown errors are
+    /// always `ApfelError`. Cancelling the consuming task stops generation.
+    func send(_ prompt: String, images: [PromptImage]) async -> AsyncThrowingStream<EngineEvent, Error>
+    /// Apply per-conversation generation options (clamped via
+    /// `EngineOptions.normalized()` before they reach the SDK). Takes effect
+    /// from the next turn; `.defaults` reproduces historical behavior.
+    func setOptions(_ options: EngineOptions) async
     /// Current context accounting (reads the runtime window, never a literal).
     func contextStatus(outputReserve: Int) async -> EngineContextStatus
     /// Token usage accumulated across this conversation's completed turns.
@@ -101,6 +106,13 @@ public protocol Engine: Sendable {
     /// Drop conversation history (keeps the system prompt), e.g. after the
     /// user clears the chat or changes the system prompt.
     func reset(systemPrompt: String?) async
+}
+
+extension Engine {
+    /// Text-only turn - the overwhelmingly common case.
+    public func send(_ prompt: String) async -> AsyncThrowingStream<EngineEvent, Error> {
+        await send(prompt, images: [])
+    }
 }
 
 // MARK: - Factory

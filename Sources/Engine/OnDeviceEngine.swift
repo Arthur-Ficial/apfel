@@ -16,20 +16,27 @@ import ApfelCore
 
 public actor OnDeviceEngine: Engine {
     private let backend: any GenerationBackend
-    private let errorRecovery: ErrorRecovery
+    private var options = EngineOptions.defaults
     private var sessionUsageTotal = TokenUsage(promptTokens: 0, completionTokens: 0)
 
     /// `.preserve` is the default: it matches what the macOS 26 runtime does
     /// on its own, so the policy is opt-in rather than a behavior change.
     public init(backend: any GenerationBackend, errorRecovery: ErrorRecovery = .preserve) {
         self.backend = backend
-        self.errorRecovery = errorRecovery
+        self.options.errorRecovery = errorRecovery
     }
 
     /// Production convenience: a FoundationModels-backed conversation.
     public init(systemPrompt: String? = nil, permissive: Bool = false, errorRecovery: ErrorRecovery = .preserve) {
         self.backend = FoundationModelsBackend(systemPrompt: systemPrompt, permissive: permissive)
-        self.errorRecovery = errorRecovery
+        self.options.errorRecovery = errorRecovery
+    }
+
+    /// Apply per-conversation options: clamped here (the SDK validates
+    /// nothing), then handed to the backend; effective from the next turn.
+    public func setOptions(_ options: EngineOptions) async {
+        self.options = options.normalized()
+        await backend.apply(options: self.options)
     }
 
     public func modelInfo() async -> EngineModelInfo {
@@ -75,15 +82,15 @@ public actor OnDeviceEngine: Engine {
             usedTokens: used, budgetTokens: budget, contextWindow: await backend.contextWindow())
     }
 
-    public func send(_ prompt: String) -> AsyncThrowingStream<EngineEvent, Error> {
+    public func send(_ prompt: String, images: [PromptImage]) -> AsyncThrowingStream<EngineEvent, Error> {
         let backend = self.backend
-        let errorRecovery = self.errorRecovery
+        let errorRecovery = self.options.errorRecovery
         return AsyncThrowingStream { continuation in
             let task = Task {
                 let before = await backend.entries()
                 do {
                     var previous = ""
-                    for try await content in await backend.stream(prompt: prompt) {
+                    for try await content in await backend.stream(prompt: prompt, images: images) {
                         // Snapshots are cumulative; emit only the new suffix.
                         if content.hasPrefix(previous) {
                             let delta = String(content.dropFirst(previous.count))

@@ -5,6 +5,7 @@
 import Foundation
 import ApfelCore
 import ApfelEngine
+import CoreGraphics
 
 /// Scripted backend: each turn yields cumulative snapshots, then succeeds or
 /// throws. Mirrors the real backend's contract — the backend owns appending
@@ -37,7 +38,15 @@ actor FakeBackend: GenerationBackend {
         conversation
     }
 
-    func stream(prompt: String) -> AsyncThrowingStream<String, Error> {
+    private(set) var appliedOptions: EngineOptions?
+    private(set) var lastImageCount = 0
+
+    func apply(options: EngineOptions) {
+        appliedOptions = options
+    }
+
+    func stream(prompt: String, images: [PromptImage]) -> AsyncThrowingStream<String, Error> {
+        lastImageCount = images.count
         let turn = turns.isEmpty ? Turn([""]) : turns.removeFirst()
         conversation.append(.prompt(prompt))
         let final = turn.snapshots.last ?? ""
@@ -320,4 +329,58 @@ func runOnDeviceEngineTests() {
         // The window still comes from the runtime tracker, never a literal.
         try assertTrue(info.contextWindow.tokens > 0)
     }
+}
+
+// MARK: - EngineOptions plumbing (host options -> engine -> backend)
+
+func runEngineOptionsPlumbingTests() {
+    testAsync("setOptions normalizes and forwards the options to the backend") {
+        let backend = FakeBackend()
+        let engine = OnDeviceEngine(backend: backend)
+        var options = EngineOptions()
+        options.temperature = 5.0  // out of range: engine must clamp before the SDK
+        options.useCase = .contentTagging
+        await engine.setOptions(options)
+        let applied = await backend.appliedOptions
+        try assertEqual(applied?.temperature, 2.0)
+        try assertEqual(applied?.useCase, .contentTagging)
+    }
+
+    testAsync("errorRecovery .revert from setOptions restores the pre-turn conversation") {
+        let backend = FakeBackend(
+            initial: [.instructions("sys")],
+            turns: [.init(["partial"], error: .guardrailViolation)])
+        let engine = OnDeviceEngine(backend: backend)
+        var options = EngineOptions()
+        options.errorRecovery = .revert
+        await engine.setOptions(options)
+        do {
+            _ = try await collect(await engine.send("boom"))
+            try assertTrue(false, "send should have thrown")
+        } catch {}
+        let entries = await backend.entries()
+        try assertEqual(entries, [.instructions("sys")])
+    }
+
+    testAsync("send with images forwards them to the backend stream") {
+        let backend = FakeBackend(turns: [.init(["Red."])])
+        let engine = OnDeviceEngine(backend: backend)
+        let image = try makeTinyPromptImage()
+        let result = try await collect(await engine.send("what color?", images: [image]))
+        try assertEqual(result.finished.map(\.text), ["Red."])
+        let seen = await backend.lastImageCount
+        try assertEqual(seen, 1)
+    }
+}
+
+/// 1x1 CGImage for plumbing tests (no model, no FoundationModels).
+private func makeTinyPromptImage() throws -> PromptImage {
+    guard let ctx = CGContext(
+        data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 0,
+        space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+        let image = ctx.makeImage() else {
+        throw TestFailure("could not build a 1x1 CGImage")
+    }
+    return PromptImage(image: image)
 }

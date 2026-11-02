@@ -144,6 +144,7 @@ suite("ImageInputTests") { runImageInputTests() }
 suite("ModelCapabilityTests") { runModelCapabilityTests() }
 suite("EngineTranscriptTests") { runEngineTranscriptTests() }
 suite("OnDeviceEngineTests") { runOnDeviceEngineTests() }
+suite("EngineOptionsPlumbingTests") { runEngineOptionsPlumbingTests() }
 suite("EngineOptionsTests") { runEngineOptionsTests() }
 
 // MARK: - Summary

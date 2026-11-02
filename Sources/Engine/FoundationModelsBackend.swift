@@ -14,23 +14,27 @@ import ApfelCore
 
 public actor FoundationModelsBackend: GenerationBackend {
     private var session: LanguageModelSession
-    private let permissive: Bool
+    private var options: EngineOptions
 
     public init(systemPrompt: String? = nil, permissive: Bool = false) {
-        self.permissive = permissive
+        var options = EngineOptions.defaults
+        options.permissiveGuardrails = permissive
+        self.options = options
         var initial: [EngineTranscript.Entry] = []
         if let systemPrompt, !systemPrompt.isEmpty {
             initial = [.instructions(systemPrompt)]
         }
-        self.session = Self.makeSession(entries: initial, permissive: permissive)
+        self.session = Self.makeSession(entries: initial, options: options)
     }
 
-    private static func makeModel(permissive: Bool) -> SystemLanguageModel {
-        SystemLanguageModel(guardrails: permissive ? .permissiveContentTransformations : .default)
+    private static func makeModel(options: EngineOptions) -> SystemLanguageModel {
+        SystemLanguageModel(
+            useCase: options.useCase == .contentTagging ? .contentTagging : .general,
+            guardrails: options.permissiveGuardrails ? .permissiveContentTransformations : .default)
     }
 
-    private static func makeSession(entries: [EngineTranscript.Entry], permissive: Bool) -> LanguageModelSession {
-        let model = makeModel(permissive: permissive)
+    private static func makeSession(entries: [EngineTranscript.Entry], options: EngineOptions) -> LanguageModelSession {
+        let model = makeModel(options: options)
         guard !entries.isEmpty else {
             return LanguageModelSession(model: model)
         }
@@ -40,19 +44,33 @@ public actor FoundationModelsBackend: GenerationBackend {
     }
 
     public func reset(entries: [EngineTranscript.Entry]) {
-        session = Self.makeSession(entries: entries, permissive: permissive)
+        session = Self.makeSession(entries: entries, options: options)
+    }
+
+    /// Install new options. The model/session are rebuilt (preserving the
+    /// conversation) because use case and guardrails are fixed at model
+    /// init; sampling/output options apply per turn in `stream`.
+    public func apply(options: EngineOptions) {
+        self.options = options
+        session = Self.makeSession(entries: entries(), options: options)
     }
 
     public func entries() -> [EngineTranscript.Entry] {
         Array(session.transcript).flatMap(Self.fromTranscriptEntry)
     }
 
-    public func stream(prompt: String) -> AsyncThrowingStream<String, Error> {
+    public func stream(prompt: String, images: [PromptImage]) -> AsyncThrowingStream<String, Error> {
         let session = self.session
+        let options = self.options
+        let generationOptions = Self.makeGenerationOptions(options)
+        let pieces: [PromptPiece] = [.text(prompt)] + images.map { .image($0) }
+        let promptValue = makeUserPrompt(text: prompt, pieces: pieces)
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    for try await snapshot in session.streamResponse(to: prompt, options: GenerationOptions()) {
+                    for try await snapshot in makeTextStream(
+                        session: session, prompt: promptValue,
+                        options: generationOptions, reasoning: options.reasoningEffort) {
                         continuation.yield(snapshot.content)
                     }
                     continuation.finish()
@@ -62,6 +80,20 @@ public actor FoundationModelsBackend: GenerationBackend {
             }
             continuation.onTermination = { _ in task.cancel() }
         }
+    }
+
+    /// Per-turn SDK options from the conversation's `EngineOptions`.
+    /// `.defaults` produces options byte-identical to the historical
+    /// `GenerationOptions()` (no sampling mode, no temperature, no cap,
+    /// untouched tool-calling mode).
+    private static func makeGenerationOptions(_ o: EngineOptions) -> GenerationOptions {
+        let decision = o.samplingDecision(fallbackSeed: UInt64.random(in: 0...UInt64.max))
+        var generationOptions = GenerationOptions(
+            samplingMode: makeSamplingMode(decision),
+            temperature: o.temperature,
+            maximumResponseTokens: o.maxResponseTokens)
+        applyToolCallingDirective(o.allowToolCalls ? nil : .disallowed, to: &generationOptions)
+        return generationOptions
     }
 
     public func count(text: String) async -> Int {

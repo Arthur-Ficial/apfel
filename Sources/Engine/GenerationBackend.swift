@@ -17,10 +17,14 @@ public protocol GenerationBackend: Sendable {
     func reset(entries: [EngineTranscript.Entry]) async
     /// The conversation as pure entries (grows as turns complete).
     func entries() async -> [EngineTranscript.Entry]
-    /// Stream CUMULATIVE text snapshots for one user turn. The backend owns
-    /// appending the prompt (and whatever response the runtime leaves,
-    /// partial on failure) to its conversation.
-    func stream(prompt: String) async -> AsyncThrowingStream<String, Error>
+    /// Apply per-conversation generation options (sampling, guardrails,
+    /// use case, output cap, ...). Values arrive already normalized.
+    func apply(options: EngineOptions) async
+    /// Stream CUMULATIVE text snapshots for one user turn (optionally with
+    /// image attachments - macOS 27, capability-gated by the caller). The
+    /// backend owns appending the prompt (and whatever response the runtime
+    /// leaves, partial on failure) to its conversation.
+    func stream(prompt: String, images: [PromptImage]) async -> AsyncThrowingStream<String, Error>
     /// Token count for plain text.
     func count(text: String) async -> Int
     /// Token count for conversation entries.
