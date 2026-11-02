@@ -133,10 +133,10 @@ bash scripts/generate-examples.sh          # ~2 minutes, overwrites docs/EXAMPLE
 | Entry point | `Sources/main.swift` |
 | CLI commands | `Sources/CLI.swift` |
 | HTTP server | `Sources/Server.swift`, `Sources/Handlers.swift` |
-| Session mgmt | `Sources/Session.swift`, `Sources/ContextManager.swift` |
-| Context strategies | `Sources/Core/ContextStrategy.swift`, `Sources/Summarizer.swift` |
-| Tool calling | `Sources/Core/ToolCallHandler.swift`, `Sources/SchemaConverter.swift` |
-| Token counting | `Sources/TokenCounter.swift` |
+| Session mgmt | `Sources/Engine/Session.swift`, `Sources/Engine/ContextManager.swift`, `Sources/Session.swift` (MCP tool execution) |
+| Context strategies | `Sources/Core/ContextStrategy.swift`, `Sources/Engine/Summarizer.swift` |
+| Tool calling | `Sources/Core/ToolCallHandler.swift`, `Sources/Engine/SchemaConverter.swift` |
+| Token counting | `Sources/Engine/TokenCounter.swift` |
 | Error types | `Sources/Core/ApfelError.swift` |
 | Retry logic | `Sources/Core/Retry.swift` (withRetry, isRetryableError), `Sources/Retry.swift` (AsyncSemaphore) |
 | Models/types | `Sources/Models.swift`, `Sources/ToolModels.swift` |
