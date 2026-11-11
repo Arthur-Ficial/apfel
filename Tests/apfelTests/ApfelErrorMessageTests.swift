@@ -279,7 +279,7 @@ func runApfelErrorMessageTests() {
         try assertEqual(ApfelError.concurrentRequest.isRetryable,   true)
         try assertEqual(ApfelError.assetsUnavailable.isRetryable,   true)
         try assertEqual(ApfelError.unsupportedGuide.isRetryable,    false)
-        try assertEqual(ApfelError.decodingFailure("x").isRetryable,false)
+        try assertEqual(ApfelError.decodingFailure("x").isRetryable,true)
         try assertEqual(ApfelError.unsupportedLanguage("x").isRetryable, false)
         try assertEqual(ApfelError.toolExecution("x").isRetryable,  false)
         try assertEqual(ApfelError.unknown("x").isRetryable,        false)

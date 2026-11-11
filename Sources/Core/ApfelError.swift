@@ -206,7 +206,8 @@ public enum ApfelError: Error, Equatable, Hashable, Sendable {
     /// Uses typed matching (locale-independent) — safe on any macOS language.
     public var isRetryable: Bool {
         switch self {
-        case .rateLimited, .rateLimitedUntil, .concurrentRequest, .assetsUnavailable:
+        case .rateLimited, .rateLimitedUntil, .concurrentRequest, .assetsUnavailable,
+             .decodingFailure:
             return true
         default:
             return false
