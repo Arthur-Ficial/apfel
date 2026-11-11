@@ -930,8 +930,10 @@ private func streamingResponse(
                     // content (Fable review F2).
                     let pending = jsonMode
                         ? JSONFenceStripper.stripTruncated(truncatedContent)
-                        : String(truncatedContent.dropFirst(emittedContentCount))
-                    if (jsonMode || emittedContentCount < truncatedContent.count), !pending.isEmpty {
+                        : String(String.UnicodeScalarView(truncatedContent.unicodeScalars.dropFirst(emittedContentCount)))
+                    // emittedContentCount is in Unicode scalars (#543), so the
+                    // held tail is cut in scalars too.
+                    if (jsonMode || emittedContentCount < truncatedContent.unicodeScalars.count), !pending.isEmpty {
                         let contentLine = sseDataLine(sseContentChunk(id: id, created: created, content: pending, includeUsage: includeUsage))
                         responseLines?.append(contentLine.trimmingCharacters(in: .whitespacesAndNewlines))
                         continuation.yield(ByteBuffer(string: contentLine))
