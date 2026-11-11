@@ -6,7 +6,7 @@
 import Foundation
 
 /// Truncates a tool result so it fits a token budget before it is fed back to
-/// the 4096-token model.
+/// the model, whose context window is small and read at runtime.
 ///
 /// A large tool result (file reader, web fetch, DB query) fed back verbatim
 /// either overflows the context window after the tool already ran (CLI) or is

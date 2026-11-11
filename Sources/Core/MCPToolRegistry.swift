@@ -13,7 +13,7 @@ import Foundation
 /// unreachable. This keeps routing predictable (no rename surprises) at the cost
 /// of the shadowed tool - `collisions(servers:)` surfaces the shadowing so the
 /// caller can warn loudly, and `deduplicate(_:)` drops the shadowed duplicates
-/// so they are not injected into the 4096-token prompt twice.
+/// so they are not injected into the (small) prompt twice.
 public enum MCPToolRegistry {
 
     /// A tool name exposed by more than one server.
