@@ -38,7 +38,7 @@ Update:
 brew upgrade apfel
 ```
 
-Build from source (Command Line Tools with macOS 26.4 SDK / Swift 6.3, no Xcode):
+Build from source (Command Line Tools with the macOS 27 SDK / Swift 6.3, no Xcode; the binary runs on macOS 26 and 27):
 
 ```bash
 git clone https://github.com/Arthur-Ficial/apfel.git && cd apfel && make install
