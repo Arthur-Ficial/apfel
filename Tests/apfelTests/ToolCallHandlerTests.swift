@@ -490,6 +490,24 @@ func runToolCallHandlerTests() {
 
     // MARK: - Language-tagged code blocks (#544)
 
+    test("detects the exact macOS 26.1 function-fenced bare-array call (#544)") {
+        let response = "```function\n[{\"name\": \"add\", \"arguments\": {\"a\": 100, \"b\": 200}}]```"
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result, "observed on macOS 26.1 via test_remote_mcp_add_correct_result")
+        try assertEqual(result?.first?.name, "add")
+        try assertTrue(result?.first?.argumentsString.contains("\"a\"") == true, result?.first?.argumentsString ?? "")
+    }
+
+    test("a bare name/arguments array outside a function fence is NOT a tool call (#544)") {
+        // User data in json_object mode or a json fence must stay content.
+        try assertNil(ToolCallHandler.detectToolCall(in: "[{\"name\": \"Alice\", \"arguments\": {\"age\": 3}}]"))
+        try assertNil(ToolCallHandler.detectToolCall(in: "```json\n[{\"name\": \"Alice\", \"arguments\": {}}]\n```"))
+    }
+
+    test("a function fence without call-shaped JSON is not a tool call (#544)") {
+        try assertNil(ToolCallHandler.detectToolCall(in: "```function\nfunc add(a, b) { return a + b }\n```"))
+    }
+
     test("detects tool call inside function-fenced code block (#544)") {
         let response = "```function\n{\"tool_calls\": [{\"id\": \"c1\", \"type\": \"function\", \"function\": {\"name\": \"add\", \"arguments\": \"{\\\"a\\\":1,\\\"b\\\":2}\"}}]}\n```"
         let result = ToolCallHandler.detectToolCall(in: response)

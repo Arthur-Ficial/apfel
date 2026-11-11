@@ -247,13 +247,22 @@ public enum ToolCallHandler {
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             // Strip optional language tag (json, function, text, ...)
             let stripped: String
+            var tag = ""
             if let nl = block.firstIndex(of: "\n"),
-               block[block.startIndex..<nl].allSatisfy({ $0.isLetter || $0.isNumber }) {
+               block[block.startIndex..<nl].allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" }) {
+                tag = String(block[block.startIndex..<nl]).lowercased()
                 stripped = String(block[block.index(after: nl)...])
             } else {
                 stripped = block
             }
             candidates.append(stripped)
+            // A fence explicitly tagged as a function/tool call may hold the
+            // bare call shape the macOS 26.1 model writes:
+            // [{"name": "add", "arguments": {...}}] (#544). Only here - the
+            // same JSON in a json fence or as the whole answer is user data.
+            if functionFenceTags.contains(tag), let wrapped = wrapBareCalls(stripped) {
+                candidates.append(wrapped)
+            }
             remaining = String(remaining[end.upperBound...])
         }
 
@@ -295,6 +304,33 @@ public enum ToolCallHandler {
         }
 
         return candidates
+    }
+
+    private static let functionFenceTags: Set<String> = ["function", "functions", "tool_call", "tool_calls"]
+
+    /// `[{"name": N, "arguments": A}, ...]` (or one such object) rewritten as
+    /// the `{"tool_calls": [...]}` envelope `parseToolCallJSON` reads; nil
+    /// when the JSON is not that shape.
+    private static func wrapBareCalls(_ json: String) -> String? {
+        guard let data = json.data(using: .utf8),
+              let parsed = try? JSONSerialization.jsonObject(with: data) else { return nil }
+        let items: [[String: Any]]
+        if let array = parsed as? [[String: Any]] {
+            items = array
+        } else if let object = parsed as? [String: Any] {
+            items = [object]
+        } else {
+            return nil
+        }
+        var calls: [[String: Any]] = []
+        for item in items {
+            guard let name = item["name"] as? String, !name.isEmpty else { return nil }
+            calls.append(["type": "function",
+                          "function": ["name": name, "arguments": item["arguments"] ?? [String: Any]()]])
+        }
+        guard !calls.isEmpty,
+              let out = try? JSONSerialization.data(withJSONObject: ["tool_calls": calls]) else { return nil }
+        return String(data: out, encoding: .utf8)
     }
 
     private static func serializedToolSchemas(_ tools: [ToolDef]) -> String {
