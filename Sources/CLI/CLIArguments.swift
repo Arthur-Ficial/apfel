@@ -384,7 +384,9 @@ extension CLIArguments {
         }
 
         result.serverHost = env["APFEL_HOST"] ?? "127.0.0.1"
-        result.serverToken = env["APFEL_TOKEN"]
+        // Set-but-empty means unset, like every other APFEL_* variable: an
+        // empty token would make every request 401 (no client can send it).
+        result.serverToken = envValue("APFEL_TOKEN")
         result.mcpServerPaths = env["APFEL_MCP"].map { parseMCPServerPaths($0) } ?? []
 
         if let raw = envValue("APFEL_MCP_TIMEOUT") {
@@ -708,6 +710,7 @@ extension CLIArguments {
             case "--token":
                 i += 1
                 guard i < args.count else { throw CLIErrors.requires("--token", "a secret value") }
+                guard !args[i].isEmpty else { throw CLIErrors.requires("--token", "a non-empty secret value") }
                 result.serverToken = args[i]
 
             case "--token-auto":

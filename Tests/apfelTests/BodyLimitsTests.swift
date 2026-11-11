@@ -28,4 +28,12 @@ func runBodyLimitsTests() {
         try assertTrue(bodyLimitsSrc.contains("@available(*, deprecated"),
                        "BodyLimits.swift must keep defaultMaxResponseTokens as @available(*, deprecated) — symbol stays in the API surface for one release for stability")
     }
+
+    test("sdkMaxResponseTokens clamps above Int32.max and passes normal values (F6)") {
+        try assertNil(BodyLimits.sdkMaxResponseTokens(nil))
+        try assertEqual(BodyLimits.sdkMaxResponseTokens(64), 64)
+        try assertEqual(BodyLimits.sdkMaxResponseTokens(Int(Int32.max)), Int(Int32.max))
+        try assertEqual(BodyLimits.sdkMaxResponseTokens(Int(Int32.max) + 1), Int(Int32.max))
+        try assertEqual(BodyLimits.sdkMaxResponseTokens(Int.max), Int(Int32.max))
+    }
 }

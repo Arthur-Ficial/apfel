@@ -98,7 +98,7 @@ public actor FoundationModelsBackend: GenerationBackend {
         var generationOptions = GenerationOptions(
             samplingMode: makeSamplingMode(decision),
             temperature: SamplingDecision.forwardedTemperature(o.temperature),
-            maximumResponseTokens: o.maxResponseTokens)
+            maximumResponseTokens: BodyLimits.sdkMaxResponseTokens(o.maxResponseTokens))
         applyToolCallingDirective(o.allowToolCalls ? nil : .disallowed, to: &generationOptions)
         return generationOptions
     }
