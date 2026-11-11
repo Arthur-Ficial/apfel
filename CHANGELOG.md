@@ -7,6 +7,8 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.17.1] - 2026-11-11
+
 ### Changed
 
 - Hummingbird 2.26.0 -> 2.27.1. 2.27.1 fixes a lost `produceMore` event that could hang a request body when an inbound-close handler is in use - the mechanism the server now uses to cancel abandoned requests (#542).
