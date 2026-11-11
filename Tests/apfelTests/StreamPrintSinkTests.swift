@@ -125,6 +125,56 @@ func runStreamPrintSinkTests() {
             "full divergent text including growth must appear, got: \(output)")
     }
 
+    // #543: delta math must use Unicode scalars, not Characters. A snapshot
+    // boundary inside a grapheme cluster must not lose the trailing scalar(s).
+
+    testAsync("feed: CRLF split across snapshots emits the LF (#543)") {
+        let recorder = SinkRecorder()
+        let sink = StreamPrintSink(emit: { recorder.append($0) })
+
+        // Snapshot 1 delivers CR; snapshot 2 merges it with LF into one
+        // Character (\r\n). Under Character counting the count would not grow
+        // (6 -> 6) and the LF would be silently dropped.
+        await sink.feed(cumulative: "hello\r")
+        await sink.feed(cumulative: "hello\r\n")
+
+        try assertEqual(recorder.joined, "hello\r\n",
+            "the LF after a mid-cluster CRLF split must not be lost")
+        try assertEqual(recorder.chunks, ["hello\r", "\n"],
+            "second chunk must be the bare LF scalar")
+    }
+
+    testAsync("feed: combining accent split across snapshots emits the accent (#543)") {
+        let recorder = SinkRecorder()
+        let sink = StreamPrintSink(emit: { recorder.append($0) })
+
+        // "e" then "e\u{0301}" (e + combining acute accent = e). Under
+        // Character counting "cafe" is 4 Characters and so is "cafe\u{0301}"
+        // (the combining accent merges with the preceding e), so the guard
+        // would suppress the accent entirely.
+        await sink.feed(cumulative: "cafe")
+        await sink.feed(cumulative: "cafe\u{0301}")
+
+        try assertEqual(recorder.joined, "cafe\u{0301}",
+            "combining accent must not be lost when it merges with the prior scalar")
+        try assertEqual(recorder.chunks, ["cafe", "\u{0301}"],
+            "second chunk must be the bare combining acute accent")
+    }
+
+    testAsync("feed: emoji skin-tone modifier split across snapshots emits the modifier (#543)") {
+        let recorder = SinkRecorder()
+        let sink = StreamPrintSink(emit: { recorder.append($0) })
+
+        // Waving hand U+1F44B, then skin-tone modifier U+1F3FD. Together they
+        // form one Character; split across snapshots, the modifier must arrive.
+        await sink.feed(cumulative: "hi \u{1F44B}")
+        await sink.feed(cumulative: "hi \u{1F44B}\u{1F3FD}")
+
+        try assertEqual(recorder.joined, "hi \u{1F44B}\u{1F3FD}",
+            "skin-tone modifier must not be lost")
+        try assertEqual(recorder.callCount, 2, "two chunks: base text, then modifier")
+    }
+
     // StreamPrintSink must be Sendable so it can be shared across the isolation
     // hops a retried async operation crosses.
     testAsync("StreamPrintSink conforms to Sendable") {

@@ -702,9 +702,11 @@ private func streamingResponse(
             var verdict: ToolPolicy.Outcome = .content
             var prev = ""
             var chunkCount = 0
-            // Chars already streamed as content deltas. Tracked explicitly (not
-            // via prev.count) because the tool-call gate may buffer some prefix
-            // before flushing (#224).
+            // Scalars already streamed as content deltas. Tracked explicitly
+            // (not via prev) because the tool-call gate may buffer some prefix
+            // before flushing (#224). Counted in Unicode scalars, not Characters,
+            // so a snapshot boundary inside a grapheme cluster (CRLF, combining
+            // mark, emoji modifier) does not lose the trailing scalar (#543).
             var emittedContentCount = 0
             // While tools are in play, hold back content that could still be a
             // tool call so we never leak raw tool-call JSON as content (#224).
@@ -726,7 +728,7 @@ private func streamingResponse(
                     // Capture usage before the no-growth guard: output tokens
                     // keep advancing on snapshots whose text has not grown.
                     lastRoundUsage = reportedUsage(of: snapshot) ?? lastRoundUsage
-                    guard content.count > prev.count else { prev = content; continue }
+                    guard content.unicodeScalars.count > prev.unicodeScalars.count else { prev = content; continue }
                     prev = content
 
                     // In json_object mode we cannot fence-strip an incremental
@@ -743,12 +745,13 @@ private func streamingResponse(
                         toolGateHolding = false
                     }
 
-                    let idx = content.index(content.startIndex, offsetBy: emittedContentCount)
+                    let scalars = content.unicodeScalars
+                    let idx = scalars.index(scalars.startIndex, offsetBy: emittedContentCount)
                     let delta = String(content[idx...])
                     let chunkLine = sseDataLine(sseContentChunk(id: id, created: created, content: delta, includeUsage: includeUsage))
                     responseLines?.append(chunkLine.trimmingCharacters(in: .whitespacesAndNewlines))
                     continuation.yield(ByteBuffer(string: chunkLine))
-                    emittedContentCount = content.count
+                    emittedContentCount = content.unicodeScalars.count
                     chunkCount += 1
                     await eventBox.append("chunk #\(chunkCount) delta=\(delta.count) total=\(content.count)")
                 }
@@ -797,10 +800,11 @@ private func streamingResponse(
                 // Skip entirely when the buffered output IS a tool call (handled
                 // by the tool_calls branch below).
                 let deliveredContent: String
-                if toolCalls == nil, jsonMode || emittedContentCount < prev.count {
+                if toolCalls == nil, jsonMode || emittedContentCount < prev.unicodeScalars.count {
+                    let prevScalars = prev.unicodeScalars
                     deliveredContent = jsonMode
                         ? JSONFenceStripper.strip(prev)
-                        : String(prev[prev.index(prev.startIndex, offsetBy: emittedContentCount)...])
+                        : String(prev[prevScalars.index(prevScalars.startIndex, offsetBy: emittedContentCount)...])
                     if !deliveredContent.isEmpty {
                         let contentLine = sseDataLine(sseContentChunk(id: id, created: created, content: deliveredContent, includeUsage: includeUsage))
                         responseLines?.append(contentLine.trimmingCharacters(in: .whitespacesAndNewlines))
@@ -926,8 +930,10 @@ private func streamingResponse(
                     // content (Fable review F2).
                     let pending = jsonMode
                         ? JSONFenceStripper.stripTruncated(truncatedContent)
-                        : String(truncatedContent.dropFirst(emittedContentCount))
-                    if (jsonMode || emittedContentCount < truncatedContent.count), !pending.isEmpty {
+                        : String(String.UnicodeScalarView(truncatedContent.unicodeScalars.dropFirst(emittedContentCount)))
+                    // emittedContentCount is in Unicode scalars (#543), so the
+                    // held tail is cut in scalars too.
+                    if (jsonMode || emittedContentCount < truncatedContent.unicodeScalars.count), !pending.isEmpty {
                         let contentLine = sseDataLine(sseContentChunk(id: id, created: created, content: pending, includeUsage: includeUsage))
                         responseLines?.append(contentLine.trimmingCharacters(in: .whitespacesAndNewlines))
                         continuation.yield(ByteBuffer(string: contentLine))
