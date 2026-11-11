@@ -102,7 +102,8 @@ jobs:
           # window in Sources/ (#513), ApfelEngine without host wiring (#531).
           python3 -m pytest Tests/integration/test_typed_retry_wiring.py \
             Tests/integration/test_no_context_ceiling_literal.py \
-            Tests/integration/test_engine_no_host_injection.py -v --tb=short
+            Tests/integration/test_engine_no_host_injection.py \
+            Tests/integration/test_sdk_stamp.py -v --tb=short
 
           # Note: performance_test.py requires Apple Intelligence (benchmark runs inference).
           # It runs locally via make preflight / make release.
@@ -179,6 +180,8 @@ jobs:
           sw_vers
           vtool -show-build bin/apfel | tee /tmp/build.txt
           grep -q "minos 26.0" /tmp/build.txt || { echo "::error::deployment floor is not macOS 26.0"; exit 1; }
+          # The macOS 27 runtime keys typed errors on the sdk stamp (#521).
+          grep -qE "sdk (2[7-9]|[3-9][0-9])\." /tmp/build.txt || { echo "::error::sdk stamp is below 27"; exit 1; }
           bin/apfel --version
           bin/apfel --help >/dev/null
           # No Apple Intelligence on the VM: an honest non-zero exit is fine,
