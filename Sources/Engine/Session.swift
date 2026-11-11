@@ -83,7 +83,7 @@ public func makeGenerationOptions(
     )
     var options = GenerationOptions(
         samplingMode: makeSamplingMode(decision),
-        temperature: opts.temperature,
+        temperature: SamplingDecision.forwardedTemperature(opts.temperature),
         maximumResponseTokens: opts.maxTokens
     )
     applyToolCallingDirective(directive, to: &options)

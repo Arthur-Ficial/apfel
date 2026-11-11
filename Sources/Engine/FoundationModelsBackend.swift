@@ -97,7 +97,7 @@ public actor FoundationModelsBackend: GenerationBackend {
         let decision = o.samplingDecision(fallbackSeed: UInt64.random(in: 0...UInt64.max))
         var generationOptions = GenerationOptions(
             samplingMode: makeSamplingMode(decision),
-            temperature: o.temperature,
+            temperature: SamplingDecision.forwardedTemperature(o.temperature),
             maximumResponseTokens: o.maxResponseTokens)
         applyToolCallingDirective(o.allowToolCalls ? nil : .disallowed, to: &generationOptions)
         return generationOptions
