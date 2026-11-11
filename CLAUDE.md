@@ -90,14 +90,15 @@ HTTP Server (/v1/*) ───────┘   ContextManager → Transcript API
 ```
 
 - `ApfelCore` library: pure Swift, no FoundationModels dependency, unit-testable
-- Main target: FoundationModels integration, Hummingbird HTTP server
+- `ApfelEngine` library (preview product, `Sources/Engine/`): the FoundationModels generation core shared by the CLI, the server and downstream apps; data-only `Engine` surface, internal helpers are `package`
+- Main target: CLI dispatch, Hummingbird HTTP server, MCP execution
 - Tests: `swift run apfel-tests` (pure Swift runner, no XCTest needed)
 - No Xcode required - builds with Command Line Tools only
 
 ## Current Status
 
-- Version: `1.16.0` (source of truth: `.version`)
-- Tests: 1396 unit + 571 integration
+- Version: `1.17.0` (source of truth: `.version`)
+- Tests: 1479 unit + 586 integration
 - Distribution: homebrew-core (`brew install apfel`), nixpkgs (`nix profile install nixpkgs#apfel-llm`), and the Arthur-Ficial/homebrew-tap
 - Stability policy: [STABILITY.md](STABILITY.md)
 - Security policy: [SECURITY.md](SECURITY.md)
@@ -110,12 +111,12 @@ make install                   # build release + install to /usr/local/bin (NO v
 make build                     # build release only (NO version bump)
 make version                   # print current version
 swift build                    # debug build
-swift run apfel-tests          # unit tests only (1396 tests)
+swift run apfel-tests          # unit tests only (1479 tests)
 make preflight                 # light release gate: unit + model-free integration + policy (~1.5 min warm)
 make preflight FULL=1          # full qualification incl. the serial model phase (pre-#374 behavior)
 ```
 
-`make test` builds the release binary, runs all 1396 unit tests, starts test servers, runs all 571 integration tests (two phases, #374: the model-free partition in parallel via pytest-xdist, then the serial model phase), and cleans up. This is the single command for development.
+`make test` builds the release binary, runs all 1479 unit tests, starts test servers, runs all 586 integration tests (two phases, #374: the model-free partition in parallel via pytest-xdist, then the serial model phase), and cleans up. This is the single command for development.
 
 `make install` auto-unlinks Homebrew apfel so the dev binary takes PATH priority. `make uninstall` restores the Homebrew link.
 
@@ -133,10 +134,11 @@ bash scripts/generate-examples.sh          # ~2 minutes, overwrites docs/EXAMPLE
 | Entry point | `Sources/main.swift` |
 | CLI commands | `Sources/CLI.swift` |
 | HTTP server | `Sources/Server.swift`, `Sources/Handlers.swift` |
-| Session mgmt | `Sources/Session.swift`, `Sources/ContextManager.swift` |
-| Context strategies | `Sources/Core/ContextStrategy.swift`, `Sources/Summarizer.swift` |
-| Tool calling | `Sources/Core/ToolCallHandler.swift`, `Sources/SchemaConverter.swift` |
-| Token counting | `Sources/TokenCounter.swift` |
+| Session mgmt | `Sources/Session.swift` (prompt processing, MCP), `Sources/Engine/Session.swift`, `Sources/Engine/ContextManager.swift` |
+| Context strategies | `Sources/Core/ContextStrategy.swift`, `Sources/Engine/Summarizer.swift` |
+| Tool calling | `Sources/Core/ToolCallHandler.swift`, `Sources/Engine/SchemaConverter.swift` |
+| Token counting | `Sources/Engine/TokenCounter.swift` |
+| Engine library | `Sources/Engine/Engine.swift`, `OnDeviceEngine.swift`, `FoundationModelsBackend.swift` |
 | Error types | `Sources/Core/ApfelError.swift` |
 | Retry logic | `Sources/Core/Retry.swift` (withRetry, isRetryableError), `Sources/Retry.swift` (AsyncSemaphore) |
 | Models/types | `Sources/Models.swift`, `Sources/ToolModels.swift` |
@@ -144,7 +146,7 @@ bash scripts/generate-examples.sh          # ~2 minutes, overwrites docs/EXAMPLE
 | Security | `Sources/Core/OriginValidator.swift`, `Sources/SecurityMiddleware.swift` |
 | MCP client | `Sources/Core/MCPProtocol.swift`, `Sources/MCPClient.swift` |
 | MCP calculator | `mcp/calculator/server.py` |
-| Tests | `Tests/apfelTests/` (1396 unit), `Tests/integration/` (571 integration) |
+| Tests | `Tests/apfelTests/` (1479 unit), `Tests/integration/` (586 integration) |
 
 | Docs | `docs/` (brew-install, EXAMPLES, release, tool-calling-guide) |
 | Scripts | `scripts/generate-examples.sh`, `scripts/write-homebrew-formula.sh`, `scripts/release-preflight.sh`, `scripts/post-release-verify.sh` |
@@ -227,7 +229,7 @@ Priority-rank findings:
 
 - Does it fit the golden goal (UNIX tool + OpenAI server + chat)?
 - Does it respect the non-negotiable principles (100% on-device, honest limits, clean code, Swift 6 strict concurrency, usable security)?
-- Does it introduce cross-target dependencies that violate the `ApfelCore` (pure) / `ApfelCLI` (CLI types) / `apfel` (FoundationModels + Hummingbird) layering?
+- Does it introduce cross-target dependencies that violate the `ApfelCore` (pure) / `ApfelCLI` (CLI types) / `ApfelEngine` (FoundationModels) / `apfel` (Hummingbird + dispatch) layering?
 - Are the existing patterns followed (test harness, error types, context strategy, retry)?
 - **Tool-calling boundary (parked architectural ticket #119):** apfel's tool execution is out-of-band - the model emits a tool-call request in its output text, apfel parses it via `ToolCallHandler.detectToolCall`, runs the tool via `MCPClient`, and feeds the result back. FoundationModels' native `Tool` protocol and in-band invocation are not used, so `FoundationModels.LanguageModelSession.ToolCallError` is unreachable and `ApfelError.classify(_:)` deliberately has no branch for it (see `Sources/Core/ApfelError.swift:23`). If a PR adds `LanguageModelSession(..., tools: [SomeTool()])`, defines a type conforming to `FoundationModels.Tool` inside apfel, or otherwise registers a live tool implementation with the framework, it MUST also add the companion `ApfelError` classifier branch and an integration test that exercises the throw path end-to-end. Reopen #119 with the PR.
 
@@ -323,7 +325,7 @@ This runs locally (not on GitHub Actions - GitHub runners lack Apple Intelligenc
 1. Preflight checks (clean tree, on main, up to date with origin)
 2. Bumps `.version` (patch/minor/major)
 3. Builds the release binary
-4. Runs ALL unit tests (1396)
+4. Runs ALL unit tests (1479)
 5. Runs ALL integration test suites under `Tests/integration/` with real Apple Intelligence via directory discovery (cli_e2e, performance, openai_client, openapi_spec, openapi_conformance, security, server_validation, mcp_server, mcp_remote, plus model-free helpers like test_chat, test_brew_service, test_man_page, test_build_info, test_apfelcore_*). `APFEL_REQUIRE_FULL=1` fails the release on any skip (#227)
 6. Stamps the `[Unreleased]` CHANGELOG section as the new version (`scripts/stamp-changelog.sh`), then commits `.version`, `README.md`, `Sources/BuildInfo.swift`, and `CHANGELOG.md` and pushes to `main`
 7. Creates git tag (`v<version>`) and pushes it
@@ -378,9 +380,9 @@ Model-dependent tests carry `@pytest.mark.model`; CI selects the rest with `-m "
 
 **What GitHub CI runs (automatic, every push/PR):**
 - Build (release binary)
-- 1396 unit tests (pure Swift, no model needed)
-- 306 model-free integration tests, selected by marker (`-m "not model"`), not by an explicit file list: the CLI, man-page, model-free HTTP server, bundled-calculator, EXAMPLES TOC, CHANGELOG-gate, marker-discipline, CI-python-env (#477) and ApfelCore consumer/examples suites. The #213 permit-leak suite runs as its own serial step (#434).
-- Total: 1702 tests
+- 1479 unit tests (pure Swift, no model needed)
+- 327 model-free integration tests, selected by marker (`-m "not model"`), not by an explicit file list: the CLI, man-page, model-free HTTP server, bundled-calculator, EXAMPLES TOC, CHANGELOG-gate, marker-discipline, CI-python-env (#477) and ApfelCore consumer/examples suites. The #213 permit-leak suite runs as its own serial step (#434).
+- Total: 1806 tests
 
 **What GitHub CI CANNOT run (no Apple Intelligence, `@pytest.mark.model`):**
 - Model-marked completion tests within cli_e2e, security, openapi_spec, and server_validation
@@ -388,11 +390,11 @@ Model-dependent tests carry `@pytest.mark.model`; CI selects the rest with `-m "
 - MCP tool execution tests (mcp_server, mcp_remote)
 - Benchmark tests (performance)
 - Chat mode tests (test_chat)
-- Total: 265 integration tests (571 full - 306 model-free)
+- Total: 259 integration tests (586 full - 327 model-free)
 
 **What runs the full suite (local, before every release):**
 - `make preflight` or `make release` on a Mac with Apple Intelligence
-- 1396 unit + 571 integration = 1841 tests, 0 skipped
+- 1479 unit + 586 integration = 2065 tests, 0 skipped
 - Release scripts use directory discovery (`Tests/integration/`), not explicit file lists
 - This is the REAL qualification gate. GitHub CI is a safety net, not the source of truth.
 
