@@ -11,6 +11,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 - Hummingbird 2.26.0 -> 2.27.1. 2.27.1 fixes a lost `produceMore` event that could hang a request body when an inbound-close handler is in use - the mechanism the server now uses to cancel abandoned requests (#542).
 
+### Fixed
+
+- Non-streaming `/v1/chat/completions` and `/v1/responses` requests now cancel generation and release their concurrency permit when the client disconnects mid-flight. Before, the handler ran `collectStream` to completion and held the semaphore - clients that retried on timeout stacked up and after `--max-concurrent` of them every new request got 429. The fix wraps both routes in Hummingbird's `consumeWithCancellationOnInboundClose`, which detects inbound TCP close and cancels the handler task. Trade-off: HTTP keep-alive is lost on these routes; on localhost the reconnection cost is negligible (#542).
+
 ## [1.17.0] - 2026-11-11
 
 ### Added
@@ -43,6 +47,7 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 - On macOS 27, reasoning entries in a transcript (`Transcript.Entry.reasoning`) now count toward the chars/4 token estimate apfel falls back to when the tokenizer is unavailable; before they were skipped and the estimate came out low. The exact tokenizer path was not affected. Builds against the macOS 27 SDK are free of the non-exhaustive-switch warnings this caused, and source comments no longer name a fixed context size (#513, #192, #330).
 - On macOS 27, when the model refuses after a tool-policy repair round, the refusal's `usage` now includes the earlier round instead of dropping it: the earlier round's runtime-reported tokens plus the counted refused round, in chat (streaming and non-streaming), the tool-calling path and `/v1/responses`. On macOS 26 the numbers are unchanged. New ApfelCore helper `TokenUsage.refusal(completedRounds:refusedRound:)` (#516).
 - `brew install apfel` on macOS 27 gets the macOS 27 error behaviour (the real token count and window on context overflow, `Retry-After` on rate limits) like the release tarball does. The runtime decides by the binary's SDK stamp, and SwiftPM's default build system - which homebrew-core uses - stamped `sdk 26.0` even on the 27 SDK (the 1.16.0 bottle measured `minos 26.0 sdk 26.0`). `Package.swift` now pins the stamp to `26.0` / `27.0` for every build system; CI checks it on the binary (#521).
+- Non-streaming `/v1/chat/completions` and `/v1/responses` requests now cancel generation and release their concurrency permit when the client disconnects mid-flight. Before, the handler ran `collectStream` to completion and held the semaphore - clients that retried on timeout stacked up and after `--max-concurrent` of them every new request got 429. The fix wraps both routes in Hummingbird's `consumeWithCancellationOnInboundClose`, which detects inbound TCP close and cancels the handler task. Trade-off: HTTP keep-alive is lost on these routes; on localhost the reconnection cost is negligible (#542).
 
 ## [1.16.0] - 2026-10-05
 
