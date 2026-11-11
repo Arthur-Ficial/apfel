@@ -143,6 +143,9 @@ public actor FoundationModelsBackend: GenerationBackend {
             switch segment {
             case .text(let t): return t.content
             case .structure(let s): return s.content.jsonString
+            // macOS 27 image attachments have no text form in EngineTranscript:
+            // the text around them is kept, the image itself is not persisted.
+            case .attachment: return nil
             @unknown default: return nil
             }
         }.joined(separator: "\n")
@@ -181,6 +184,11 @@ public actor FoundationModelsBackend: GenerationBackend {
             return calls.map { .toolCall(toolName: $0.toolName, argumentsJSON: $0.arguments.jsonString) }
         case .toolOutput(let o):
             return [.toolOutput(toolName: o.toolName, content: joinedText(o.segments))]
+        case .reasoning:
+            // macOS 27 reasoning is the model's internal thinking for a turn;
+            // the visible response carries the result, so a persisted
+            // conversation resumes without it.
+            return []
         @unknown default:
             return []
         }
