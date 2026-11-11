@@ -632,3 +632,57 @@ def test_remote_202_on_notification_still_attaches(apfel_remote_mcp_url):
     resp = httpx.get(f"{base}/health", timeout=10)
     assert resp.status_code == 200
     assert resp.json()["model_available"] is True
+
+
+class _EndlessBodyHandler(BaseHTTPRequestHandler):
+    """Stub MCP server whose initialize response never ends: no Content-Length,
+    bytes keep flowing (Fable review F12). URLSession's timeout is an idle
+    timeout, so a body that keeps arriving was buffered without bound before
+    the 10 MB cap was checked."""
+
+    def log_message(self, fmt, *args):
+        pass
+
+    def do_POST(self):
+        self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        chunk = b" " * 65536
+        try:
+            while True:
+                self.wfile.write(chunk)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+
+@pytest.fixture(scope="module")
+def endless_body_port():
+    import threading
+    from http.server import ThreadingHTTPServer
+
+    port = find_free_port()
+    server = ThreadingHTTPServer(("127.0.0.1", port), _EndlessBodyHandler)
+    server.daemon_threads = True
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    if not _wait_for_port(port):
+        pytest.fail("endless-body stub server did not start in time")
+    yield port
+    server.shutdown()
+
+
+def test_remote_mcp_endless_response_stops_at_the_size_cap(endless_body_port):
+    """The remote MCP size cap must apply while reading, not after: apfel has
+    to give up at the cap with a clear error instead of buffering forever."""
+    try:
+        result = subprocess.run(
+            [str(BINARY), "--serve", "--port", str(find_free_port()),
+             "--mcp", f"http://127.0.0.1:{endless_body_port}/mcp"],
+            capture_output=True, timeout=60, stdin=subprocess.DEVNULL,
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail("apfel kept reading an endless MCP response for 60 s (no size cap while streaming)")
+    stderr = result.stderr.decode("utf-8", errors="replace")
+    assert result.returncode != 0, stderr[:500]
+    assert "size limit" in stderr, stderr[:500]

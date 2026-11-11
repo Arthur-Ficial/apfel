@@ -23,6 +23,8 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ### Fixed
 
+- A remote MCP server (`--mcp https://...`) that keeps sending is cut off at the 10 MB response cap while reading; before, the cap was checked only after the whole body was in memory, and the request timeout is an idle timeout, so an endless response was buffered without bound.
+- `--debug` keeps at most 64 KiB of each request body in the log store and on stderr (with a marker naming the full size); bodies can be 24 MiB on macOS 27, and 1000 of them were kept whole. New `LogBody.truncatedUTF8(_:limit:)` in ApfelCore.
 - A streamed answer that runs into the context window keeps its content: with `response_format: json_object`, while the tool-call gate was holding, or under a forced `tool_choice`, the stream sent `finish_reason: "length"` and no text (the same request without streaming returned 2058 characters). A cut-off `json_object` answer also loses its unclosed ```` ```json ```` opening fence in both modes (new `JSONFenceStripper.stripTruncated(_:)` in ApfelCore).
 - `response_format: json_object` holds after an MCP tool round on `apfel --serve --mcp`: "What is 247 times 83?" came back as prose ("247 times 83 is 20,501.") instead of JSON.
 - The MCP auto-execute path reports `finish_reason: "length"` when `max_tokens` cuts the answer, instead of always `"stop"`. A streamed answer after a tool-policy repair round decides `length` vs `stop` from the final round's tokens, not the sum with the discarded round.

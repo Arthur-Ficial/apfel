@@ -30,7 +30,7 @@ struct ChatRequestTrace: Sendable {
 
 func capturedRequestBody(_ body: ByteBuffer, debugEnabled: Bool) -> String? {
     guard debugEnabled else { return nil }
-    return body.getString(at: body.readerIndex, length: body.readableBytes) ?? ""
+    return LogBody.truncatedUTF8(body.readableBytesView)
 }
 
 // MARK: - /v1/chat/completions
