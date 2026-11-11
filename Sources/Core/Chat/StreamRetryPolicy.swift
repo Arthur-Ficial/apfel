@@ -75,8 +75,8 @@ public actor StreamPrintSink {
     public func feed(cumulative content: String) {
         if emittedCount > 0 {
             let convergent = content.unicodeScalars.count <= emittedCount
-                ? emittedText.hasPrefix(content)
-                : content.hasPrefix(emittedText)
+                ? emittedText.unicodeScalars.starts(with: content.unicodeScalars)
+                : content.unicodeScalars.starts(with: emittedText.unicodeScalars)
             if !convergent {
                 emit("\n[retry: new response]\n")
                 emit(content)
