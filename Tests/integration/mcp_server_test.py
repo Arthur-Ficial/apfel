@@ -946,8 +946,13 @@ def test_max_tokens_respected_with_mcp():
     assert content is not None
     # With max_tokens=10, the response should be short
     assert len(content.split()) <= 30, f"Response too long for max_tokens=10: {len(content.split())} words"
-    # Fable review F5: the MCP path hardcoded "stop"; a cap hit is "length".
-    assert data["choices"][0]["finish_reason"] == "length", data["choices"][0]
+    # Fable review F5: the MCP path hardcoded "stop". finish_reason must agree
+    # with the reported usage: "length" exactly when the completion reached
+    # max_tokens. (A short refusal can finish under the cap; on macOS 26.0-26.3
+    # the chars/4 estimate can also land under it.)
+    finish = data["choices"][0]["finish_reason"]
+    completion = data["usage"]["completion_tokens"]
+    assert finish == ("length" if completion >= 10 else "stop"), (finish, completion, content)
 
 
 def test_json_mode_survives_an_mcp_tool_round():
