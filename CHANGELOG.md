@@ -7,6 +7,8 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.17.0] - 2026-11-11
+
 ### Added
 
 - Bare `apfel` at an interactive terminal (stdin AND stdout on a TTY) now prints a 4-line welcome (one-shot, `--chat`, `--help` entry points) and starts an interactive chat instead of failing with usage/exit 2. The historical contract is kept whenever stdout is redirected (usage on stderr, exit 2, empty stdout, #250), so scripts can never hang on a hidden prompt; an unavailable model still shows the existing remediation text and exits 5. Decision policy (`NoArgsLaunch`) and banner (`WelcomeBanner`) are pure ApfelCLI and unit-tested.
