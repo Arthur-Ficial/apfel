@@ -5,7 +5,7 @@
 // Owns the LanguageModelSession and the conversion between apfel's pure
 // `EngineTranscript.Entry` and the SDK's `Transcript.Entry`. Counting and
 // model facts go through TokenCounter (runtime context window, never a
-// literal). Compiles against the macOS 26 SDK.
+// literal).
 // ============================================================================
 
 import Foundation
@@ -16,7 +16,14 @@ public actor FoundationModelsBackend: GenerationBackend {
     private var session: LanguageModelSession
     private var options: EngineOptions
 
-    public init(systemPrompt: String? = nil, permissive: Bool = false) {
+    /// Reads the model variant's display name. Defaults to the runtime
+    /// (`readModelVariantName`: macOS 27's `SystemLanguageModel.variant`, nil
+    /// on macOS 26); tests substitute a fixed value.
+    private let variantName: @Sendable () -> String?
+
+    public init(systemPrompt: String? = nil, permissive: Bool = false,
+                variantName: @escaping @Sendable () -> String? = { readModelVariantName() }) {
+        self.variantName = variantName
         var options = EngineOptions.defaults
         options.permissiveGuardrails = permissive
         self.options = options
@@ -118,7 +125,7 @@ public actor FoundationModelsBackend: GenerationBackend {
             availability: await tc.availability,
             contextWindow: await tc.contextWindow,
             capabilities: await tc.capabilitiesReport,
-            variantName: TokenCounter.variantReader())
+            variantName: variantName())
     }
 
     public func prewarm() async {

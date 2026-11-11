@@ -37,14 +37,6 @@ func exitCode(for error: ApfelError) -> Int32 {
     ApfelExitCodes.code(for: error)
 }
 
-// MARK: - Engine wiring
-
-// ApfelEngine compiles against the macOS 26 SDK; the macOS-27 capabilities
-// reader (VisionSupport.readModelCapabilities) is injected here, once, at
-// process start - keeping the OS-27 availability decision in the main target.
-TokenCounter.capabilitiesReader = { readModelCapabilities() }
-TokenCounter.variantReader = { readModelVariantName() }
-
 // MARK: - Locale
 
 // Adopt the user's LC_CTYPE from the environment (LANG/LC_*). apfel otherwise

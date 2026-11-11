@@ -49,7 +49,7 @@ public struct EngineModelInfo: Sendable {
     public let contextWindow: ContextWindow
     public let capabilities: CapabilitiesReport
     /// Model variant display name (e.g. "AFM 3 Core"), read from the injected
-    /// `TokenCounter.variantReader`; nil where the OS does not report one
+    /// runtime (`readModelVariantName`); nil where the OS does not report one
     /// (macOS 26).
     public let variantName: String?
 
@@ -118,15 +118,12 @@ extension Engine {
 // MARK: - Factory
 
 public enum EngineFactory {
-    /// The ONE place a macOS-27-specialized engine would be selected.
-    /// Today both branches return the shared on-device engine: the
-    /// 27-specialized variant (runtime-reported usage events, tool-calling
-    /// mode) requires building against the macOS 27 SDK and is deferred -
-    /// the surface above is already shaped for it (`EngineEvent.usage`).
+    /// The ONE place a macOS-27-specialized engine would be selected. Today
+    /// there is a single on-device engine for macOS 26 and 27: the OS-27
+    /// differences (runtime-reported usage, capabilities, variant name) are
+    /// decided inside the shared helpers, and the surface above is already
+    /// shaped for a specialized variant (`EngineEvent.usage`).
     public static func make(systemPrompt: String? = nil, permissive: Bool = false, errorRecovery: ErrorRecovery = .preserve) -> any Engine {
-        if #available(macOS 27, *) {
-            return OnDeviceEngine(systemPrompt: systemPrompt, permissive: permissive, errorRecovery: errorRecovery)
-        }
-        return OnDeviceEngine(systemPrompt: systemPrompt, permissive: permissive, errorRecovery: errorRecovery)
+        OnDeviceEngine(systemPrompt: systemPrompt, permissive: permissive, errorRecovery: errorRecovery)
     }
 }

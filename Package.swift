@@ -7,6 +7,9 @@ let package = Package(
     platforms: [.macOS(.v26)],
     products: [
         .library(name: "ApfelCore", targets: ["ApfelCore"]),
+        // Preview: may change in minor releases until it has a shipped
+        // consumer (STABILITY.md, docs/swift-library.md).
+        .library(name: "ApfelEngine", targets: ["ApfelEngine"]),
         .executable(name: "apfel", targets: ["apfel"])
     ],
     dependencies: [

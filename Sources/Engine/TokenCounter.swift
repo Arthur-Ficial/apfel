@@ -12,17 +12,6 @@ import ApfelCore
 public actor TokenCounter {
     public static let shared = TokenCounter()
 
-    /// Reads the model's reported capabilities. Injected by the host process
-    /// (the apfel main target wires its macOS-27-gated reader at startup) so
-    /// the OS-27 availability decision stays out of this library - ApfelEngine
-    /// compiles against the macOS 26 SDK. The default is the honest
-    /// "not reported" marker.
-    public nonisolated(unsafe) static var capabilitiesReader: @Sendable () -> CapabilitiesReport = { .notReported }
-
-    /// Reads the model variant's display name (macOS 27's
-    /// `SystemLanguageModel.variant`). Injected by the host process exactly
-    /// like `capabilitiesReader`; the default is the honest macOS 26 answer.
-    public nonisolated(unsafe) static var variantReader: @Sendable () -> String? = { nil }
     private let model = SystemLanguageModel.default
 
     /// Tracks the largest context size the model has reported, and whether a
@@ -110,7 +99,7 @@ public actor TokenCounter {
     /// the SDK; macOS 26 returns the honest `reported == false` marker.
     public var capabilitiesReport: CapabilitiesReport {
         if let cached = _capabilitiesCache { return cached }
-        let report = Self.capabilitiesReader()
+        let report = readModelCapabilities()
         if !report.reported || !report.names.isEmpty {
             _capabilitiesCache = report
         }

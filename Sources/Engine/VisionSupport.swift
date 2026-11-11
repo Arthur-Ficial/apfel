@@ -184,7 +184,7 @@ public func readModelCapabilities() -> CapabilitiesReport {
 }
 
 /// The on-device model variant's display name; nil on macOS 26, which does
-/// not report one. Injected into `TokenCounter.variantReader` from main.swift.
+/// not report one. Read by `FoundationModelsBackend.modelInfo()`.
 public func readModelVariantName() -> String? {
     if #available(macOS 27, *) {
         return SystemLanguageModel.default.variant.displayName

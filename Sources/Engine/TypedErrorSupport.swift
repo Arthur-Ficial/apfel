@@ -32,7 +32,7 @@ public func classifyModelError(_ error: Error) -> ApfelError {
 /// `withRetry` for every main-target call site: retries are decided by
 /// `classifyModelError`, so a typed macOS 27 `rateLimited` is retried
 /// whatever language its localized description is in (#522).
-func withModelRetry<T: Sendable>(
+public func withModelRetry<T: Sendable>(
     maxRetries: Int,
     operation: @Sendable () async throws -> T
 ) async throws -> T {
