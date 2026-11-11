@@ -57,4 +57,29 @@ func runTokenUsageTests() {
         let b = TokenUsage(promptTokens: 10, completionTokens: 20, cachedPromptTokens: 30)
         try assertEqual(TokenUsage.sum([a, b]), TokenUsage.sum([b, a]))
     }
+
+    // MARK: - refusal(completedRounds:refusedRound:) (#516)
+
+    test("refusal with no completed rounds is the counted refused round (macOS 26 parity)") {
+        let counted = TokenUsage(promptTokens: 120, completionTokens: 9)
+        try assertEqual(TokenUsage.refusal(completedRounds: [], refusedRound: counted), counted)
+    }
+
+    test("refusal after a reported repair round adds that round, not replaces the refused one") {
+        let firstRound = TokenUsage(promptTokens: 60, completionTokens: 25, cachedPromptTokens: 10)
+        let refused = TokenUsage(promptTokens: 110, completionTokens: 8)
+        let total = TokenUsage.refusal(completedRounds: [firstRound], refusedRound: refused)
+        try assertEqual(total.promptTokens, 170, "both rounds' input is billed")
+        try assertEqual(total.completionTokens, 33, "discarded round output + refusal text")
+        try assertEqual(total.cachedPromptTokens, 10)
+        try assertEqual(total.totalTokens, 203)
+    }
+
+    test("refusal sums every completed round") {
+        let rounds = [TokenUsage(promptTokens: 1, completionTokens: 2),
+                      TokenUsage(promptTokens: 10, completionTokens: 20)]
+        let total = TokenUsage.refusal(completedRounds: rounds,
+                                       refusedRound: TokenUsage(promptTokens: 100, completionTokens: 200))
+        try assertEqual(total, TokenUsage(promptTokens: 111, completionTokens: 222))
+    }
 }

@@ -303,9 +303,14 @@ private func responsesNonStreamingResponse(
         let classified = classifyModelError(error)
         if case .refusal(let explanation) = classified {
             // Wire parity with chat: a refusal is a 200 with a refusal part.
-            // A thrown refusal carries no runtime-reported usage: count.
-            let refusalPromptTokens = await promptTokens.resolve()
-            let completionTokens = await TokenCounter.shared.count(explanation)
+            // A thrown refusal carries no runtime-reported usage: count it,
+            // plus the completed rounds' reported usage (macOS 27, #516).
+            let refusalUsage = TokenUsage.refusal(
+                completedRounds: usageRounds,
+                refusedRound: TokenUsage(promptTokens: await promptTokens.resolve(),
+                                         completionTokens: await TokenCounter.shared.count(explanation)))
+            let refusalPromptTokens = refusalUsage.promptTokens
+            let completionTokens = refusalUsage.completionTokens
             let envelope = echo.envelope(
                 id: id, created: created, status: "completed",
                 output: [.message(id: "msg_\(UUID().uuidString.prefix(12).lowercased())",
