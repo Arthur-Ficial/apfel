@@ -17,7 +17,7 @@ public enum ServeStartupNotice {
     public static func message(availability: ModelAvailability) -> String? {
         guard !availability.isAvailable else { return nil }
         return """
-        model unavailable: \(availability.shortLabel) — starting anyway.
+        model unavailable: \(availability.shortLabel) - starting anyway.
         The server will answer /health and /v1/models, but completion requests will fail until the model is available.
 
         \(availability.remediation)

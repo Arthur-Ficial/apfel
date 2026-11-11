@@ -21,10 +21,13 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ### Added
 
-- Bare `apfel` at an interactive terminal (stdin AND stdout on a TTY) now prints a 4-line welcome (one-shot, `--chat`, `--help` entry points) and starts an interactive chat instead of failing with usage/exit 2. The historical contract is kept whenever stdout is redirected (usage on stderr, exit 2, empty stdout, #250), so scripts can never hang on a hidden prompt; an unavailable model still shows the existing remediation text and exits 5. Decision policy (`NoArgsLaunch`) and banner (`WelcomeBanner`) are pure ApfelCLI and unit-tested
-- `unknown option` errors now suggest the nearest known flag ("did you mean --serve?") for conservative near-misses (edit distance <= 2, flag core >= 4 chars) and always point at `apfel --help`. Pure `FlagSuggestion` in ApfelCLI, unit-tested
-- `apfel --serve` with the model unavailable prints a loud startup notice on stderr naming the reason and the remediation; the server still starts (availability can flip while running, /health and /v1/models work regardless). Notice text is pure ApfelCLI (`ServeStartupNotice`) and unit-tested
-- `--help` OPTIONS are grouped (Generation / Input & output / Tools (MCP) / Diagnostics / Meta) with no flag added, removed or renamed. The text moved to ApfelCLI (`UsageText`) so unit tests guard both the grouping and full `knownFlags` coverage; the `OPTIONS:` / `CONTEXT OPTIONS:` / `SERVER OPTIONS:` section headers parsed by the drift tests are unchanged
+- Bare `apfel` at an interactive terminal (stdin AND stdout on a TTY) now prints a 4-line welcome (one-shot, `--chat`, `--help` entry points) and starts an interactive chat instead of failing with usage/exit 2. The historical contract is kept whenever stdout is redirected (usage on stderr, exit 2, empty stdout, #250), so scripts can never hang on a hidden prompt; an unavailable model still shows the existing remediation text and exits 5. Decision policy (`NoArgsLaunch`) and banner (`WelcomeBanner`) are pure ApfelCLI and unit-tested.
+- `unknown option` errors now suggest the nearest known flag ("did you mean --serve?") for conservative near-misses (edit distance <= 2, flag core >= 4 chars) and always point at `apfel --help`. Pure `FlagSuggestion` in ApfelCLI, unit-tested.
+- `apfel --serve` with the model unavailable prints a loud startup notice on stderr naming the reason and the remediation; the server still starts (availability can flip while running, /health and /v1/models work regardless). Notice text is pure ApfelCLI (`ServeStartupNotice`) and unit-tested.
+
+### Changed
+
+- `--help` OPTIONS are grouped (Generation / Input & output / Tools (MCP) / Diagnostics / Meta) with no flag added, removed or renamed. The text moved to ApfelCLI (`UsageText`) so unit tests guard both the grouping and full `knownFlags` coverage; the `OPTIONS:` / `CONTEXT OPTIONS:` / `SERVER OPTIONS:` section headers parsed by the drift tests are unchanged.
 
 ## [1.16.0] - 2026-10-05
 

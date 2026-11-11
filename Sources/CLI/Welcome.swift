@@ -33,7 +33,7 @@ public enum NoArgsLaunch {
 public enum WelcomeBanner {
     public static func lines(appName: String) -> [String] {
         [
-            "Welcome to \(appName) — Apple Intelligence from the command line.",
+            "Welcome to \(appName) - the free AI already on your Mac.",
             "  one-shot prompt:  \(appName) \"What is the capital of Austria?\"",
             "  chat:             \(appName) --chat   (starting it for you now)",
             "  everything else:  \(appName) --help",

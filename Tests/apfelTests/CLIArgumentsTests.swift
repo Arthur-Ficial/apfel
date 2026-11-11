@@ -1336,6 +1336,16 @@ func runCLIArgumentsTests() {
         try assertTrue(msg!.lowercased().contains("starting anyway"))
     }
 
+    test("welcome banner and serve notice use plain hyphens, and the banner carries the claim") {
+        let banner = WelcomeBanner.lines(appName: "apfel").joined(separator: "\n")
+        let notice = ServeStartupNotice.message(availability: .appleIntelligenceNotEnabled) ?? ""
+        for text in [banner, notice] {
+            try assertTrue(!text.contains("\u{2014}") && !text.contains("\u{2013}"),
+                           "em/en dash in user-facing text: \(text)")
+        }
+        try assertTrue(banner.contains("the free AI already on your Mac"), "banner: \(banner)")
+    }
+
     // MARK: - grouped --help text
 
     test("usage text keeps the parsed section headers intact") {
