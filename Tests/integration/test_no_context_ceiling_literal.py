@@ -1,36 +1,27 @@
-"""No-literal-ceiling guard (#513, #192, #330) - pure source scan.
+"""No fixed context size in source prose (#513, #192, #330) - pure source scan.
 
-The context window is dynamic (4096 on M1/M2, 8192 on M3+ with 12 GB+,
-subject to change by Apple). Prose comments that say "the 4096-token ceiling"
-or "the 4096-token context ceiling" bake a stale number into the source.
-
-This model-free scan catches the two known patterns and keeps them from
-creeping back.
+The context window is read at runtime and differs per machine (4096 on macOS
+26 and on M1/M2, 8192 on macOS 27 with an M3 or newer chip and 12 GB+, and
+Apple may change it). A comment or message that says "the 4096-token window"
+bakes a stale number into the source and the next reader trusts it. The one
+deliberate number, ContextWindow's warm-up floor (#491), is written as a bare
+integer and documented as an assumption, so it does not match.
 """
 import pathlib
 import re
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 SOURCES = ROOT / "Sources"
+PATTERN = re.compile(r"\b(4096|8192)-token\b", re.IGNORECASE)
 
 
-def _swift_files():
-    """All .swift files under Sources/, recursively."""
-    return sorted(SOURCES.rglob("*.swift"))
-
-
-def test_no_4096_token_ceiling_in_comments():
-    """No Swift source comment should say '4096-token ceiling' (#513)."""
-    pattern = re.compile(r"4096-token\s+.*ceiling|4096-token\s+ceiling", re.IGNORECASE)
+def test_no_fixed_token_window_in_sources():
     hits = []
-    for path in _swift_files():
+    for path in sorted(SOURCES.rglob("*.swift")):
         for i, line in enumerate(path.read_text().splitlines(), 1):
-            stripped = line.lstrip()
-            if not stripped.startswith("//"):
-                continue
-            if pattern.search(stripped):
+            if PATTERN.search(line):
                 hits.append(f"  {path.relative_to(ROOT)}:{i}: {line.strip()}")
     assert not hits, (
-        "Found '4096-token ceiling' in source comments - use 'the context window' instead:\n"
+        "Found a fixed token window in Sources/ - say 'the context window' instead:\n"
         + "\n".join(hits)
     )
