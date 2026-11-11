@@ -7,6 +7,11 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `make build` / `make install` now fails early with a clear message when the active SDK is older than macOS 27, instead of falling through to `swift build` which produces cryptic compiler errors about missing FoundationModels types. Since v1.15.0 the sources use macOS 27-only API (`LanguageModelSession.Usage`, `LanguageModelCapabilities`, etc.) behind runtime `#available` gates; the compiler needs the 27 SDK to see those declarations even though the binary runs on macOS 26. Prebuilt binaries (`brew install apfel`, nixpkgs) are unaffected (#520).
+- CI builds on GitHub's `xcode-27` runner (macOS 27 SDK) and is green again; a new `macos-26-launch` job starts the SDK-27-built binary on a real macOS 26 runner (deployment floor `26.0`, `--version`, `--model-info`, `--serve` + `/health`), so a strongly linked macOS 27-only symbol can no longer slip into a release unnoticed (#520, #205).
+
 ## [1.16.0] - 2026-10-05
 
 ### Added
@@ -20,7 +25,6 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ### Fixed
 
-- `make build` / `make install` now fails early with a clear message when the active SDK is older than macOS 27, instead of falling through to `swift build` which produces cryptic compiler errors about missing FoundationModels types. Since v1.15.0 the sources use macOS 27-only API (`LanguageModelSession.Usage`, `LanguageModelCapabilities`, etc.) behind runtime `#available` gates; the compiler needs the 27 SDK to see those declarations even though the binary runs on macOS 26 (#520).
 - A context overflow in the middle of a streamed answer on macOS 27 truncates gracefully again (`finish_reason: length`, partial content kept, exit 0) instead of discarding the streamed text with exit 4 / HTTP 400: the typed `contextWindowExceeded` case is now treated like `contextOverflow` by the stream resolver. macOS 26 was never affected (#510).
 
 ## [1.15.0] - 2026-10-05

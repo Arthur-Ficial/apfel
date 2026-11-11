@@ -11,7 +11,8 @@ permissions:
 
 jobs:
   build-and-test:
-    runs-on: macos-26
+    # The sources need the macOS 27 SDK (#520); macos-26 images ship Xcode 26.
+    runs-on: xcode-27
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -31,6 +32,14 @@ jobs:
       - name: Build
         # Use make so generate-man-page (and generate-build-info) run too.
         run: make build
+
+      - name: Upload release binary for the macOS 26 launch check
+        uses: actions/upload-artifact@v7
+        with:
+          name: apfel-release-binary
+          path: .build/release/apfel
+          if-no-files-found: error
+          retention-days: 3
 
       - name: Unit tests
         run: swift run apfel-tests
@@ -86,6 +95,9 @@ jobs:
           # turn marker rot into a red build.
           python3 -m pytest Tests/integration/test_marker_discipline.py -v --tb=short
 
+          # CI toolchain guards (#520): build on the 27 SDK, launch on macOS 26.
+          python3 -m pytest Tests/integration/test_ci_sdk.py -v --tb=short
+
           # Note: performance_test.py requires Apple Intelligence (benchmark runs inference).
           # It runs locally via make preflight / make release.
 
@@ -138,6 +150,51 @@ jobs:
           rm -f /tmp/apfel-server.pid /tmp/apfel-mcp.pid
           exit $STATUS
 
+  macos-26-launch:
+    # One binary, macOS 26 AND 27 (#205, #520): the binary built on the 27 SDK
+    # must start on a real macOS 26 machine. A 27-only symbol linked strongly
+    # instead of weakly would crash it at launch here while every test on the
+    # 27 runner stays green. The runner has no Apple Intelligence, so this
+    # checks loading, flag parsing and the server's model-free paths only; the
+    # model suite on macOS 26 runs locally before each release.
+    needs: build-and-test
+    runs-on: macos-26
+    steps:
+      - name: Download release binary
+        uses: actions/download-artifact@v8
+        with:
+          name: apfel-release-binary
+          path: bin
+
+      - name: Launch on macOS 26
+        run: |
+          set -euo pipefail
+          chmod +x bin/apfel
+          sw_vers
+          vtool -show-build bin/apfel | tee /tmp/build.txt
+          grep -q "minos 26.0" /tmp/build.txt || { echo "::error::deployment floor is not macOS 26.0"; exit 1; }
+          bin/apfel --version
+          bin/apfel --help >/dev/null
+          # No Apple Intelligence on the VM: an honest non-zero exit is fine,
+          # a crash (signal, exit >= 128) is not.
+          set +e
+          bin/apfel --model-info; rc=$?
+          set -e
+          echo "--model-info exit: $rc"
+          if [ "$rc" -ge 128 ]; then echo "::error::apfel crashed on macOS 26 (exit $rc)"; exit 1; fi
+
+      - name: Server starts and answers on macOS 26
+        run: |
+          set -euo pipefail
+          bin/apfel --serve --port 11434 2>/tmp/serve.log & pid=$!
+          for i in $(seq 1 15); do
+            if curl -sf http://localhost:11434/health >/tmp/health.json; then break; fi
+            sleep 1
+          done
+          cat /tmp/health.json
+          curl -sf http://localhost:11434/v1/models
+          kill "$pid"
+
   changelog-gate:
     # Permanent guard (#369): a PR that changes production source (Sources/**,
     # excluding the generated BuildInfo.swift) must carry a non-empty
@@ -159,7 +216,8 @@ jobs:
         run: bash scripts/check-changelog.sh "origin/${{ github.base_ref }}"
 
   apfelcore-public-api:
-    runs-on: macos-26
+    # The sources need the macOS 27 SDK (#520); macos-26 images ship Xcode 26.
+    runs-on: xcode-27
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
