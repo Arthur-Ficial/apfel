@@ -55,4 +55,16 @@ public struct TokenUsage: Sendable, Equatable {
         }
         return total
     }
+
+    /// Usage of a request whose last model call threw a refusal (#516).
+    ///
+    /// The calls that completed before it (a tool-policy repair round's first
+    /// attempt, say) reported their own usage on macOS 27; the refused call
+    /// reports none, so the caller counts it. The request is billed for both.
+    /// On macOS 26 no call reports usage, `completedRounds` is empty and the
+    /// result is exactly the counted refused round - unchanged on the wire.
+    public static func refusal(completedRounds: [TokenUsage], refusedRound: TokenUsage) -> TokenUsage {
+        guard let completed = sum(completedRounds) else { return refusedRound }
+        return completed.adding(refusedRound)
+    }
 }
