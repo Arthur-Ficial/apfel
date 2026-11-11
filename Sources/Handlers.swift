@@ -30,7 +30,7 @@ struct ChatRequestTrace: Sendable {
 
 func capturedRequestBody(_ body: ByteBuffer, debugEnabled: Bool) -> String? {
     guard debugEnabled else { return nil }
-    return body.getString(at: body.readerIndex, length: body.readableBytes) ?? ""
+    return LogBody.truncatedUTF8(body.readableBytesView)
 }
 
 // MARK: - /v1/chat/completions
@@ -395,7 +395,8 @@ private func mcpAutoExecuteResponse(
             mcpManager: serverState.mcpManager,
             userPrompt: userPrompt,
             messages: originalMessages,
-            sessionOptions: sessionOptions
+            sessionOptions: sessionOptions,
+            jsonMode: jsonMode
         ) {
             for log in executed.toolLog {
                 if serverState.config.debug {
@@ -429,14 +430,23 @@ private func mcpAutoExecuteResponse(
     // Usage: the summed runtime-reported rounds (macOS 27+), else the counted
     // numbers (macOS 26 - unchanged on the wire).
     let usage: TokenUsage
+    // finish_reason from the call that produced the delivered answer, like
+    // every other path: a max_tokens cap shows as "length" (Fable review F5).
+    let finalRoundCompletionTokens: Int
     if let reported = TokenUsage.sum(usageRounds) {
         usage = reported
+        finalRoundCompletionTokens = usageRounds.last?.completionTokens ?? reported.completionTokens
     } else {
         usage = TokenUsage(
             promptTokens: await promptTokens.resolve(),
             completionTokens: await TokenCounter.shared.count(deliveredContent))
+        finalRoundCompletionTokens = usage.completionTokens
     }
-    let finishReason = "stop"
+    let finishReason = FinishReasonResolver.resolve(
+        hasToolCalls: false,
+        completionTokens: finalRoundCompletionTokens,
+        maxTokens: genOpts.maximumResponseTokens
+    ).openAIValue
 
     if streaming {
         // SSE event order: role -> content -> stop [-> usage when opted in] -> [DONE]
@@ -588,7 +598,11 @@ private func nonStreamingResponse(
         responseMessage = OpenAIMessage(role: "assistant", content: nil, tool_calls: openAIToolCalls)
         deliveredContent = rawContent
     } else {
-        deliveredContent = jsonMode ? JSONFenceStripper.strip(rawContent) : rawContent
+        // A length finish cannot carry a closing fence: drop the unclosed
+        // opening one so the client gets the raw JSON prefix (F2).
+        deliveredContent = jsonMode
+            ? (outcome.finishReason == .length ? JSONFenceStripper.stripTruncated(rawContent) : JSONFenceStripper.strip(rawContent))
+            : rawContent
         responseMessage = OpenAIMessage(role: "assistant", content: .text(deliveredContent))
     }
 
@@ -799,8 +813,13 @@ private func streamingResponse(
                 // Usage: the summed runtime-reported rounds (macOS 27+), else
                 // the counted numbers (macOS 26 - unchanged on the wire).
                 let finalUsage: TokenUsage
+                // finish_reason is about the answer the client receives: the
+                // final round's tokens against max_tokens, not the sum that
+                // includes a discarded repair round (Fable review F8).
+                var finishTokens: Int? = nil
                 if let reported = TokenUsage.sum(usageRounds) {
                     completionTokens = reported.completionTokens
+                    finishTokens = usageRounds.last?.completionTokens
                     finalUsage = reported
                 } else {
                     completionTokens = await TokenCounter.shared.count(deliveredContent)
@@ -810,7 +829,7 @@ private func streamingResponse(
                 }
                 let resolved = FinishReasonResolver.resolve(
                     hasToolCalls: toolCalls != nil,
-                    completionTokens: completionTokens,
+                    completionTokens: finishTokens ?? completionTokens,
                     maxTokens: genOpts.maximumResponseTokens
                 )
                 let finishReason = resolved.openAIValue
@@ -900,6 +919,20 @@ private func streamingResponse(
                 // Output-side context overflow with content already streamed is
                 // a graceful length-finish, not an error. See StreamErrorResolver.
                 if case .truncated(let truncatedContent) = StreamErrorResolver.resolve(prev: prev, error: classified) {
+                    // Deliver what was held back before the overflow (json_object
+                    // buffers everything, the tool gate and a forced tool_choice
+                    // hold a prefix), exactly as the normal end of stream does.
+                    // Without this the client got finish_reason=length and no
+                    // content (Fable review F2).
+                    let pending = jsonMode
+                        ? JSONFenceStripper.stripTruncated(truncatedContent)
+                        : String(truncatedContent.dropFirst(emittedContentCount))
+                    if (jsonMode || emittedContentCount < truncatedContent.count), !pending.isEmpty {
+                        let contentLine = sseDataLine(sseContentChunk(id: id, created: created, content: pending, includeUsage: includeUsage))
+                        responseLines?.append(contentLine.trimmingCharacters(in: .whitespacesAndNewlines))
+                        continuation.yield(ByteBuffer(string: contentLine))
+                        await eventBox.append("buffered content delta before length chars=\(pending.count)")
+                    }
                     // The interrupted round's last snapshot prices the content
                     // streamed before the overflow (macOS 27+), else count.
                     let truncatedUsage: TokenUsage

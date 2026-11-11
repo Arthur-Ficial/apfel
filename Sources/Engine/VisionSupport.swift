@@ -22,21 +22,21 @@ import ApfelCore
 
 /// True when the FoundationModels runtime accepts image attachments and
 /// reports capabilities (macOS 27+). Decided once per process.
-public let runtimeSupportsVision: Bool = {
+package let runtimeSupportsVision: Bool = {
     if #available(macOS 27, *) { return true }
     return false
 }()
 
 /// The server's image-input policy: base64 data URLs up to 20 MB on
 /// macOS 27, the unchanged honest 400 on macOS 26.
-public let serverImagePolicy: ImageInputPolicy = runtimeSupportsVision
+package let serverImagePolicy: ImageInputPolicy = runtimeSupportsVision
     ? .dataURL(maxBase64Bytes: ImageInput.maxBase64Bytes)
     : .unsupported
 
 /// The server's request-body cap: room for one full-size data-URL image
 /// where images can be used at all (macOS 27); the unchanged 1 MiB cap on
 /// macOS 26.
-public let serverMaxRequestBodyBytes: Int = runtimeSupportsVision
+package let serverMaxRequestBodyBytes: Int = runtimeSupportsVision
     ? BodyLimits.visionMaxRequestBodyBytes
     : BodyLimits.maxRequestBodyBytes
 
@@ -59,20 +59,20 @@ public struct PromptImage: Sendable {
 /// One ordered piece of a user turn: text or an image. Mirrors the order of
 /// the OpenAI content parts so the model sees text and images as the client
 /// arranged them.
-public enum PromptPiece: Sendable {
+package enum PromptPiece: Sendable {
     case text(String)
     case image(PromptImage)
 }
 
 /// True when any piece is an image.
-public func hasImagePiece(_ pieces: [PromptPiece]) -> Bool {
+package func hasImagePiece(_ pieces: [PromptPiece]) -> Bool {
     pieces.contains { if case .image = $0 { return true } else { return false } }
 }
 
 /// Decode image bytes into a prompt-ready CGImage via ImageIO, capped at
 /// `imageMaxPixelSize` on the longest side. Animated GIFs use the first
 /// frame (index 0).
-public func decodePromptImage(data: Data, label: String) throws -> PromptImage {
+package func decodePromptImage(data: Data, label: String) throws -> PromptImage {
     let options: [CFString: Any] = [
         kCGImageSourceCreateThumbnailFromImageAlways: true,
         kCGImageSourceThumbnailMaxPixelSize: imageMaxPixelSize,
@@ -91,7 +91,7 @@ public func decodePromptImage(data: Data, label: String) throws -> PromptImage {
 /// error. On an OS without vision support a message that still carries
 /// images (the server validator normally rejects them first; the CLI
 /// `--messages` path arrives here directly) gets the same honest message.
-public func promptPieces(of message: OpenAIMessage) throws -> [PromptPiece] {
+package func promptPieces(of message: OpenAIMessage) throws -> [PromptPiece] {
     switch message.content {
     case .text(let text):
         return [.text(text)]
@@ -130,7 +130,7 @@ public func promptPieces(of message: OpenAIMessage) throws -> [PromptPiece] {
 /// Build the `respond()` prompt for a user turn: plain text when there are
 /// no images (today's exact behavior on both OSes), text + native image
 /// attachments in piece order on macOS 27.
-public func makeUserPrompt(text: String, pieces: [PromptPiece]) -> Prompt {
+package func makeUserPrompt(text: String, pieces: [PromptPiece]) -> Prompt {
     guard hasImagePiece(pieces) else { return Prompt(text) }
     if #available(macOS 27, *) {
         let components: [Prompt] = pieces.map { piece in
@@ -149,7 +149,7 @@ public func makeUserPrompt(text: String, pieces: [PromptPiece]) -> Prompt {
 
 /// Transcript segments for a user turn's pieces - text segments plus, on
 /// macOS 27, native image attachment segments in piece order.
-public func promptSegments(pieces: [PromptPiece]) -> [Transcript.Segment] {
+package func promptSegments(pieces: [PromptPiece]) -> [Transcript.Segment] {
     pieces.compactMap { piece in
         switch piece {
         case .text(let text):

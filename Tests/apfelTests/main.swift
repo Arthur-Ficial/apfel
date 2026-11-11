@@ -78,6 +78,7 @@ suite("ToolCallHandlerTests") { runToolCallHandlerTests() }
 suite("ContextStrategyTests") { runContextStrategyTests() }
 suite("OpenAIModelsTests") { runOpenAIModelsTests() }
 suite("JSONFenceStripperTests") { runJSONFenceStripperTests() }
+suite("LogBodyTests") { runLogBodyTests() }
 suite("CodeCropperTests") { runCodeCropperTests() }
 suite("ChatRequestValidatorTests") { runChatRequestValidatorTests() }
 suite("OriginValidatorTests") { runOriginValidatorTests() }

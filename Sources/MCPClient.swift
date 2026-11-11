@@ -362,13 +362,30 @@ actor RemoteMCPConnection: Sendable {
         if let sid = sessionId { request.setValue(sid, forHTTPHeaderField: "Mcp-Session-Id") }
         request.httpBody = body.data(using: .utf8)
 
-        let (data, response) = try await session.data(for: request)
-
-        guard data.count <= maxRemoteMCPResponseBytes else {
-            throw MCPError.serverError(
-                "Response from \(urlString) exceeded size limit (\(maxRemoteMCPResponseBytes / (1024 * 1024)) MB)"
-            )
+        // Read incrementally and stop at the cap. session.data(for:) buffered
+        // the whole body first, and the request timeout is an idle timeout,
+        // so a server that kept sending was never cut off (Fable review F12).
+        let (bytes, response) = try await session.bytes(for: request)
+        let sizeLimitError = MCPError.serverError(
+            "Response from \(urlString) exceeded size limit (\(maxRemoteMCPResponseBytes / (1024 * 1024)) MB)"
+        )
+        if response.expectedContentLength > Int64(maxRemoteMCPResponseBytes) {
+            throw sizeLimitError
         }
+        var data = Data()
+        data.reserveCapacity(Int(min(max(response.expectedContentLength, 0), 64 * 1024)))
+        var buffer = [UInt8]()
+        buffer.reserveCapacity(64 * 1024)
+        for try await byte in bytes {
+            buffer.append(byte)
+            if buffer.count == 64 * 1024 {
+                data.append(contentsOf: buffer)
+                buffer.removeAll(keepingCapacity: true)
+                if data.count > maxRemoteMCPResponseBytes { throw sizeLimitError }
+            }
+        }
+        data.append(contentsOf: buffer)
+        guard data.count <= maxRemoteMCPResponseBytes else { throw sizeLimitError }
 
         if let httpResponse = response as? HTTPURLResponse {
             if let sid = httpResponse.value(forHTTPHeaderField: "Mcp-Session-Id") { sessionId = sid }

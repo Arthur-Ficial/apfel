@@ -91,6 +91,11 @@ public struct EngineOptions: Sendable, Equatable, Codable {
     /// for top-k without an explicit seed (the decision type requires one);
     /// callers pass a random value, tests pass a fixed one.
     public func samplingDecision(fallbackSeed: UInt64) -> SamplingDecision {
+        // A below-floor temperature means "deterministic" in every mode, and
+        // forwarding it makes the model degenerate (SamplingDecision.resolve).
+        if let temperature, temperature < SamplingDecision.minimumSamplingTemperature {
+            return .greedy
+        }
         switch samplingMode {
         case .system:
             return .defaultMode

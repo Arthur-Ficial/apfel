@@ -466,6 +466,21 @@ func runCLIArgumentsTests() {
         try assertEqual(args.serverToken, "secret123")
     }
 
+    test("empty APFEL_TOKEN is treated as unset, not as a token nobody can send (F7)") {
+        let args = try CLIArguments.parse(["--serve"], env: ["APFEL_TOKEN": ""])
+        try assertNil(args.serverToken)
+    }
+
+    test("--token with an empty value is rejected (F7)") {
+        do {
+            _ = try CLIArguments.parse(["--serve", "--token", ""])
+            throw TestFailure("expected a parse error for an empty --token")
+        } catch let e as CLIParseError {
+            try assertTrue(e.message.contains("--token"), e.message)
+            try assertTrue(e.message.contains("non-empty"), e.message)
+        }
+    }
+
     test("--token-auto sets serverTokenAuto") {
         let args = try CLIArguments.parse(["--serve", "--token-auto"])
         try assertTrue(args.serverTokenAuto)

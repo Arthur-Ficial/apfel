@@ -14,9 +14,13 @@ actor FakeBackend: GenerationBackend {
     struct Turn: Sendable {
         var snapshots: [String]
         var error: ApfelError?
-        init(_ snapshots: [String], error: ApfelError? = nil) {
+        /// Keep the stream open after the snapshots until the consumer
+        /// cancels (a turn the user stops mid-generation).
+        var hang: Bool
+        init(_ snapshots: [String], error: ApfelError? = nil, hang: Bool = false) {
             self.snapshots = snapshots
             self.error = error
+            self.hang = hang
         }
     }
 
@@ -60,7 +64,9 @@ actor FakeBackend: GenerationBackend {
             for snapshot in turn.snapshots {
                 continuation.yield(snapshot)
             }
-            continuation.finish(throwing: turn.error)
+            if !turn.hang {
+                continuation.finish(throwing: turn.error)
+            }
         }
     }
 
@@ -267,6 +273,42 @@ func runOnDeviceEngineTests() {
             try assertTrue(e.openAIMessage.contains("boom"), "classified error carries the cause")
         }
         try assertEqual(await backend.entries(), [.instructions("sys")])
+    }
+
+    testAsync("a cancelled turn with .revert restores the pre-turn conversation (F10)") {
+        let backend = FakeBackend(
+            initial: [.instructions("sys")],
+            turns: [.init(["Hel", "Hello"], hang: true)])
+        let engine = OnDeviceEngine(backend: backend, errorRecovery: .revert)
+        let stream = await engine.send("hi")
+        let consumer = Task {
+            for try await _ in stream {}
+        }
+        // The user presses Stop once the first text is visible.
+        for _ in 0..<50 where await backend.entries().count < 3 {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        try await Task.sleep(for: .milliseconds(50))
+        consumer.cancel()
+        _ = await consumer.result
+        // Give the engine's task a moment to observe the cancellation.
+        for _ in 0..<50 where await backend.entries() != [.instructions("sys")] {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        try assertEqual(await backend.entries(), [.instructions("sys")])
+        try assertEqual(await engine.sessionUsage(), TokenUsage(promptTokens: 0, completionTokens: 0))
+    }
+
+    testAsync("deltas split inside a grapheme concatenate to the final text (F9)") {
+        // CR then LF arrive in different snapshots: "a\r" + "\n" form one
+        // Character, so Character-based dropFirst lost or duplicated text.
+        let backend = FakeBackend(turns: [.init(["a\r", "a\r\nb"])])
+        let engine = OnDeviceEngine(backend: backend)
+        var text = ""
+        for try await event in await engine.send("hi") {
+            if case .delta(let d) = event { text += d }
+        }
+        try assertEqual(Array(text.unicodeScalars), Array("a\r\nb".unicodeScalars))
     }
 
     testAsync("a failed turn with .preserve keeps what the runtime left") {

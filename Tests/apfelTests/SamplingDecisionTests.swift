@@ -24,10 +24,32 @@ func runSamplingDecisionTests() {
         try assertEqual(decision, .nucleus(probabilityThreshold: 0.5, seed: nil))
     }
 
-    // top_p takes precedence over temperature:0 (explicit nucleus wins over greedy).
-    test("resolve prefers top_p over temperature:0") {
+    // temperature 0 (or any temperature below the floor) means "deterministic"
+    // even with top_p: forwarding a near-zero temperature to a sampling mode
+    // makes the on-device model emit garbage until the window fills (F1).
+    test("resolve maps temperature:0 with top_p to greedy") {
         let decision = SamplingDecision.resolve(temperature: 0, topP: 0.8, seed: nil)
-        try assertEqual(decision, .nucleus(probabilityThreshold: 0.8, seed: nil))
+        try assertEqual(decision, .greedy)
+    }
+
+    test("resolve maps a near-zero temperature to greedy (F1: 0.0003 degenerates)") {
+        for t in [0.0001, 0.0003, 1e-10, 0.0009] {
+            try assertEqual(SamplingDecision.resolve(temperature: t, topP: nil, seed: nil), .greedy, "t=\(t)")
+            try assertEqual(SamplingDecision.resolve(temperature: t, topP: 0.9, seed: 7), .greedy, "t=\(t) + top_p")
+            try assertEqual(SamplingDecision.resolve(temperature: t, topP: nil, seed: 7), .greedy, "t=\(t) + seed")
+        }
+    }
+
+    test("resolve keeps sampling at and above the floor") {
+        try assertEqual(SamplingDecision.resolve(temperature: SamplingDecision.minimumSamplingTemperature, topP: nil, seed: nil), .defaultMode)
+        try assertEqual(SamplingDecision.resolve(temperature: 0.2, topP: 0.9, seed: nil), .nucleus(probabilityThreshold: 0.9, seed: nil))
+    }
+
+    test("forwardedTemperature drops a below-floor temperature, keeps a real one") {
+        try assertNil(SamplingDecision.forwardedTemperature(0))
+        try assertNil(SamplingDecision.forwardedTemperature(0.0001))
+        try assertNil(SamplingDecision.forwardedTemperature(nil))
+        try assertEqual(SamplingDecision.forwardedTemperature(0.7), 0.7)
     }
 
     // Existing seed-only behavior is preserved: topK(top: 50, seed:).

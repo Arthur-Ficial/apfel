@@ -19,6 +19,16 @@ package enum BodyLimits {
     /// into the context window.
     public static let defaultOutputReserveTokens: Int = 512
 
+    /// The response-token cap to hand to FoundationModels. The SDK keeps the
+    /// cap as a 32-bit value: anything above `Int32.max` fails generation
+    /// with an opaque error (HTTP 500 / exit 1) instead of meaning "no
+    /// practical limit". Clamp so a huge `max_tokens` behaves like the
+    /// largest one the SDK accepts; the context window ends generation long
+    /// before either.
+    public static func sdkMaxResponseTokens(_ requested: Int?) -> Int? {
+        requested.map { min($0, Int(Int32.max)) }
+    }
+
     // No fallback for max_tokens lives here on purpose. Omitted max_tokens
     // flows through as nil; FoundationModels uses whatever room is left in
     // the context window. Output-side overflow is handled by

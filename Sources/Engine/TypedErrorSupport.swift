@@ -32,7 +32,7 @@ public func classifyModelError(_ error: Error) -> ApfelError {
 /// `withRetry` for every main-target call site: retries are decided by
 /// `classifyModelError`, so a typed macOS 27 `rateLimited` is retried
 /// whatever language its localized description is in (#522).
-public func withModelRetry<T: Sendable>(
+package func withModelRetry<T: Sendable>(
     maxRetries: Int,
     operation: @Sendable () async throws -> T
 ) async throws -> T {
@@ -70,7 +70,7 @@ private func classifyTypedError(_ error: LanguageModelError) -> ApfelError {
 /// runtime window, matching the detail of the SDK's typed
 /// `contextSizeExceeded`; on macOS 26 the message is byte-identical to
 /// yesterday's generic `.contextOverflow`.
-public func contextOverflowError(tokenCount: Int, contextSize: Int) -> ApfelError {
+package func contextOverflowError(tokenCount: Int, contextSize: Int) -> ApfelError {
     if #available(macOS 27, *) {
         return .contextWindowExceeded(tokenCount: tokenCount, contextSize: contextSize)
     }

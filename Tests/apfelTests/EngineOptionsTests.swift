@@ -57,6 +57,15 @@ func runEngineOptionsTests() {
         try assertEqual(EngineOptions().samplingDecision(fallbackSeed: 1), .defaultMode)
     }
 
+    test("samplingDecision: a below-floor temperature forces greedy in every mode (F1)") {
+        for mode in EngineOptions.SamplingModeChoice.allCases {
+            var o = EngineOptions()
+            o.samplingMode = mode
+            o.temperature = 0.0001
+            try assertEqual(o.samplingDecision(fallbackSeed: 1), .greedy, "mode \(mode)")
+        }
+    }
+
     test("samplingDecision: greedy maps to greedy") {
         var o = EngineOptions()
         o.samplingMode = .greedy
