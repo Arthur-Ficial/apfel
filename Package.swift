@@ -7,6 +7,9 @@ let package = Package(
     platforms: [.macOS(.v26)],
     products: [
         .library(name: "ApfelCore", targets: ["ApfelCore"]),
+        // Preview: may change in minor releases until it has a shipped
+        // consumer (STABILITY.md, docs/swift-library.md).
+        .library(name: "ApfelEngine", targets: ["ApfelEngine"]),
         .executable(name: "apfel", targets: ["apfel"])
     ],
     dependencies: [
@@ -34,6 +37,13 @@ let package = Package(
             dependencies: ["ApfelCore"],
             path: "Sources/CLI"
         ),
+        // Reusable generation engine — FoundationModels + ApfelCore, print-free.
+        // Consumed by the apfel executable and downstream library consumers.
+        .target(
+            name: "ApfelEngine",
+            dependencies: ["ApfelCore"],
+            path: "Sources/Engine"
+        ),
         // Main executable — depends on ApfelCore + ApfelCLI + Hummingbird + FoundationModels
         .executableTarget(
             name: "apfel",
@@ -41,12 +51,13 @@ let package = Package(
                 .product(name: "Hummingbird", package: "hummingbird"),
                 "ApfelCore",
                 "ApfelCLI",
+                "ApfelEngine",
                 "CReadline",
                 .product(name: "Lesbar", package: "lesbar"),
                 .product(name: "LesbarCore", package: "lesbar"),
             ],
             path: "Sources",
-            exclude: ["Core", "CLI"],
+            exclude: ["Core", "CLI", "Engine"],
             linkerSettings: [
                 .unsafeFlags([
                     "-Xlinker", "-sectcreate",
@@ -59,7 +70,7 @@ let package = Package(
         // Test runner — pure Swift, no XCTest/Testing (Command Line Tools only)
         .executableTarget(
             name: "apfel-tests",
-            dependencies: ["ApfelCore", "ApfelCLI"],
+            dependencies: ["ApfelCore", "ApfelCLI", "ApfelEngine"],
             path: "Tests/apfelTests"
         ),
         .executableTarget(

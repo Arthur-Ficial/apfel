@@ -127,7 +127,7 @@ def test_168_top_p_and_greedy_mapping():
     This source-level guard pins the wiring so the mapping cannot silently
     regress, and the wire smoke test below confirms a top_p request still 200s.
     """
-    session = (ROOT / "Sources" / "Session.swift").read_text()
+    session = (ROOT / "Sources" / "Engine" / "Session.swift").read_text()
     assert "SamplingDecision.resolve(" in session, (
         "makeGenerationOptions must derive its sampling mode from the pure "
         "SamplingDecision.resolve seam (#168)")
@@ -249,7 +249,7 @@ def test_175_summarize_keeps_prompt_within_budget():
     budget check). This guard pins the source seam so the two-part fix cannot be
     silently removed, mirroring the test_179 source-seam approach.
     """
-    summarizer = (ROOT / "Sources" / "Summarizer.swift").read_text()
+    summarizer = (ROOT / "Sources" / "Engine" / "Summarizer.swift").read_text()
     # Part 1: the summary is bounded so it cannot grow unbounded.
     assert "GenerationOptions(maximumResponseTokens: maxTokens)" in summarizer, (
         "generateSummary must bound the summary length via maximumResponseTokens (#175)")

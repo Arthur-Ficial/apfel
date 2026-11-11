@@ -1,5 +1,6 @@
 // ============================================================================
 // TokenCounter.swift — Token counting via FoundationModels API
+// Part of ApfelEngine (print-free, reusable by the CLI, server and GUI).
 //
 // Uses SystemLanguageModel.tokenCount(for:) (macOS 26.4+) with chars/4 fallback.
 // ============================================================================
@@ -8,8 +9,9 @@ import Foundation
 import FoundationModels
 import ApfelCore
 
-actor TokenCounter {
-    static let shared = TokenCounter()
+public actor TokenCounter {
+    public static let shared = TokenCounter()
+
     private let model = SystemLanguageModel.default
 
     /// Tracks the largest context size the model has reported, and whether a
@@ -24,9 +26,9 @@ actor TokenCounter {
     /// Callers that report accuracy (--count-tokens) reset this before their
     /// counts and read it after, so `approximate` reflects what actually
     /// happened rather than a prediction (#327).
-    private(set) var runtimeFellBack = false
+    public private(set) var runtimeFellBack = false
 
-    func resetRuntimeFallbackFlag() {
+    public func resetRuntimeFallbackFlag() {
         runtimeFellBack = false
     }
 
@@ -37,7 +39,7 @@ actor TokenCounter {
 
     /// Count tokens in text using the real FoundationModels API.
     /// Falls back to chars/4 approximation on error or when the model is unavailable.
-    func count(_ text: String) async -> Int {
+    public func count(_ text: String) async -> Int {
         guard !text.isEmpty else { return 0 }
         guard isAvailable else {
             return fallback(text)
@@ -65,7 +67,7 @@ actor TokenCounter {
     /// The fallback is flagged `isMeasured == false` so callers that show the
     /// number to a user or put it on the wire do not present a guess as a
     /// measurement - on macOS 27 the floor under-reports the real window (#491).
-    var contextWindow: ContextWindow {
+    public var contextWindow: ContextWindow {
         _windowTracker.observe(model.contextSize)
     }
 
@@ -73,17 +75,17 @@ actor TokenCounter {
     ///
     /// Callers that need to know whether this is a real reading or the
     /// assumed floor should use `contextWindow` instead (#491).
-    var contextSize: Int {
+    public var contextSize: Int {
         contextWindow.tokens
     }
 
     /// Tokens available for model input given a reserved output budget.
-    func inputBudget(reservedForOutput: Int = 512) -> Int {
+    public func inputBudget(reservedForOutput: Int = 512) -> Int {
         contextSize - reservedForOutput
     }
 
     /// Whether the model is available for generation.
-    var isAvailable: Bool {
+    public var isAvailable: Bool {
         model.isAvailable
     }
 
@@ -95,7 +97,7 @@ actor TokenCounter {
 
     /// The model's reported capabilities (#510). macOS 27 reads them from
     /// the SDK; macOS 26 returns the honest `reported == false` marker.
-    var capabilitiesReport: CapabilitiesReport {
+    public var capabilitiesReport: CapabilitiesReport {
         if let cached = _capabilitiesCache { return cached }
         let report = readModelCapabilities()
         if !report.reported || !report.names.isEmpty {
@@ -106,7 +108,7 @@ actor TokenCounter {
 
     /// Whether the real tokenCount API is usable (model available AND macOS 26.4+).
     /// When false, token counts fall back to chars/4 approximation.
-    var isTokenCountingAvailable: Bool {
+    public var isTokenCountingAvailable: Bool {
         tokenCountFallback == nil
     }
 
@@ -114,7 +116,7 @@ actor TokenCounter {
     /// usable. Distinguishes "this macOS predates the tokenizer API" from
     /// "Apple Intelligence is unavailable" so the warning names the actual
     /// cause (#315: generation can work fine while the OS lacks tokenCount).
-    var tokenCountFallback: TokenCountFallback? {
+    public var tokenCountFallback: TokenCountFallback? {
         let osSupportsTokenCounting: Bool
         if #available(macOS 26.4, *) {
             osSupportsTokenCounting = true
@@ -133,7 +135,7 @@ actor TokenCounter {
     /// model was available). A no-op when the model is unavailable, so an
     /// unavailable model never crashes startup.
     @discardableResult
-    func prewarm() -> Bool {
+    public func prewarm() -> Bool {
         guard model.isAvailable else { return false }
         let session = LanguageModelSession(model: model)
         session.prewarm()
@@ -144,7 +146,7 @@ actor TokenCounter {
     /// `SystemLanguageModel.Availability` into our `ModelAvailability`
     /// so the rest of apfel can reason about the specific unavailable
     /// reason without depending on FoundationModels.
-    var availability: ModelAvailability {
+    public var availability: ModelAvailability {
         switch model.availability {
         case .available:
             return .available
@@ -169,7 +171,7 @@ actor TokenCounter {
     /// the FoundationModels SDK, and a crash observed in apfel-gui#4 suggests
     /// repeated mid-flight access on Hummingbird's dispatch queue can destabilize
     /// the process in some macOS 26.4 environments.
-    var supportedLanguages: [String] {
+    public var supportedLanguages: [String] {
         // The SDK reports locale variants (en_US, en_GB, en_AU...) whose
         // languageCode all collapse to the same bare code - dedupe while
         // preserving the SDK's order, or /health lists "en" three times (#329).
@@ -185,7 +187,7 @@ actor TokenCounter {
 
     /// Count tokens for transcript entries using the real API.
     /// More accurate than counting individual text strings.
-    func count(entries: [Transcript.Entry]) async -> Int {
+    public func count(entries: [Transcript.Entry]) async -> Int {
         guard !entries.isEmpty else { return 0 }
         guard isAvailable else {
             return fallbackCount(entries: entries)

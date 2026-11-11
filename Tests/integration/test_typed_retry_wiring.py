@@ -33,7 +33,7 @@ def test_main_target_never_calls_bare_withRetry():
 
 
 def test_withModelRetry_injects_the_typed_classifier():
-    text = (SOURCES / "TypedErrorSupport.swift").read_text()
+    text = (SOURCES / "Engine" / "TypedErrorSupport.swift").read_text()
     m = re.search(r"func withModelRetry.*?\n}\n", text, re.DOTALL)
     assert m, "withModelRetry must live next to classifyModelError in TypedErrorSupport.swift"
     assert "classify: classifyModelError" in m.group(0)

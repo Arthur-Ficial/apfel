@@ -98,6 +98,12 @@ jobs:
           # CI toolchain guards (#520): build on the 27 SDK, launch on macOS 26.
           python3 -m pytest Tests/integration/test_ci_sdk.py -v --tb=short
 
+          # Source scans (model-free): typed retry wiring (#522), no fixed token
+          # window in Sources/ (#513), ApfelEngine without host wiring (#531).
+          python3 -m pytest Tests/integration/test_typed_retry_wiring.py \
+            Tests/integration/test_no_context_ceiling_literal.py \
+            Tests/integration/test_engine_no_host_injection.py -v --tb=short
+
           # Note: performance_test.py requires Apple Intelligence (benchmark runs inference).
           # It runs locally via make preflight / make release.
 
@@ -280,6 +286,9 @@ jobs:
 
       - name: Downstream consumer smoke test
         run: python3 -m pytest Tests/integration/test_apfelcore_package.py -v --tb=short
+
+      - name: ApfelEngine downstream consumer smoke test
+        run: python3 -m pytest Tests/integration/test_apfelengine_package.py -v --tb=short
 
       - name: ApfelCore examples smoke test
         run: python3 -m pytest Tests/integration/test_apfelcore_examples.py -v --tb=short

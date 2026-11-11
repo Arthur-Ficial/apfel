@@ -14,6 +14,7 @@
 import Foundation
 import ApfelCore
 import ApfelCLI
+import ApfelEngine
 import LesbarCore
 import Lesbar
 

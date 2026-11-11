@@ -6,6 +6,7 @@
 import FoundationModels
 import Foundation
 import ApfelCore
+import ApfelEngine
 import ApfelCLI
 import CReadline
 

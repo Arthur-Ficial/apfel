@@ -14,7 +14,7 @@ import Foundation
 import FoundationModels
 import ApfelCore
 
-enum SchemaConverter {
+public enum SchemaConverter {
 
     private struct ToolSignature: Hashable, Sendable {
         let type: String
@@ -54,7 +54,7 @@ enum SchemaConverter {
     /// Convert OpenAI tools to native ToolDefinitions.
     /// Returns native definitions for tools that converted successfully,
     /// and ToolDef fallbacks for tools that failed (for text injection).
-    static func convert(tools: [OpenAITool]) async -> (native: [Transcript.ToolDefinition], fallback: [ToolDef]) {
+    public static func convert(tools: [OpenAITool]) async -> (native: [Transcript.ToolDefinition], fallback: [ToolDef]) {
         guard !tools.isEmpty else { return ([], []) }
 
         let key = tools.map(ToolSignature.init)
@@ -70,7 +70,7 @@ enum SchemaConverter {
         return converted
     }
 
-    static func convertUncached(tools: [OpenAITool]) -> (native: [Transcript.ToolDefinition], fallback: [ToolDef]) {
+    public static func convertUncached(tools: [OpenAITool]) -> (native: [Transcript.ToolDefinition], fallback: [ToolDef]) {
         var native: [Transcript.ToolDefinition] = []
         var fallback: [ToolDef] = []
 
@@ -112,7 +112,7 @@ enum SchemaConverter {
     ///
     /// - Throws: `SchemaParser.Error` for malformed/unsupported JSON Schema, or
     ///   a `GenerationSchema` construction error. Callers map these to a 400.
-    static func generationSchema(fromJSON json: String, name: String) throws -> GenerationSchema {
+    public static func generationSchema(fromJSON json: String, name: String) throws -> GenerationSchema {
         let ir = try SchemaParser.parse(json: json, name: name)
         let dynSchema = try dynamicSchema(from: ir)
         return try GenerationSchema(root: dynSchema, dependencies: [])
@@ -120,7 +120,7 @@ enum SchemaConverter {
 
     /// Convert a tool call's arguments JSON string to GeneratedContent.
     /// Returns nil on failure instead of crashing the process.
-    static func makeArguments(_ json: String) -> GeneratedContent? {
+    public static func makeArguments(_ json: String) -> GeneratedContent? {
         if let content = try? GeneratedContent(json: json) {
             return content
         }

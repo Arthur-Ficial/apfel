@@ -8,6 +8,7 @@ import Hummingbird
 import NIOCore
 import ApfelCore
 import ApfelCLI
+import ApfelEngine
 
 /// Server configuration passed from CLI argument parsing.
 struct ServerConfig: Sendable {

@@ -16,6 +16,8 @@ These are covered by semantic versioning. Breaking changes require a major versi
 - Documented unsupported endpoints (501 responses for embeddings, legacy completions)
 - The public `ApfelCore` Swift Package API
 
+`ApfelEngine` is a **preview** product: it follows apfel's version numbers, but its API may change in a MINOR release until it has a shipped consumer. Pin an exact version if you depend on it. Changes are always called out in [CHANGELOG.md](CHANGELOG.md).
+
 ## What is NOT stable (may change without version bump)
 
 - **Model output quality and content.** Apple controls the on-device model. macOS updates may change generation behavior, guardrail sensitivity, supported languages, and context window size. apfel cannot control this.
