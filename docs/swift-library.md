@@ -118,7 +118,7 @@ What it gives you, all as plain data (no FoundationModels types on the surface):
 |------|-----|
 | Generation | `Engine.send(_:)` / `send(_:images:)` streaming `EngineEvent` (`.delta`, `.usage`, `.finished`) |
 | Model facts | `modelInfo()`: availability, the runtime context window (never a fixed number), capabilities and the variant name on macOS 27 |
-| Accounting | `contextStatus(outputReserve:)`, `sessionUsage()` - runtime-reported on macOS 27, counted on macOS 26 |
+| Accounting | `contextStatus(outputReserve:)`, `sessionUsage()` - counted with the on-device tokenizer |
 | Persistence | `transcript()` / `resume(_:)` with `EngineTranscript` (versioned, Codable) |
 | Options | `setOptions(_:)` with `EngineOptions` (clamped by `normalized()`), `ErrorRecovery` (`.preserve` / `.revert`) |
 

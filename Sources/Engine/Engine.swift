@@ -21,8 +21,9 @@ import ApfelCore
 public enum EngineEvent: Sendable {
     /// The next chunk of assistant text (a true delta, not a cumulative snapshot).
     case delta(String)
-    /// The completed turn's token usage: runtime-reported where the OS
-    /// provides it (macOS 27+), counted via TokenCounter on macOS 26.
+    /// The completed turn's token usage, counted with the on-device
+    /// tokenizer (`TokenCounter`) on every OS. (The apfel server uses the
+    /// runtime's own numbers on macOS 27; the engine does not yet.)
     case usage(TokenUsage)
     /// The turn completed; carries the full text.
     case finished(EngineResponse)
@@ -31,8 +32,8 @@ public enum EngineEvent: Sendable {
 /// The completed result of one generation turn.
 public struct EngineResponse: Sendable {
     public let text: String
-    /// The turn's token usage: runtime-reported where the OS provides it
-    /// (macOS 27+), counted via TokenCounter on macOS 26; nil only when no
+    /// The turn's token usage, counted with the on-device tokenizer
+    /// (`TokenCounter`) on every OS; nil only when no
     /// number could be produced at all.
     public let usage: TokenUsage?
 
@@ -120,7 +121,7 @@ extension Engine {
 public enum EngineFactory {
     /// The ONE place a macOS-27-specialized engine would be selected. Today
     /// there is a single on-device engine for macOS 26 and 27: the OS-27
-    /// differences (runtime-reported usage, capabilities, variant name) are
+    /// differences (capabilities, variant name) are
     /// decided inside the shared helpers, and the surface above is already
     /// shaped for a specialized variant (`EngineEvent.usage`).
     public static func make(systemPrompt: String? = nil, permissive: Bool = false, errorRecovery: ErrorRecovery = .preserve) -> any Engine {

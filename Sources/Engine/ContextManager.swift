@@ -11,7 +11,7 @@ import FoundationModels
 import Foundation
 import ApfelCore
 
-public enum ContextManager {
+package enum ContextManager {
 
     // MARK: - Session Factory
 

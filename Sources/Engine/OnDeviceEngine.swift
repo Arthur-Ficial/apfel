@@ -92,8 +92,12 @@ public actor OnDeviceEngine: Engine {
                     var previous = ""
                     for try await content in await backend.stream(prompt: prompt, images: images) {
                         // Snapshots are cumulative; emit only the new suffix.
-                        if content.hasPrefix(previous) {
-                            let delta = String(content.dropFirst(previous.count))
+                        // Compared in Unicode scalars, not Characters: a
+                        // snapshot boundary inside a grapheme ("a\r" then
+                        // "a\r\nb") would otherwise lose or repeat text.
+                        if content.unicodeScalars.starts(with: previous.unicodeScalars) {
+                            let delta = String(String.UnicodeScalarView(
+                                content.unicodeScalars.dropFirst(previous.unicodeScalars.count)))
                             if !delta.isEmpty { continuation.yield(.delta(delta)) }
                         } else {
                             // A snapshot that rewrote earlier text (not observed
@@ -102,6 +106,16 @@ public actor OnDeviceEngine: Engine {
                             continuation.yield(.delta(content))
                         }
                         previous = content
+                    }
+                    // A stream the consumer cancelled ends without throwing;
+                    // it is a stopped turn, not a completed one: no usage,
+                    // no rotation, and .revert restores the conversation.
+                    if Task.isCancelled {
+                        if errorRecovery == .revert {
+                            await backend.reset(entries: before)
+                        }
+                        continuation.finish(throwing: CancellationError())
+                        return
                     }
                     let usage = TokenUsage(
                         promptTokens: await backend.count(entries: before + [.prompt(prompt)]),
@@ -115,7 +129,13 @@ public actor OnDeviceEngine: Engine {
                     if errorRecovery == .revert {
                         await backend.reset(entries: before)
                     }
-                    continuation.finish(throwing: ApfelError.classify(error))
+                    if error is CancellationError {
+                        continuation.finish(throwing: error)
+                    } else {
+                        // The typed classifier: macOS 27 LanguageModelError
+                        // keeps its token counts and Retry-After.
+                        continuation.finish(throwing: classifyModelError(error))
+                    }
                 }
             }
             continuation.onTermination = { _ in task.cancel() }

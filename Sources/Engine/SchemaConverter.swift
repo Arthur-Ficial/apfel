@@ -14,7 +14,7 @@ import Foundation
 import FoundationModels
 import ApfelCore
 
-public enum SchemaConverter {
+package enum SchemaConverter {
 
     private struct ToolSignature: Hashable, Sendable {
         let type: String

@@ -13,7 +13,7 @@ import ApfelCore
 // MARK: - Session Options
 
 /// Options forwarded from CLI flags or OpenAI request parameters.
-public struct SessionOptions: Sendable {
+package struct SessionOptions: Sendable {
     public let temperature: Double?
     public let topP: Double?
     public let maxTokens: Int?
@@ -72,7 +72,7 @@ func makeSamplingMode(_ decision: SamplingDecision) -> GenerationOptions.Samplin
 /// resolved directive is applied under #available(macOS 27, *) and ignored
 /// on macOS 26 (see ToolCallingSupport.swift). Tool-free requests pass nil
 /// and get byte-identical options to before.
-public func makeGenerationOptions(
+package func makeGenerationOptions(
     _ opts: SessionOptions,
     toolCalling directive: ToolCallingDirective? = nil
 ) -> GenerationOptions {
@@ -92,7 +92,7 @@ public func makeGenerationOptions(
 
 // MARK: - Model Selection
 
-public func makeModel(permissive: Bool) -> SystemLanguageModel {
+package func makeModel(permissive: Bool) -> SystemLanguageModel {
     SystemLanguageModel(
         guardrails: permissive ? .permissiveContentTransformations : .default
     )
@@ -102,7 +102,7 @@ public func makeModel(permissive: Bool) -> SystemLanguageModel {
 
 /// Create a LanguageModelSession with optional system instructions for CLI use.
 /// Uses Transcript.Instructions so streaming and non-streaming read the same source.
-public func makeSession(systemPrompt: String?, options: SessionOptions = .defaults) -> LanguageModelSession {
+package func makeSession(systemPrompt: String?, options: SessionOptions = .defaults) -> LanguageModelSession {
     let model = makeModel(permissive: options.permissive)
     guard let systemPrompt, !systemPrompt.isEmpty else {
         return LanguageModelSession(model: model)
@@ -112,7 +112,7 @@ public func makeSession(systemPrompt: String?, options: SessionOptions = .defaul
     return makeTranscriptSession(model: model, entries: [.instructions(instructions)])
 }
 
-public func makePromptEntry(_ prompt: String, options: SessionOptions = .defaults) -> Transcript.Entry {
+package func makePromptEntry(_ prompt: String, options: SessionOptions = .defaults) -> Transcript.Entry {
     let segment = Transcript.TextSegment(content: prompt)
     let prompt = Transcript.Prompt(
         segments: [.text(segment)],
@@ -124,21 +124,21 @@ public func makePromptEntry(_ prompt: String, options: SessionOptions = .default
 /// Prompt entry for a user turn with ordered text/image pieces (#510).
 /// Text-only pieces produce the same entry as `makePromptEntry(_:options:)`;
 /// images become native attachment segments (macOS 27, see VisionSupport).
-public func makePromptEntry(pieces: [PromptPiece], options: SessionOptions = .defaults) -> Transcript.Entry {
+package func makePromptEntry(pieces: [PromptPiece], options: SessionOptions = .defaults) -> Transcript.Entry {
     .prompt(Transcript.Prompt(
         segments: promptSegments(pieces: pieces),
         options: makeGenerationOptions(options)
     ))
 }
 
-public func makeTranscriptSession(model: SystemLanguageModel, entries: [Transcript.Entry]) -> LanguageModelSession {
+package func makeTranscriptSession(model: SystemLanguageModel, entries: [Transcript.Entry]) -> LanguageModelSession {
     guard !entries.isEmpty else {
         return LanguageModelSession(model: model)
     }
     return LanguageModelSession(model: model, transcript: Transcript(entries: entries))
 }
 
-public func transcriptEntries(_ transcript: Transcript) -> [Transcript.Entry] {
+package func transcriptEntries(_ transcript: Transcript) -> [Transcript.Entry] {
     Array(transcript)
 }
 
@@ -147,7 +147,7 @@ public func transcriptEntries(_ transcript: Transcript) -> [Transcript.Entry] {
 /// the final prompt sent via respond(). Reading the entries back from
 /// `session.transcript` instead drops `Instructions.toolDefinitions`, which
 /// undercounts prompt tokens for tool-augmented requests (#176).
-public func sessionInputEntries(
+package func sessionInputEntries(
     builtEntries: [Transcript.Entry],
     finalPrompt: String,
     options: SessionOptions = .defaults,
@@ -164,7 +164,7 @@ public func sessionInputEntries(
     return entries
 }
 
-public func assembleTranscriptEntries<BaseEntries: Collection, HistoryEntries: Collection>(
+package func assembleTranscriptEntries<BaseEntries: Collection, HistoryEntries: Collection>(
     base: BaseEntries,
     history: HistoryEntries,
     final: Transcript.Entry? = nil
@@ -180,14 +180,14 @@ where BaseEntries.Element == Transcript.Entry, HistoryEntries.Element == Transcr
     return entries
 }
 
-public func fitsTranscriptBudget(
+package func fitsTranscriptBudget(
     _ entries: [Transcript.Entry],
     budget: Int
 ) async -> Bool {
     await TokenCounter.shared.count(entries: entries) <= budget
 }
 
-public func fitsTranscriptBudget(
+package func fitsTranscriptBudget(
     base: [Transcript.Entry],
     history: [Transcript.Entry],
     final: Transcript.Entry? = nil,
@@ -199,7 +199,7 @@ public func fitsTranscriptBudget(
     )
 }
 
-public func fitsTranscriptBudget<BaseEntries: Collection, HistoryEntries: Collection>(
+package func fitsTranscriptBudget<BaseEntries: Collection, HistoryEntries: Collection>(
     base: BaseEntries,
     history: HistoryEntries,
     final: Transcript.Entry? = nil,
@@ -252,7 +252,7 @@ func budgetPredicate(
     }
 }
 
-public func trimHistoryEntriesToBudget(
+package func trimHistoryEntriesToBudget(
     baseEntries: [Transcript.Entry],
     historyEntries: [Transcript.Entry],
     finalEntry: Transcript.Entry? = nil,
@@ -303,7 +303,7 @@ public func trimHistoryEntriesToBudget(
 
 // MARK: - Strategy: Newest First (default)
 
-public func trimNewestFirst(
+package func trimNewestFirst(
     base: [Transcript.Entry], history: [Transcript.Entry],
     final: Transcript.Entry?, budget: Int, pinLast: Bool = false
 ) async -> [Transcript.Entry] {
@@ -315,7 +315,7 @@ public func trimNewestFirst(
 
 // MARK: - Strategy: Oldest First
 
-public func trimOldestFirst(
+package func trimOldestFirst(
     base: [Transcript.Entry], history: [Transcript.Entry],
     final: Transcript.Entry?, budget: Int, pinLast: Bool = false
 ) async -> [Transcript.Entry] {
@@ -357,7 +357,7 @@ func trimSlidingWindow(
 /// - Returns: A `GenerationOutcome` carrying the accumulated content, the
 ///   resolved finish reason, and the runtime-reported usage when the SDK
 ///   provides it (macOS 27+; nil on macOS 26).
-public func collectStream(
+package func collectStream(
     _ session: LanguageModelSession,
     prompt: String,
     sink: StreamPrintSink? = nil,
@@ -368,7 +368,7 @@ public func collectStream(
 
 /// Prompt-typed variant so an image-bearing user turn (macOS 27, #510)
 /// streams through the same path as text.
-public func collectStream(
+package func collectStream(
     _ session: LanguageModelSession,
     prompt: Prompt,
     sink: StreamPrintSink? = nil,
@@ -418,7 +418,7 @@ public func collectStream(
 
 /// Outcome of one streamed model call: content, finish reason, and the
 /// runtime-reported usage when the SDK provides it (macOS 27+; nil on 26).
-public struct GenerationOutcome: Sendable {
+package struct GenerationOutcome: Sendable {
     public let content: String
     public let finishReason: FinishReason
     public let usage: TokenUsage?

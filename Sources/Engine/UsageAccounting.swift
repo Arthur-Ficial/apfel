@@ -35,7 +35,7 @@ private func tokenUsage(_ usage: LanguageModelSession.Usage) -> TokenUsage {
 }
 
 /// The runtime-reported usage of a non-streaming response; nil on macOS 26.
-public func reportedUsage<Content>(of response: LanguageModelSession.Response<Content>) -> TokenUsage? {
+package func reportedUsage<Content>(of response: LanguageModelSession.Response<Content>) -> TokenUsage? {
     if #available(macOS 27, *) {
         return tokenUsage(response.usage)
     }
@@ -48,7 +48,7 @@ public func reportedUsage<Content>(of response: LanguageModelSession.Response<Co
 /// tokens grow with the content, so the LAST seen snapshot's usage prices
 /// everything accumulated so far - including a stream cut short by an
 /// output-side context overflow.
-public func reportedUsage<Content>(of snapshot: LanguageModelSession.ResponseStream<Content>.Snapshot) -> TokenUsage? {
+package func reportedUsage<Content>(of snapshot: LanguageModelSession.ResponseStream<Content>.Snapshot) -> TokenUsage? {
     if #available(macOS 27, *) {
         return tokenUsage(snapshot.usage)
     }
@@ -62,7 +62,7 @@ public func reportedUsage<Content>(of snapshot: LanguageModelSession.ResponseStr
 /// - `.deferred` (macOS 27): no up-front count - the happy path takes input
 ///   tokens from the runtime-reported usage, and only paths that answer
 ///   without any model response (refusals, errors) resolve a count lazily.
-public enum PromptTokens: Sendable {
+package enum PromptTokens: Sendable {
     case counted(Int)
     case deferred(entries: [Transcript.Entry])
 
