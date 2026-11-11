@@ -64,4 +64,24 @@ func runJSONFenceStripperTests() {
         let input = "```json\n[1,2,3]\n```"
         try assertEqual(JSONFenceStripper.strip(input), "[1,2,3]")
     }
+
+    // MARK: - stripTruncated (output cut off by the context window, F2)
+
+    test("stripTruncated drops an unclosed ```json opening fence") {
+        try assertEqual(JSONFenceStripper.stripTruncated("```json\n{\"stones\": [\"a\", \"b"), "{\"stones\": [\"a\", \"b")
+    }
+
+    test("stripTruncated drops an unclosed bare ``` opening fence") {
+        try assertEqual(JSONFenceStripper.stripTruncated("```\n[1, 2"), "[1, 2")
+    }
+
+    test("stripTruncated still strips a complete fence") {
+        try assertEqual(JSONFenceStripper.stripTruncated("```json\n{\"a\":1}\n```"), "{\"a\":1}")
+    }
+
+    test("stripTruncated leaves unfenced and non-JSON-fenced text alone") {
+        try assertEqual(JSONFenceStripper.stripTruncated("{\"a\": [1"), "{\"a\": [1")
+        try assertEqual(JSONFenceStripper.stripTruncated("```python\nprint(1"), "```python\nprint(1")
+        try assertEqual(JSONFenceStripper.stripTruncated("```json"), "```json")
+    }
 }

@@ -1060,3 +1060,44 @@ def test_chat_completions_parse_nested_pydantic_models():
         assert 1 <= len(order.items) <= 5, order
         return
     pytest.fail(f"nested Pydantic parse failed on every seed {GUARDRAIL_SEEDS}: {last_error!r}")
+
+
+def _stream_content_and_finish(payload):
+    content, finish = "", None
+    with httpx.stream("POST", f"{BASE_URL}/chat/completions", json=payload, timeout=300) as resp:
+        assert resp.status_code == 200, resp.read()[:300]
+        for line in resp.iter_lines():
+            if not line.startswith("data: ") or line == "data: [DONE]":
+                continue
+            chunk = json.loads(line[6:])
+            for choice in chunk.get("choices", []):
+                content += choice["delta"].get("content") or ""
+                finish = choice.get("finish_reason") or finish
+    return content, finish
+
+
+@pytest.mark.model
+def test_stream_output_overflow_keeps_held_json_content():
+    """Fable review F2: a json_object stream that runs into the context window
+    must still deliver the buffered JSON before finish_reason=length. The
+    non-streaming path did; the stream sent role, length, [DONE] and no content.
+    The prompt fills about two thirds of the runtime window and asks for a long
+    verbatim list, so the output side overflows."""
+    window = httpx.get(f"{BASE_URL.replace('/v1', '')}/health", timeout=10).json()["context_window"]
+    filler = " ".join(f"Note {i}: the river stone number {i} is smooth and grey." for i in range(2000))
+    for frac in (0.65, 0.6, 0.7):
+        payload = {
+            "model": MODEL, "seed": 42, "x_context_output_reserve": 64,
+            "response_format": {"type": "json_object"},
+            "messages": [{"role": "user", "content": filler[: int(window * frac * 4)]
+                          + '\n\nReturn a JSON object {"stones": [...]} that lists EVERY note above, one string per note, verbatim.'}],
+        }
+        plain = httpx.post(f"{BASE_URL}/chat/completions", json=payload, timeout=300)
+        if plain.status_code != 200 or plain.json()["choices"][0]["finish_reason"] != "length":
+            continue  # this size did not overflow on the output side; try the next
+        content, finish = _stream_content_and_finish({**payload, "stream": True})
+        assert finish == "length"
+        assert content, "stream ended with finish_reason=length but delivered no content"
+        assert content.lstrip().startswith("{"), content[:80]
+        return
+    pytest.fail("no prompt size overflowed on the output side; the test needs a new trigger")

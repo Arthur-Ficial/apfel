@@ -946,6 +946,27 @@ def test_max_tokens_respected_with_mcp():
     assert content is not None
     # With max_tokens=10, the response should be short
     assert len(content.split()) <= 30, f"Response too long for max_tokens=10: {len(content.split())} words"
+    # Fable review F5: the MCP path hardcoded "stop"; a cap hit is "length".
+    assert data["choices"][0]["finish_reason"] == "length", data["choices"][0]
+
+
+def test_json_mode_survives_an_mcp_tool_round():
+    """Fable review F3: json_object must still hold after the model calls a
+    calculator tool. The follow-up session was built with jsonMode false, so
+    the answer came back as prose: v1.16.0 answered '247 times 83 is 20,501.'
+    on all three seeds below, the fix returns valid JSON on all three."""
+    for seed in (42, 7, 1234):
+        resp = httpx.post(f"{API_URL}/chat/completions", json={
+            "model": MODEL, "seed": seed,
+            "messages": [{"role": "user", "content": "What is 247 times 83?"}],
+            "response_format": {"type": "json_object"},
+        }, timeout=120)
+        assert resp.status_code == 200, resp.text[:300]
+        content = resp.json()["choices"][0]["message"]["content"] or ""
+        try:
+            json.loads(content)
+        except json.JSONDecodeError:
+            pytest.fail(f"seed {seed}: json_object answer after a tool round is not JSON: {content!r}")
 
 
 def test_temperature_zero_with_mcp():

@@ -45,4 +45,23 @@ public enum JSONFenceStripper {
         }
         return inner.trimmingCharacters(in: .whitespacesAndNewlines)
     }
+
+    /// `strip` for output the context window cut off (`finish_reason:
+    /// length`). Such output can never carry its closing fence, so an unclosed
+    /// ```` ```json ```` (or bare ```` ``` ````) opening line is dropped and the
+    /// client gets the raw JSON prefix. Complete fences are stripped as by
+    /// `strip`; other fence languages and unfenced text are left alone.
+    public static func stripTruncated(_ content: String) -> String {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("```"), !trimmed.dropFirst(3).contains("```"),
+              let firstNewline = trimmed.firstIndex(of: "\n") else {
+            return strip(content)
+        }
+        let fenceTag = trimmed[trimmed.index(trimmed.startIndex, offsetBy: 3)..<firstNewline]
+            .trimmingCharacters(in: .whitespaces)
+            .lowercased()
+        guard fenceTag.isEmpty || fenceTag == "json" else { return trimmed }
+        return String(trimmed[trimmed.index(after: firstNewline)...])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 }

@@ -288,7 +288,8 @@ func executeMCPToolCallsForServer(
     mcpManager: MCPManager?,
     userPrompt: String,
     messages: [OpenAIMessage],
-    sessionOptions: SessionOptions
+    sessionOptions: SessionOptions,
+    jsonMode: Bool = false
 ) async throws -> (content: String, toolLog: [(name: String, args: String, result: String, isError: Bool)], usage: [TokenUsage])? {
     // `firstRound` is the policy-validated call set for the model's first
     // response (#480); empty means the model answered in plain text.
@@ -338,7 +339,10 @@ func executeMCPToolCallsForServer(
             messages: followUpMessages,
             tools: followUpTools,
             options: sessionOptions,
-            jsonMode: false,
+            // A json_object request keeps its contract through the tool
+            // round (Fable review F3: the answer came back as prose). A
+            // schema-retry round still needs the tool-calling format instead.
+            jsonMode: jsonMode && currentExecuted.retryInstructions.isEmpty,
             toolChoice: nil
         )
         // Follow-up options are rebuilt directive-free: the tool-result round
