@@ -54,7 +54,7 @@ public func writeTolerantly(_ text: String, to handle: FileHandle) -> Bool {
 }
 
 public actor StreamPrintSink {
-    /// Number of characters already emitted (the high-water mark across retries).
+    /// Number of Unicode scalars already emitted (the high-water mark across retries).
     private var emittedCount = 0
     /// The text already printed, so a divergent retry can be detected rather
     /// than silently spliced onto the previous attempt's prefix (#402).
@@ -74,23 +74,24 @@ public actor StreamPrintSink {
     /// text is emitted in full (#402).
     public func feed(cumulative content: String) {
         if emittedCount > 0 {
-            let convergent = content.count <= emittedCount
+            let convergent = content.unicodeScalars.count <= emittedCount
                 ? emittedText.hasPrefix(content)
                 : content.hasPrefix(emittedText)
             if !convergent {
                 emit("\n[retry: new response]\n")
                 emit(content)
                 emittedText = content
-                emittedCount = content.count
+                emittedCount = content.unicodeScalars.count
                 return
             }
         }
-        guard content.count > emittedCount else { return }
-        let start = content.index(content.startIndex, offsetBy: emittedCount)
+        guard content.unicodeScalars.count > emittedCount else { return }
+        let scalars = content.unicodeScalars
+        let start = scalars.index(scalars.startIndex, offsetBy: emittedCount)
         let delta = String(content[start...])
         emit(delta)
         emittedText = content
-        emittedCount = content.count
+        emittedCount = content.unicodeScalars.count
     }
 
     /// Default emit: write to stdout and flush so streaming output is live.

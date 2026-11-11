@@ -441,17 +441,18 @@ private func responsesStreamingResponse(
                     // Capture usage before the no-growth guard: output tokens
                     // keep advancing on snapshots whose text has not grown.
                     lastRoundUsage = reportedUsage(of: snapshot) ?? lastRoundUsage
-                    guard content.count > prev.count else { prev = content; continue }
+                    guard content.unicodeScalars.count > prev.unicodeScalars.count else { prev = content; continue }
                     prev = content
                     // json_object mode buffers the whole response so the final
                     // concatenation is fence-stripped valid JSON (#223 parity).
                     if jsonMode { continue }
-                    let idx = content.index(content.startIndex, offsetBy: emitted)
+                    let scalars = content.unicodeScalars
+                    let idx = scalars.index(scalars.startIndex, offsetBy: emitted)
                     let delta = String(content[idx...])
                     emit("response.output_text.delta", ResponsesTextDeltaEvent(
                         sequence_number: nextSeq(), item_id: itemId,
                         output_index: 0, content_index: 0, delta: delta))
-                    emitted = content.count
+                    emitted = content.unicodeScalars.count
                 }
 
                 let finalText = jsonMode ? JSONFenceStripper.strip(prev) : prev
