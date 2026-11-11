@@ -239,6 +239,8 @@ public actor TokenCounter {
                 break
             }
         }
+        // Chat-template framing the text estimate cannot see (#544).
+        total = TokenEstimate.transcriptFallback(textTokens: total, entries: entries.count)
         return total
     }
 

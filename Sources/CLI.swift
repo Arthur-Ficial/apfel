@@ -54,6 +54,21 @@ func singlePrompt(_ prompt: String, systemPrompt: String?, stream: Bool, options
         (session, finalPrompt, _, _) = try await ContextManager.makeSession(
             messages: msgs, tools: mcpTools, options: options, jsonMode: false, toolChoice: nil)
     } else {
+        // An oversized prompt is a context overflow (exit 4) on every OS, not
+        // whatever the runtime happens to reject first (macOS 26.1 said
+        // "unsupported language", #544). Only prompts that could be near the
+        // budget pay for the exact count.
+        let budget = await TokenCounter.shared.inputBudget(reservedForOutput: options.contextConfig.outputReserve)
+        let characters = prompt.count + (systemPrompt?.count ?? 0)
+        if PromptBudgetCheck.needsExactCount(characters: characters, budget: budget) {
+            var total = await TokenCounter.shared.count(prompt)
+            if let systemPrompt {
+                total += await TokenCounter.shared.count(systemPrompt)
+            }
+            if total > budget {
+                throw contextOverflowError(tokenCount: total, contextSize: await TokenCounter.shared.contextSize)
+            }
+        }
         session = makeSession(systemPrompt: systemPrompt, options: options)
         finalPrompt = prompt
     }

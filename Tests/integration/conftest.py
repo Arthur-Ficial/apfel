@@ -167,6 +167,13 @@ def post_chat_rotating_seeds(url, payload, timeout, seeds=GUARDRAIL_SEEDS, accep
         if is_tool_choice_not_satisfied(resp):
             last_content = resp.json()["error"]["message"]
             continue
+        # The runtime failing to decode the model's own output on one sampling
+        # trajectory is a model outcome, like a refusal: observed on macOS 26.1
+        # for seed 42 only (seeds 7, 1234, 99, 2024 answered) (#544). Any other
+        # 500 still fails below.
+        if resp.status_code == 500 and "could not be decoded" in resp.text:
+            last_content = resp.json()["error"]["message"]
+            continue
         assert resp.status_code == 200, \
             f"HTTP {resp.status_code} (seed {seed}): {resp.text[:200]}"
         data = resp.json()
