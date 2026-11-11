@@ -162,10 +162,40 @@ func startServer(config: ServerConfig, mcpManager: MCPManager? = nil) async thro
 
         await serverState.logStore.requestStarted()
 
-        // Handle the request — explicit do/catch to guarantee cleanup
+        // Wrap the handler in consumeWithCancellationOnInboundClose so a
+        // client that disconnects during a non-streaming generation cancels
+        // the handler task instead of holding the permit until generation
+        // finishes (#542). Trade-off: HTTP keep-alive is lost on these
+        // routes (Hummingbird closes the connection after the response to
+        // stop its inbound-close monitor). On localhost the reconnection
+        // cost is <1ms; permit leaks causing 429 storms are far worse.
+        // Streaming responses are unaffected: SSE monopolises the
+        // connection anyway, and onTermination already handles cleanup.
         let result: (response: Response, trace: ChatRequestTrace)
         do {
-            result = try await handleChatCompletion(request, context: context)
+            result = try await request.body.consumeWithCancellationOnInboundClose { body in
+                var req = request
+                req.body = body
+                let handlerResult = try await handleChatCompletion(req, context: context)
+                // If the task was cancelled (client disconnect) but the
+                // handler caught the error internally and returned a
+                // response, re-raise so the route logs 499.
+                if Task.isCancelled { throw CancellationError() }
+                return handlerResult
+            }
+        } catch is CancellationError {
+            await serverState.semaphore.signal()
+            await serverState.logStore.requestFinished()
+            let log = RequestLog(
+                id: requestId, timestamp: ISO8601DateFormatter().string(from: start),
+                method: "POST", path: "/v1/chat/completions", status: 499,
+                duration_ms: Int(Date().timeIntervalSince(start) * 1000),
+                stream: false, estimated_tokens: nil,
+                error: "Client disconnected", request_body: nil,
+                response_body: nil, events: ["client disconnected (#542)"]
+            )
+            await serverState.logStore.append(log)
+            return Response(status: .init(code: 499))
         } catch {
             await serverState.semaphore.signal()
             await serverState.logStore.requestFinished()
@@ -222,9 +252,29 @@ func startServer(config: ServerConfig, mcpManager: MCPManager? = nil) async thro
 
         await serverState.logStore.requestStarted()
 
+        // Same inbound-close cancellation as chat completions (#542).
         let result: (response: Response, trace: ChatRequestTrace)
         do {
-            result = try await handleResponses(request, context: context)
+            result = try await request.body.consumeWithCancellationOnInboundClose { body in
+                var req = request
+                req.body = body
+                let handlerResult = try await handleResponses(req, context: context)
+                if Task.isCancelled { throw CancellationError() }
+                return handlerResult
+            }
+        } catch is CancellationError {
+            await serverState.semaphore.signal()
+            await serverState.logStore.requestFinished()
+            let log = RequestLog(
+                id: requestId, timestamp: ISO8601DateFormatter().string(from: start),
+                method: "POST", path: "/v1/responses", status: 499,
+                duration_ms: Int(Date().timeIntervalSince(start) * 1000),
+                stream: false, estimated_tokens: nil,
+                error: "Client disconnected", request_body: nil,
+                response_body: nil, events: ["client disconnected (#542)"]
+            )
+            await serverState.logStore.append(log)
+            return Response(status: .init(code: 499))
         } catch {
             await serverState.semaphore.signal()
             await serverState.logStore.requestFinished()
