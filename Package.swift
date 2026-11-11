@@ -64,6 +64,16 @@ let package = Package(
                     "-Xlinker", "__TEXT",
                     "-Xlinker", "__info_plist",
                     "-Xlinker", "./Info.plist",
+                    // SDK stamp (#521): the macOS 27 runtime keys typed
+                    // LanguageModelError and other 27 behaviour on the
+                    // binary's LC_BUILD_VERSION sdk. SwiftPM's default build
+                    // system stamps sdk 26.0 even on the 27 SDK (homebrew-core
+                    // builds that way), so pin it: floor 26.0, sdk 27.0 - the
+                    // minimum SDK check-toolchain requires. Raise both together.
+                    "-Xlinker", "-platform_version",
+                    "-Xlinker", "macos",
+                    "-Xlinker", "26.0",
+                    "-Xlinker", "27.0",
                 ])
             ]
         ),
