@@ -488,6 +488,30 @@ func runToolCallHandlerTests() {
         try assertNil(parsed)
     }
 
+    // MARK: - Language-tagged code blocks (#544)
+
+    test("detects tool call inside function-fenced code block (#544)") {
+        let response = "```function\n{\"tool_calls\": [{\"id\": \"c1\", \"type\": \"function\", \"function\": {\"name\": \"add\", \"arguments\": \"{\\\"a\\\":1,\\\"b\\\":2}\"}}]}\n```"
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.count, 1)
+        try assertEqual(result!.first?.name, "add")
+    }
+
+    test("detects tool call inside plaintext-fenced code block (#544)") {
+        let response = "```text\n{\"tool_calls\": [{\"id\": \"c1\", \"type\": \"function\", \"function\": {\"name\": \"search\", \"arguments\": \"{}\"}}]}\n```"
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "search")
+    }
+
+    test("strips multi-word language tag only up to first newline (#544)") {
+        let response = "```not a tag\n{\"tool_calls\": [{\"id\": \"c1\", \"type\": \"function\", \"function\": {\"name\": \"fn\", \"arguments\": \"{}\"}}]}\n```"
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "fn")
+    }
+
     // MARK: - Split prompt methods
 
     test("buildOutputFormatInstructions contains tool names") {

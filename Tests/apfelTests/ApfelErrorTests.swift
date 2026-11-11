@@ -320,7 +320,7 @@ func runApfelErrorTests() {
         try assertEqual(err.openAIType, "server_error")
         try assertEqual(err.httpStatusCode, 500)
         try assertTrue(err.openAIMessage.contains("bad output"))
-        try assertTrue(!err.isRetryable)
+        try assertTrue(err.isRetryable)
     }
     test("classify detects GenerationError.decodingFailure") {
         let err = FoundationModelsGenerationErrorStub(

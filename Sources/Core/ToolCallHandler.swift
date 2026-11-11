@@ -245,8 +245,14 @@ public enum ToolCallHandler {
               let end = remaining.range(of: "```", range: nextIdx..<remaining.endIndex) {
             let block = String(remaining[start.upperBound..<end.lowerBound])
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            // Strip optional "json" language tag
-            let stripped = block.hasPrefix("json\n") ? String(block.dropFirst(5)) : block
+            // Strip optional language tag (json, function, text, ...)
+            let stripped: String
+            if let nl = block.firstIndex(of: "\n"),
+               block[block.startIndex..<nl].allSatisfy({ $0.isLetter || $0.isNumber }) {
+                stripped = String(block[block.index(after: nl)...])
+            } else {
+                stripped = block
+            }
             candidates.append(stripped)
             remaining = String(remaining[end.upperBound...])
         }
