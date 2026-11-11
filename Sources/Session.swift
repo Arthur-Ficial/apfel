@@ -357,7 +357,7 @@ func processPrompt(
     // printed prefix so output appears exactly once, live, in order (#182).
     let shouldPrint = stream && printDelta && !hasMCPTools
     let printSink = shouldPrint ? StreamPrintSink() : nil
-    let outcome = try await withRetry(maxRetries: retryMax) {
+    let outcome = try await withModelRetry(maxRetries: retryMax) {
         try await collectStream(session, prompt: promptValue, sink: printSink, options: genOpts)
     }
     content = outcome.content

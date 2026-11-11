@@ -423,6 +423,14 @@ func runApfelCorePublicAPIUsageTests() {
 
     // MARK: - withRetry(_:)
 
+    testAsync("withRetry(maxRetries:delays:classify:operation:) signature compiles (#522)") {
+        let classify: @Sendable (Error) -> ApfelError = { ApfelError.classify($0) }
+        let result: Int = try await withRetry(maxRetries: 0, delays: [0.1], classify: classify) {
+            return 7
+        }
+        try assertEqual(result, 7)
+    }
+
     testAsync("withRetry signature compiles and runs a non-throwing closure") {
         let result: Int = try await withRetry(maxRetries: 0) {
             42
