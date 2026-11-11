@@ -45,10 +45,59 @@ public enum CLIErrors {
     }
 
     /// Build an "unknown option" error for a flag the parser does not know.
+    /// When the token is an edit-distance-1..2 slip of a known flag, the
+    /// message suggests it; either way it points at `apfel --help`.
     public static func unknownOption(_ name: String) -> CLIParseError {
-        CLIParseError("unknown option: \(name)")
+        let hint = FlagSuggestion.suggest(for: name, among: CLIArguments.knownFlags)
+            .map { " (did you mean \($0)?)" } ?? ""
+        return CLIParseError("unknown option: \(name)\(hint). See 'apfel --help'.")
+    }
+}
+
+/// "Did you mean" suggestions for mistyped flags. Pure and conservative:
+/// a suggestion is only made for a near-miss (edit distance <= 2) of a flag
+/// name long enough that the match is unambiguous in practice.
+public enum FlagSuggestion {
+
+    /// The closest known flag to `token`, or nil when nothing is close enough.
+    /// `token` may carry an attached `=value`; only the flag part is compared.
+    public static func suggest(for token: String, among known: Set<String>) -> String? {
+        let flagPart = String(token.prefix(while: { $0 != "=" }))
+        let core = flagPart.drop(while: { $0 == "-" })
+        // Too short to disambiguate ("-x", "--ab"): stay silent.
+        guard core.count >= 4 else { return nil }
+        // An already-known flag in an invalid position is not a typo.
+        guard !known.contains(flagPart) else { return nil }
+        var best: (flag: String, distance: Int)? = nil
+        for candidate in known.sorted() {
+            let d = editDistance(flagPart, candidate)
+            if d <= 2, d < (best?.distance ?? Int.max) {
+                best = (candidate, d)
+            }
+        }
+        return best?.flag
     }
 
+    /// Plain Levenshtein distance.
+    static func editDistance(_ a: String, _ b: String) -> Int {
+        let s = Array(a), t = Array(b)
+        if s.isEmpty { return t.count }
+        if t.isEmpty { return s.count }
+        var prev = Array(0...t.count)
+        var curr = [Int](repeating: 0, count: t.count + 1)
+        for i in 1...s.count {
+            curr[0] = i
+            for j in 1...t.count {
+                let cost = s[i - 1] == t[j - 1] ? 0 : 1
+                curr[j] = min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost)
+            }
+            swap(&prev, &curr)
+        }
+        return prev[t.count]
+    }
+}
+
+extension CLIErrors {
     /// Build a "cannot combine X and Y" error for two mutually exclusive
     /// mode flags (e.g., `--chat --serve`).
     public static func modeConflict(_ first: String, _ second: String) -> CLIParseError {

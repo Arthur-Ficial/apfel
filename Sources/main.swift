@@ -94,25 +94,36 @@ func stdinPromptText(_ data: Data) throws -> String {
 
 let rawArgs = Array(CommandLine.arguments.dropFirst())
 
-// No args AND stdin is a TTY: nothing to read, nothing to do -> usage + exit 2.
-// This is the only no-args special case. The bare-pipe case (`echo hi | apfel`)
-// used to be a fast path that ran BEFORE parse() and therefore dropped every
-// APFEL_* env var and skipped the model-availability gate (#222). It now flows
-// through the normal parse()/dispatch path below.
+// No args AND stdin is a TTY: with stdout on a TTY too, print a short welcome
+// and start an interactive chat (the friendliest thing an empty invocation at
+// a terminal can do); the availability gate below still shows the remediation
+// text and exits 5 when the model is unavailable. With stdout redirected the
+// historical contract is kept: usage on stderr, exit 2 (#250), so scripts
+// capturing output never hang on a hidden interactive prompt.
+// The bare-pipe case (`echo hi | apfel`) used to be a fast path that ran
+// BEFORE parse() and therefore dropped every APFEL_* env var and skipped the
+// model-availability gate (#222). It flows through the normal
+// parse()/dispatch path below.
+var noArgsTTYChat = false
 if rawArgs.isEmpty && isatty(STDIN_FILENO) != 0 {
-    printUsage(to: stderr)
-    exit(exitUsageError)
+    switch NoArgsLaunch.decide(stdoutIsTTY: isatty(STDOUT_FILENO) != 0) {
+    case .usageError:
+        printUsage(to: stderr)
+        exit(exitUsageError)
+    case .welcomeChat:
+        noArgsTTYChat = true
+    }
 }
 
 // True for the bare-pipe invocation (`echo hi | apfel` with no flags). It
 // streams by default to preserve the historical output behavior of that path.
-let noArgsPipe = rawArgs.isEmpty
+let noArgsPipe = rawArgs.isEmpty && !noArgsTTYChat
 
 // Pure, testable parsing. Errors land here as CLIParseError.
 let parsed: CLIArguments
 do {
     parsed = try CLIArguments.parse(
-        rawArgs,
+        noArgsTTYChat ? ["--chat"] : rawArgs,
         env: ProcessInfo.processInfo.environment,
         extractFile: { try LesbarFileReader.extractForPrompt(path: $0) }
     )
@@ -367,6 +378,15 @@ if !parsed.mcpServerPaths.isEmpty {
 // remote branch awaits its DELETE (#246).
 func shutdownMCP() async {
     await mcpManager?.shutdown()
+}
+
+// The welcome banner for the no-args auto-chat (printed after the model
+// availability gate above, so an unavailable model shows remediation instead).
+if noArgsTTYChat && !quietMode {
+    for line in WelcomeBanner.lines(appName: appName) {
+        print(styled(line, .dim))
+    }
+    print()
 }
 
 do {
