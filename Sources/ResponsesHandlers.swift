@@ -249,7 +249,7 @@ private func responsesNonStreamingResponse(
     var incompleteReason: String?
     do {
         if let schema {
-            let generated = try await withRetry(maxRetries: retryMax) { () -> (content: String, usage: TokenUsage?) in
+            let generated = try await withModelRetry(maxRetries: retryMax) { () -> (content: String, usage: TokenUsage?) in
                 let result = try await session.respond(to: prompt, schema: schema, options: genOpts)
                 return (content: result.content.jsonString, usage: reportedUsage(of: result))
             }
@@ -259,7 +259,7 @@ private func responsesNonStreamingResponse(
             output = [.message(id: "msg_\(UUID().uuidString.prefix(12).lowercased())",
                                text: content, refusal: nil, status: "completed")]
         } else {
-            var outcome = try await withRetry(maxRetries: retryMax) {
+            var outcome = try await withModelRetry(maxRetries: retryMax) {
                 try await collectStream(session, prompt: prompt, options: genOpts)
             }
             if let roundUsage = outcome.usage { usageRounds.append(roundUsage) }
@@ -267,7 +267,7 @@ private func responsesNonStreamingResponse(
             // one bounded repair round before a violation becomes an error.
             var verdict = policy.evaluate(ToolCallHandler.detectToolCall(in: outcome.content))
             if case .violation(let violation) = verdict {
-                outcome = try await withRetry(maxRetries: retryMax) {
+                outcome = try await withModelRetry(maxRetries: retryMax) {
                     try await collectStream(session, prompt: policy.repairPrompt(for: violation), options: genOpts)
                 }
                 if let roundUsage = outcome.usage { usageRounds.append(roundUsage) }

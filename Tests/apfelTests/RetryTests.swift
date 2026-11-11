@@ -185,6 +185,60 @@ func runRetryTests() {
         try assertEqual(attempts, 2, "should stop at attempt 2")
     }
 
+    // ---- withRetry(classify:) - injected classifier (#522) ----
+    // The main target classifies through TypedErrorSupport.classifyModelError,
+    // which sees macOS 27's typed LanguageModelError. ApfelCore cannot import
+    // FoundationModels, so the classifier is injected. The opaque error below
+    // carries no type name or keyword the pure classifier could match - just
+    // like a typed rateLimited with a non-English localized description.
+
+    struct OpaqueTypedError: Error, CustomStringConvertible {
+        var description: String { "Zu viele Anfragen" }
+    }
+
+    testAsync("withRetry(classify:): injected classifier makes an opaque error retryable (#522)") {
+        nonisolated(unsafe) var attempts = 0
+        let result: String = try await withRetry(
+            maxRetries: 3, delays: [0.01, 0.01, 0.01],
+            classify: { _ in .rateLimited }
+        ) {
+            attempts += 1
+            if attempts < 2 { throw OpaqueTypedError() }
+            return "recovered"
+        }
+        try assertEqual(result, "recovered")
+        try assertEqual(attempts, 2, "the injected classifier must drive the retry decision")
+    }
+
+    testAsync("withRetry(classify:): the pure default does NOT retry the same opaque error (#522)") {
+        nonisolated(unsafe) var attempts = 0
+        do {
+            let _: String = try await withRetry(maxRetries: 3, delays: [0.01, 0.01, 0.01]) {
+                attempts += 1
+                throw OpaqueTypedError()
+            }
+            throw TestFailure("should have thrown")
+        } catch is OpaqueTypedError {
+            try assertEqual(attempts, 1, "without the injected classifier the error is not retryable")
+        }
+    }
+
+    testAsync("withRetry(classify:): non-retryable classification stops immediately (#522)") {
+        nonisolated(unsafe) var attempts = 0
+        do {
+            let _: String = try await withRetry(
+                maxRetries: 3, delays: [0.01, 0.01, 0.01],
+                classify: { _ in .guardrailViolation }
+            ) {
+                attempts += 1
+                throw OpaqueTypedError()
+            }
+            throw TestFailure("should have thrown")
+        } catch is OpaqueTypedError {
+            try assertEqual(attempts, 1)
+        }
+    }
+
     testAsync("withRetry disabled: passthrough returns result directly") {
         // When retry is disabled (retryEnabled=false), the function should be a no-op wrapper.
         // This tests the concept that without --retry, behavior is identical.

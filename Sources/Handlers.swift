@@ -326,7 +326,7 @@ private func mcpAutoExecuteResponse(
     // A violation gets ONE bounded repair round; no tool has run at this point.
     var verdict: ToolPolicy.Outcome
     do {
-        let firstRoundResult = try await withRetry(maxRetries: srvRetryMax) { () -> (content: String, usage: TokenUsage?) in
+        let firstRoundResult = try await withModelRetry(maxRetries: srvRetryMax) { () -> (content: String, usage: TokenUsage?) in
             let result = try await session.respond(to: prompt, options: genOpts)
             return (content: result.content, usage: reportedUsage(of: result))
         }
@@ -336,7 +336,7 @@ private func mcpAutoExecuteResponse(
         if case .violation(let violation) = verdict {
             let repair = policy.repairPrompt(for: violation)
             events.append("tool policy repair: \(violation.code)")
-            let repairResult = try await withRetry(maxRetries: srvRetryMax) { () -> (content: String, usage: TokenUsage?) in
+            let repairResult = try await withModelRetry(maxRetries: srvRetryMax) { () -> (content: String, usage: TokenUsage?) in
                 let result = try await session.respond(to: repair, options: genOpts)
                 return (content: result.content, usage: reportedUsage(of: result))
             }
@@ -519,7 +519,7 @@ private func nonStreamingResponse(
     do {
         // Route non-streaming through collectStream so output-side context
         // overflow surfaces as a graceful length-finish on this path too.
-        outcome = try await withRetry(maxRetries: nsRetryMax) {
+        outcome = try await withModelRetry(maxRetries: nsRetryMax) {
             try await collectStream(session, prompt: prompt, options: genOpts)
         }
         if let roundUsage = outcome.usage { usageRounds.append(roundUsage) }
@@ -535,7 +535,7 @@ private func nonStreamingResponse(
             if outcome.usage == nil {
                 promptAdjustment += await TokenCounter.shared.count(outcome.content) + TokenCounter.shared.count(repair)
             }
-            outcome = try await withRetry(maxRetries: nsRetryMax) {
+            outcome = try await withModelRetry(maxRetries: nsRetryMax) {
                 try await collectStream(session, prompt: repair, options: genOpts)
             }
             if let roundUsage = outcome.usage { usageRounds.append(roundUsage) }
@@ -1047,7 +1047,7 @@ private func structuredNonStreamingResponse(
     let content: String
     let reportedRound: TokenUsage?
     do {
-        let generated = try await withRetry(maxRetries: nsRetryMax) { () -> (content: String, usage: TokenUsage?) in
+        let generated = try await withModelRetry(maxRetries: nsRetryMax) { () -> (content: String, usage: TokenUsage?) in
             let result = try await session.respond(to: prompt, schema: schema, options: genOpts)
             return (content: result.content.jsonString, usage: reportedUsage(of: result))
         }

@@ -143,7 +143,7 @@ func structuredSinglePrompt(
     debugLog("schema", "prompt_length=\(prompt.count) schema_name=\(schemaName)")
 
     let retryMax = options.retryEnabled ? options.retryCount : 0
-    let content = try await withRetry(maxRetries: retryMax) {
+    let content = try await withModelRetry(maxRetries: retryMax) {
         try await session.respond(to: prompt, schema: schema, options: genOpts).content.jsonString
     }
 
@@ -193,7 +193,7 @@ func messagesPrompt(
     if let schemaJSON {
         let schema = try SchemaConverter.generationSchema(fromJSON: schemaJSON, name: schemaName ?? "schema")
         let retryMax = options.retryEnabled ? options.retryCount : 0
-        let content = try await withRetry(maxRetries: retryMax) {
+        let content = try await withModelRetry(maxRetries: retryMax) {
             try await session.respond(
                 to: makeUserPrompt(text: finalPrompt, pieces: finalPieces),
                 schema: schema, options: genOpts).content.jsonString
