@@ -11,6 +11,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 - Hummingbird 2.26.0 -> 2.27.1. 2.27.1 fixes a lost `produceMore` event that could hang a request body when an inbound-close handler is in use - the mechanism the server now uses to cancel abandoned requests (#542).
 
+### Fixed
+
+- Non-streaming `/v1/chat/completions` and `/v1/responses` requests now cancel generation and release their concurrency permit when the client disconnects mid-flight. Before, the handler ran `collectStream` to completion and held the semaphore - clients that retried on timeout stacked up and after `--max-concurrent` of them every new request got 429. The fix wraps both routes in Hummingbird's `consumeWithCancellationOnInboundClose`, which detects inbound TCP close and cancels the handler task. Trade-off: HTTP keep-alive is lost on these routes; on localhost the reconnection cost is negligible (#542).
+
 ## [1.17.0] - 2026-11-11
 
 ### Added
