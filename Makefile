@@ -23,24 +23,28 @@ check-toolchain:
 		exit 1; \
 	fi; \
 	major=$$(echo "$$sdk" | cut -d. -f1); \
-	minor=$$(echo "$$sdk" | cut -d. -f2); \
-	if [ -z "$$minor" ]; then minor=0; fi; \
-	if [ "$$major" -lt 26 ] || { [ "$$major" -eq 26 ] && [ "$$minor" -lt 4 ]; }; then \
+	if [ "$$major" -lt 27 ]; then \
 		echo ""; \
-		echo "error: apfel requires Apple developer tools with the macOS 26.4 SDK or newer."; \
+		echo "error: apfel requires the macOS 27 SDK or newer (you have $$sdk)."; \
 		echo "Your macOS version: $$os_ver"; \
 		echo "Active SDK version: $$sdk"; \
 		echo "Selected developer dir: $$devdir"; \
 		echo ""; \
 		echo "Why this fails:"; \
-		echo "  FoundationModels token-counting APIs (tokenCount/contextSize) are missing from older SDKs."; \
+		echo "  Since v1.15.0 the sources use macOS 27 FoundationModels API"; \
+		echo "  (UsageAccounting, VisionSupport, ToolCallingSupport, TypedErrorSupport)"; \
+		echo "  behind runtime #available gates. The compiler needs the 27 SDK to see"; \
+		echo "  those type declarations even though the binary runs on macOS 26."; \
 		echo ""; \
 		echo "What you need to update:"; \
-		echo "  1. Update Command Line Tools to the macOS 26.4 SDK or newer."; \
-		echo "  2. Select Command Line Tools explicitly if needed:"; \
+		echo "  1. Install Command Line Tools for macOS 27 or Xcode 27."; \
+		echo "  2. Select the right developer dir if needed:"; \
 		echo "     sudo xcode-select -s /Library/Developer/CommandLineTools"; \
 		echo "  3. Re-check with: xcrun --show-sdk-version"; \
 		echo "  4. Re-run: make install"; \
+		echo ""; \
+		echo "If you only need to run apfel (not build from source):"; \
+		echo "  brew install apfel"; \
 		exit 1; \
 	fi
 
