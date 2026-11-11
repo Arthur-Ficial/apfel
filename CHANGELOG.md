@@ -7,18 +7,6 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
-### Fixed
-
-- `make build` / `make install` now fails early with a clear message when the active SDK is older than macOS 27, instead of falling through to `swift build` which produces cryptic compiler errors about missing FoundationModels types. Since v1.15.0 the sources use macOS 27-only API (`LanguageModelSession.Usage`, `LanguageModelCapabilities`, etc.) behind runtime `#available` gates; the compiler needs the 27 SDK to see those declarations even though the binary runs on macOS 26. Prebuilt binaries (`brew install apfel`, nixpkgs) are unaffected (#520).
-- CI builds on GitHub's `xcode-27` runner (macOS 27 SDK) and is green again; a new `macos-26-launch` job starts the SDK-27-built binary on a real macOS 26 runner (deployment floor `26.0`, `--version`, `--model-info`, `--serve` + `/health`), so a strongly linked macOS 27-only symbol can no longer slip into a release unnoticed (#520, #205).
-- `--retry` (and the server's retry setting) now retries a macOS 27 typed `rateLimited` error whatever language its message is in. Every retry in apfel now decides through the same typed classifier as the rest of the error handling; before, it matched English keywords only, so on a non-English system a rate limit was not retried. ApfelCore gains an additive `withRetry(maxRetries:delays:classify:operation:)` overload for hosts that can classify typed errors (#522).
-- On macOS 27, reasoning entries in a transcript (`Transcript.Entry.reasoning`) now count toward the chars/4 token estimate apfel falls back to when the tokenizer is unavailable; before they were skipped and the estimate came out low. The exact tokenizer path was not affected. Builds against the macOS 27 SDK are free of the non-exhaustive-switch warnings this caused, and source comments no longer name a fixed context size (#513, #192, #330).
-- On macOS 27, when the model refuses after a tool-policy repair round, the refusal's `usage` now includes the earlier round instead of dropping it: the earlier round's runtime-reported tokens plus the counted refused round, in chat (streaming and non-streaming), the tool-calling path and `/v1/responses`. On macOS 26 the numbers are unchanged. New ApfelCore helper `TokenUsage.refusal(completedRounds:refusedRound:)` (#516).
-
-### Changed
-
-- When the guardrails refuse a request that has `-f` / `--file` input, the error now suggests `--permissive` instead of only "Try rephrasing". The default guardrails stay as they are; on macOS 27 they refuse OCR'd image text more often than on 26 (3 of 5 test images vs 0 of 5), and the message now points at the opt-out (#505).
-
 ### Added
 
 - Bare `apfel` at an interactive terminal (stdin AND stdout on a TTY) now prints a 4-line welcome (one-shot, `--chat`, `--help` entry points) and starts an interactive chat instead of failing with usage/exit 2. The historical contract is kept whenever stdout is redirected (usage on stderr, exit 2, empty stdout, #250), so scripts can never hang on a hidden prompt; an unavailable model still shows the existing remediation text and exits 5. Decision policy (`NoArgsLaunch`) and banner (`WelcomeBanner`) are pure ApfelCLI and unit-tested.
@@ -27,7 +15,16 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ### Changed
 
+- When the guardrails refuse a request that has `-f` / `--file` input, the error now suggests `--permissive` instead of only "Try rephrasing". The default guardrails stay as they are; on macOS 27 they refuse OCR'd image text more often than on 26 (3 of 5 test images vs 0 of 5), and the message now points at the opt-out (#505).
 - `--help` OPTIONS are grouped (Generation / Input & output / Tools (MCP) / Diagnostics / Meta) with no flag added, removed or renamed. The text moved to ApfelCLI (`UsageText`) so unit tests guard both the grouping and full `knownFlags` coverage; the `OPTIONS:` / `CONTEXT OPTIONS:` / `SERVER OPTIONS:` section headers parsed by the drift tests are unchanged.
+
+### Fixed
+
+- `make build` / `make install` now fails early with a clear message when the active SDK is older than macOS 27, instead of falling through to `swift build` which produces cryptic compiler errors about missing FoundationModels types. Since v1.15.0 the sources use macOS 27-only API (`LanguageModelSession.Usage`, `LanguageModelCapabilities`, etc.) behind runtime `#available` gates; the compiler needs the 27 SDK to see those declarations even though the binary runs on macOS 26. Prebuilt binaries (`brew install apfel`, nixpkgs) are unaffected (#520).
+- CI builds on GitHub's `xcode-27` runner (macOS 27 SDK) and is green again; a new `macos-26-launch` job starts the SDK-27-built binary on a real macOS 26 runner (deployment floor `26.0`, `--version`, `--model-info`, `--serve` + `/health`), so a strongly linked macOS 27-only symbol can no longer slip into a release unnoticed (#520, #205).
+- `--retry` (and the server's retry setting) now retries a macOS 27 typed `rateLimited` error whatever language its message is in. Every retry in apfel now decides through the same typed classifier as the rest of the error handling; before, it matched English keywords only, so on a non-English system a rate limit was not retried. ApfelCore gains an additive `withRetry(maxRetries:delays:classify:operation:)` overload for hosts that can classify typed errors (#522).
+- On macOS 27, reasoning entries in a transcript (`Transcript.Entry.reasoning`) now count toward the chars/4 token estimate apfel falls back to when the tokenizer is unavailable; before they were skipped and the estimate came out low. The exact tokenizer path was not affected. Builds against the macOS 27 SDK are free of the non-exhaustive-switch warnings this caused, and source comments no longer name a fixed context size (#513, #192, #330).
+- On macOS 27, when the model refuses after a tool-policy repair round, the refusal's `usage` now includes the earlier round instead of dropping it: the earlier round's runtime-reported tokens plus the counted refused round, in chat (streaming and non-streaming), the tool-calling path and `/v1/responses`. On macOS 26 the numbers are unchanged. New ApfelCore helper `TokenUsage.refusal(completedRounds:refusedRound:)` (#516).
 
 ## [1.16.0] - 2026-10-05
 
