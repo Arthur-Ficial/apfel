@@ -79,6 +79,8 @@ suite("ContextStrategyTests") { runContextStrategyTests() }
 suite("OpenAIModelsTests") { runOpenAIModelsTests() }
 suite("JSONFenceStripperTests") { runJSONFenceStripperTests() }
 suite("LogBodyTests") { runLogBodyTests() }
+suite("PromptBudgetCheckTests") { runPromptBudgetCheckTests() }
+suite("TokenEstimateTests") { runTokenEstimateTests() }
 suite("CodeCropperTests") { runCodeCropperTests() }
 suite("ChatRequestValidatorTests") { runChatRequestValidatorTests() }
 suite("OriginValidatorTests") { runOriginValidatorTests() }
