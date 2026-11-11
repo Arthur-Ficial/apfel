@@ -21,7 +21,7 @@ apfel came first. Its first commit and v0.1.0 landed on 2026-03-24, the first Gi
 
 | | apfel | Apple `fm` |
 |---|---|---|
-| Ships with | `brew install apfel` (also nixpkgs, MacPorts, source) | macOS 27 (`/usr/bin/fm`), nothing to install |
+| Ships with | `brew install apfel` (also nixpkgs, MacPorts, source; building from source needs the macOS 27 SDK, the binary runs on 26 and 27) | macOS 27 (`/usr/bin/fm`), nothing to install |
 | macOS support | **26 and 27**, one binary | 27 only |
 | First run | works immediately | `sudo fm license` in a terminal, type `yes` (machine-wide) |
 | License | MIT, open source | Apple SLA, closed |
@@ -29,6 +29,7 @@ apfel came first. Its first commit and v0.1.0 landed on 2026-03-24, the first Gi
 | Model | Apple on-device Foundation Model via FoundationModels | same |
 | Cloud model (Private Cloud Compute, 32k context) | never: apfel is 100 % on-device by principle | advertised as `--model pcc` at WWDC26; the shipped 27.0.1 `fm` accepts only `--model system` |
 | Context window | read at runtime (`apfel --model-info`, `/health`); 4096 tokens on this M2, 8192 on M3+ Macs with 12 GB+ on macOS 27 | same model, same window on the same Mac; no `fm` command prints it. Empirically `fm respond` accepts 3988 prompt tokens and rejects 4039 here |
+| Swift library | `ApfelCore` (OpenAI types, validation, MCP, retry, context strategies; no FoundationModels) and `ApfelEngine` (preview: streaming on-device chat engine with usage, context rotation and transcript persistence) | none (Apple's FoundationModels framework is the library) |
 
 ## Command-line tool
 
@@ -42,7 +43,7 @@ apfel came first. Its first commit and v0.1.0 landed on 2026-03-24, the first Gi
 | JSON Schema constrained output | `--schema file.json`: guaranteed schema-valid JSON, any local schema with `$ref`/`$defs`, bounds, enums | `--schema file`, schema authored with `fm schema object --name Person --string name --int age` |
 | Code-only answers | `--code`: prints the first fenced block, bare command for shell scripts | no |
 | Multi-turn in one shot | `--messages file.json` (OpenAI messages array) | `--resume transcript.json` + `--save-transcript` |
-| Interactive chat | `apfel --chat` with context trimming strategies | `fm chat` with named sessions (`--resume name`, `--continue`) |
+| Interactive chat | `apfel --chat`, or a bare `apfel` at a terminal, with context trimming strategies | `fm chat` with named sessions (`--resume name`, `--continue`) |
 | Attach files | `-f` text, PDF, images (Vision OCR + image understanding), repeatable | `--image` (image input to the model), `--text` segments |
 | Image understanding | Native image input to the model on macOS 27 (`-f photo.jpg`, piped bytes, server `image_url` data URLs - #510) PLUS OCR text via Vision on both 26 and 27 | yes on macOS 27: `--image photo.jpg` goes to the model itself (the 3B model's descriptions are coarse: it called a metal plaque "a glass bottle wrapped in foil") |
 | Built-in OCR | yes, automatic: every `-f` image or PDF page goes through Apple's Vision OCR and image classification before the model sees it, on macOS 26 and 27 | yes on macOS 27, opt-in: `--tool ocr` as a model-callable tool |
