@@ -231,7 +231,7 @@ alias apfel=apfel-run                 # optional, every apfel flag still works
 | Tool calling | Supported | Native `ToolDefinition` + JSON detection. See [docs/tool-calling-guide.md](docs/tool-calling-guide.md) |
 | `response_format: json_object` | Supported | System-prompt injection; markdown fences stripped from output |
 | `response_format: json_schema` | Supported | Guaranteed schema-conforming output via FoundationModels `DynamicGenerationSchema`; works with `stream: true` |
-| `temperature`, `top_p`, `max_tokens`, `seed` | Supported | Mapped to `GenerationOptions`. `top_p` is nucleus sampling; `temperature: 0` maps to greedy (deterministic). Omitting `max_tokens` uses the remaining context window (drop-in OpenAI semantics) - see [Default response cap](#default-response-cap-max_tokens) |
+| `temperature`, `top_p`, `max_tokens`, `seed` | Supported | Mapped to `GenerationOptions`. `top_p` is nucleus sampling; `temperature` below 0.001 (0 included) maps to greedy (deterministic). Omitting `max_tokens` uses the remaining context window (drop-in OpenAI semantics) - see [Default response cap](#default-response-cap-max_tokens) |
 | `stream: true` | Supported | SSE; final usage chunk only when `stream_options: {"include_usage": true}` (per OpenAI spec) |
 | `usage` | Supported | Real tokenizer counts on macOS 26.4+ (chars/4 estimate below). macOS 27: the runtime's own accounting incl. Apple's chat-template framing (about 46 extra `prompt_tokens` on a one-line prompt); macOS 26: apfel counts the message text. Details in [docs/openai-api-compatibility.md](docs/openai-api-compatibility.md) |
 | `finish_reason` | Supported | `stop`, `tool_calls`, `length` |

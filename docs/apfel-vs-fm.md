@@ -78,7 +78,7 @@ Both tools start a local server. apfel: `apfel --serve` (port 11434). `fm`: `fm 
 | `GET /v1/models` | yes, with `context_window`, `context_window_measured`, `capabilities`, `capabilities_reported` | yes (`id: "system"`) |
 | `GET /health` | model availability, context window, languages, active requests, version | `{"status":"fm serve is running"}` plus model list |
 | `max_tokens` | honoured, `finish_reason: length` at the cap | **ignored**: `max_tokens: 5` returned 141 completion tokens with `finish_reason: stop` |
-| `temperature`, `top_p`, `seed` | mapped to `GenerationOptions`; `temperature: 0` is greedy | `temperature` accepted silently (effect not verified); `top_p`, `seed` not documented |
+| `temperature`, `top_p`, `seed` | mapped to `GenerationOptions`; `temperature` below 0.001 (0 included) is greedy | `temperature` accepted silently (effect not verified); `top_p`, `seed` not documented |
 | Unsupported endpoints | honest `501` for `/v1/embeddings`, `/v1/completions` | `404 not_found` |
 | Explicit `400` for unsupported params | yes for `n>1`, `logprobs`, `stop`, penalties, images | `n>1` gets a clear 400; `logprobs: true` is accepted silently |
 | Context overflow | HTTP 400, `type: context_length_exceeded`; on macOS 27 the message carries the runtime's real token count and window | CLI: exit 1 with "The session's transcript exceeded the model's context size"; server shape not probed |
