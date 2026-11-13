@@ -247,3 +247,22 @@ def test_cli_stream_schema_json_output_is_the_buffered_envelope(tmp_path):
     b, s = json.loads(buffered.stdout), json.loads(streamed.stdout)
     assert s["content"] == b["content"]
     json.loads(s["content"])
+
+
+@pytest.mark.model
+def test_cli_messages_stream_schema_prints_the_same_json_as_the_buffered_run(tmp_path):
+    """--messages composes with --stream --schema: the streamed reply to the
+    conversation equals the buffered one."""
+    require_model()
+    schema = str(_schema_file(tmp_path))
+    messages = tmp_path / "messages.json"
+    messages.write_text(json.dumps([
+        {"role": "system", "content": "You write short poems."},
+        {"role": "user", "content": POEM_PROMPT},
+    ]))
+    buffered = _cli(["--seed", str(SEED), "--messages", str(messages), "--schema", schema])
+    streamed = _cli(["--seed", str(SEED), "--stream", "--messages", str(messages), "--schema", schema])
+    assert buffered.returncode == 0, buffered.stderr
+    assert streamed.returncode == 0, streamed.stderr
+    assert streamed.stdout == buffered.stdout, (streamed.stdout, buffered.stdout)
+    json.loads(streamed.stdout)
