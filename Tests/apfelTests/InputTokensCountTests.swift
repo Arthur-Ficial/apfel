@@ -329,7 +329,24 @@ func runInputTokensCountTests() {
         let text = i.segments.compactMap { seg -> String? in
             if case .text(let t) = seg { return t.content } else { return nil }
         }.joined()
-        try assertTrue(text.contains("Add numbers") && text.contains(#""a""#), "schema rendered as text: \(text)")
+        try assertTrue(text.contains("Add numbers") && text.contains("a (number)"), "schema rendered as text: \(text)")
+    }
+
+    testAsync("prepared input: the function list comes before the call-format block (#555)") {
+        // Measured on macOS 26.1: the list first, then how to call, kept the
+        // guardrail quiet where schema text after the format block tripped it.
+        let tool = OpenAITool(type: "function", function: OpenAIFunction(
+            name: "add", description: "Add numbers",
+            parameters: RawJSON(rawValue: #"{"type":"object","properties":{"a":{"type":"number"}}}"#)))
+        let prepared = try await ContextManager.prepareEntries(
+            messages: [user("add 1 and 2")], tools: [tool], options: .defaults)
+        guard case .instructions(let i)? = prepared.base.first,
+              case .text(let t)? = i.segments.first else { throw TestFailure("no instruction text") }
+        guard let list = t.content.range(of: "Available functions:"),
+              let format = t.content.range(of: "## Tool Calling Format") else {
+            throw TestFailure("missing a block: \(t.content)")
+        }
+        try assertTrue(list.lowerBound < format.lowerBound, "list must precede the format block: \(t.content)")
     }
 
     test("runtime input entries: a transcript without instructions gets the runtime's default slot") {

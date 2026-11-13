@@ -17,21 +17,30 @@ and apfel's OpenAI-compatible tool calling implementation.
 
 ## How It Works
 
-apfel converts OpenAI-format tool definitions into two paths:
+apfel describes every OpenAI-format tool to the model in its instructions, as a
+plain-language list placed before the call format (#555):
 
-1. **Native path:** Tool schemas are converted to `DynamicGenerationSchema` and passed
-   via FoundationModels' `Transcript.ToolDefinition` API. The model outputs structured
-   JSON tool calls natively.
+```
+Available functions:
+- add: Add two numbers. Arguments: a (number, required); b (number, required)
+- tag: Tag a file. Arguments: tags (array, required): labels; schema {"items":{"type":"string"},"type":"array"}
+```
 
-2. **Fallback path:** If schema conversion fails (an unsupported type, or a validation
-   keyword the on-device model cannot enforce - see
-   [docs/openai-api-compatibility.md#json-schema-support](openai-api-compatibility.md#json-schema-support)),
-   the tool definition is injected into the system prompt as text. The model is instructed
-   to output a specific JSON format, which apfel detects post-hoc via
-   `ToolCallHandler.detectToolCall()`.
+Scalar arguments are written as `name (type, required) one of ...: description`;
+anything nested (arrays, objects, unions, bounds) is appended as compact JSON so no
+constraint is lost. The model is then told to answer a call with a specific JSON
+format, which apfel detects post-hoc via `ToolCallHandler.detectToolCall()` and
+executes out-of-band (#119).
+
+Why text and not FoundationModels' `Transcript.ToolDefinition`: the macOS 26 and 27
+runtimes ignore transcript-only tool definitions when no tool is registered with the
+session, so the model only ever saw the tool names (measured: correct argument names
+0/10 with definitions, 10/10 with the list). A list rather than JSON schema text,
+because on macOS 26.1 JSON schema text made Apple's guardrail block a plain
+arithmetic question with the calculator tools, and the list is cheaper.
 
 Detection handles: clean JSON, markdown-wrapped ```` ```json ``` ```` blocks, and JSON
-after preamble text. Both paths produce identical OpenAI-compatible output.
+after preamble text.
 
 ## `tool_choice` and `parallel_tool_calls` are enforced
 
@@ -723,13 +732,10 @@ From 29 requests during testing:
 Client sends OpenAI tool format
        |
        v
-SchemaConverter.convert()
-  |                    |
-  v                    v
-Native path         Fallback path
-(ToolDefinition)    (system prompt injection)
-  |                    |
-  v                    v
+ToolCallHandler.buildToolSchemaPrompt()
+(plain-language list in the instructions)
+       |
+       v
 FoundationModels Transcript API
        |
        v

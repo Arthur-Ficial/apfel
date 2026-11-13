@@ -214,6 +214,14 @@ package enum ContextManager {
             parts.append("Do not call any tools. Respond with plain text only.")
         }
 
+        // Every tool as a plain-language list so the model sees descriptions
+        // and arguments (#555): the runtime ignores transcript-only
+        // ToolDefinitions. The list goes before the call format; measured on
+        // macOS 26.1, schema text after it tripped the guardrail.
+        if !textToolDefs.isEmpty {
+            parts.append(ToolCallHandler.buildToolSchemaPrompt(tools: textToolDefs))
+        }
+
         // Tool output format instructions (always needed when tools are present)
         if let tools = tools, !tools.isEmpty {
             let names = tools.map(\.function.name)
@@ -226,12 +234,6 @@ package enum ContextManager {
             default:
                 break
             }
-        }
-
-        // All tool schemas as text so the model sees descriptions and
-        // parameters (#555); native ToolDefinitions are no longer used.
-        if !textToolDefs.isEmpty {
-            parts.append(ToolCallHandler.buildToolSchemaPrompt(tools: textToolDefs))
         }
 
         return parts.joined(separator: "\n\n")
