@@ -21,7 +21,13 @@ package struct ProcessPromptResult: Sendable {
     /// Why a `.length` finish happened (cap vs context window); nil otherwise.
     public let truncation: TruncationCause?
 
-    public init(content: String, toolLog: [ToolLogEntry], finishReason: FinishReason, truncation: TruncationCause? = nil) {
+    public init(content: String, toolLog: [ToolLogEntry], finishReason: FinishReason) {
+        self.init(content: content, toolLog: toolLog, finishReason: finishReason, truncation: nil)
+    }
+
+    /// Carries why a `.length` finish happened (#484). A separate initialiser
+    /// so the three-argument one above keeps its exact signature (API gate).
+    package init(content: String, toolLog: [ToolLogEntry], finishReason: FinishReason, truncation: TruncationCause?) {
         self.content = content; self.toolLog = toolLog; self.finishReason = finishReason
         self.truncation = truncation
     }
