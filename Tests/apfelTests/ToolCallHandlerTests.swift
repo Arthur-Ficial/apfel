@@ -627,7 +627,7 @@ func runToolCallHandlerTests() {
               let data = json.data(using: .utf8),
               let parsed = try JSONSerialization.jsonObject(with: data) as? [[String: Any]],
               let first = parsed.first else {
-            throw TestError("could not parse tool schema JSON from prompt")
+            throw TestFailure("could not parse tool schema JSON from prompt")
         }
         try assertEqual(first["name"] as? String, "add")
         try assertEqual(first["description"] as? String, "Add numbers")
