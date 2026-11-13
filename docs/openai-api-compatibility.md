@@ -10,6 +10,7 @@
 |---------|--------|-------|
 | `POST /v1/chat/completions` | Supported | Streaming + non-streaming |
 | `POST /v1/responses` | Supported | See [Responses API](#responses-api) below |
+| `POST /v1/responses/input_tokens` | Supported | Exact token preflight, no generation. See [Token preflight](#token-preflight-v1responsesinput_tokens) below |
 | `GET /v1/models` | Supported | Returns `apple-foundationmodel` |
 | `GET /health` | Supported | Model availability, context window, languages |
 | `GET /v1/logs`, `/v1/logs/stats` | Debug only | Requires `--debug` |
@@ -104,6 +105,97 @@ Be honest about what to expect: the ~3B on-device model's scene understanding is
 | `function_call_output` input items | 501 | Tool-result round-trips are not yet supported on this endpoint; use Chat Completions |
 
 MCP tools attached with `--mcp` are auto-executed on Chat Completions only; `/v1/responses` serves client-defined function tools.
+
+## Token preflight (`/v1/responses/input_tokens`)
+
+`POST /v1/responses/input_tokens` answers "does this fit?" before you spend time on generation. It takes the same body as `/v1/responses` minus the sampling fields, prepares the input exactly as generation would (instructions, roles, tool definitions, `text.format` schema, truncation), and counts it with Apple's on-device tokenizer (`SystemLanguageModel.tokenCount(for:)`). It never generates and never runs a tool. The official SDK call works unchanged:
+
+```python
+from openai import OpenAI
+
+client = OpenAI(base_url="http://localhost:11434/v1", api_key="local-placeholder")
+report = client.responses.input_tokens.count(
+    model="apple-foundationmodel",
+    input="Summarize this local support ticket.",
+)
+print(report.input_tokens)
+```
+
+The response is OpenAI's object plus an additive `x_apfel` report of the runtime budget it was measured against:
+
+```json
+{"object": "response.input_tokens", "input_tokens": 62,
+ "x_apfel": {"context_size": 4096, "context_size_measured": true, "output_reserve": 512,
+             "input_budget": 3584, "untrimmed_input_tokens": 62, "input_tokens": 62,
+             "truncation": "auto", "fits": true, "trimmed": false,
+             "removed_input_items": [], "tokenizer": "apple-foundationmodels"}}
+```
+
+| Request | Result |
+|---------|--------|
+| `model`, `input` (string or messages), `instructions`, `tools` (function), `tool_choice`, `text.format`, `truncation`, `parallel_tool_calls` | Counted, same mapping and validation as `/v1/responses` |
+| `truncation: "auto"` (default), input over budget | 200: oldest turns dropped exactly as generation drops them; `input_tokens` is the trimmed count, `removed_input_items` lists the dropped `input` indices |
+| `truncation: "disabled"`, input over budget | 400, `code: context_length_exceeded`, message with the counted tokens, budget, window and reserve |
+| Instructions, tools or the last message alone over budget | 400 `context_length_exceeded`, also with `auto` |
+| macOS 26.0 to 26.3 (no tokenizer API) | 501, `code: token_counting_unavailable`. No estimate is returned |
+| Apple Intelligence unavailable / tokenizer throws | 503, `code: token_counting_unavailable` / `token_counting_failed` |
+| `input_image`, `input_file`, `conversation`, `previous_response_id`, `reasoning`, hosted tools | 501 or 400, named in the message |
+| `stream`, `temperature`, `top_p`, `max_output_tokens`, `metadata`, `store`, other unknown keys | 400 naming the parameter: they do not change the input tokens |
+
+Auth, origin checks, CORS, the body-size limit and `--max-concurrent` apply as on every other route.
+
+What the number means, measured on macOS 27.0.1:
+
+- **Text, instructions, multi-turn, `json_schema`, auto-truncated input:** the count equals the `usage.input_tokens` the runtime reports when the same request is generated. It includes the default instructions the runtime adds when there is no system message, and the schema's prompt overhead.
+- **Function tools:** the count includes the full tool definitions (name, description, parameter schema), which is what apfel's own budget check uses. The macOS 27 runtime currently reports fewer input tokens for the same request (one `add` tool: count 373, reported 172), so for tools the count is an upper bound: a request that fits the count fits the runtime.
+- **`context_size`** is read from the runtime per request, never hardcoded: 4096 on macOS 26 and on M1/M2 Macs, 8192 on macOS 27 with an M3 or newer chip and 12 GB+. `context_size_measured: false` means the runtime has not reported its window yet (cold start) and the assumed floor was used.
+- **A count does not predict the response.** It prices the input only. How long the answer or a later summary will be, and what it will say, is decided at generation time; keep `output_reserve` (512 tokens) free for it.
+- Counting does not generate, but it does use the model's tokenizer: the first count after boot can pay the model's start-up cost.
+
+### Example: fit retrieved documents into the window
+
+A local retrieval client can add documents, most relevant first, until the next one would not fit - with the real tokenizer instead of a guess:
+
+```python
+import openai
+from openai import OpenAI
+
+client = OpenAI(base_url="http://localhost:11434/v1", api_key="local-placeholder")
+MODEL = "apple-foundationmodel"
+INSTRUCTIONS = "Answer from the documents only. Say so if they do not contain the answer."
+
+def build_input(question, docs):
+    context = "\n\n".join(f"[{i + 1}] {doc}" for i, doc in enumerate(docs))
+    return f"Documents:\n{context}\n\nQuestion: {question}"
+
+def fit_documents(question, ranked_docs):
+    """Keep the longest prefix of ranked_docs that fits the input budget."""
+    kept = []
+    for doc in ranked_docs:
+        try:
+            client.responses.input_tokens.count(
+                model=MODEL, instructions=INSTRUCTIONS,
+                input=build_input(question, kept + [doc]),
+                truncation="disabled",
+            )
+        except openai.BadRequestError as err:
+            if err.code == "context_length_exceeded":
+                break
+            raise
+        kept.append(doc)
+    return kept
+
+docs = ["Ticket 4711: the printer on floor 2 shows error E05 after a paper jam.",
+        "Runbook: E05 means the fuser is cold; power-cycle and wait 2 minutes."]
+question = "How do I fix error E05?"
+kept = fit_documents(question, docs)
+answer = client.responses.create(model=MODEL, instructions=INSTRUCTIONS,
+                                 input=build_input(question, kept))
+print(f"{len(kept)} of {len(docs)} documents fit")
+print(answer.output_text)
+```
+
+`truncation="disabled"` turns "the next document does not fit" into an explicit 400 `context_length_exceeded` instead of a silent trim. Which documents fit is decided before generation; how long the answer will be is not.
 
 ## JSON Schema support
 

@@ -267,7 +267,9 @@ private func truncatedServerToolResults(
         toolResults: toolLog.map { (name: $0.name, result: "") })
     let prepared = try await ContextManager.prepareEntries(
         messages: template, tools: nil, options: sessionOptions)
-    let overheadTokens = await TokenCounter.shared.count(
+    // Same pricing the budget check applies (countInput: incl. the runtime's
+    // default instructions when there is no system message, #485).
+    let overheadTokens = await TokenCounter.shared.countInput(
         entries: prepared.base + prepared.history + [prepared.final])
     let inputBudget = await TokenCounter.shared.inputBudget(
         reservedForOutput: sessionOptions.contextConfig.outputReserve)

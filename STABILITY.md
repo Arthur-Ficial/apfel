@@ -10,6 +10,7 @@ These are covered by semantic versioning. Breaking changes require a major versi
 
 - CLI flags, exit codes, and output formats (`--json`, `--quiet`, `--stream`)
 - OpenAI-compatible API endpoints and response schemas (`/v1/chat/completions`, `/v1/models`, `/health`)
+- The token preflight `/v1/responses/input_tokens`: the `response.input_tokens` object, the `x_apfel` report keys (new keys may be added), and its error codes `context_length_exceeded`, `token_counting_unavailable` and `token_counting_failed`. The count itself follows Apple's tokenizer, which macOS updates may change
 - MCP tool calling interface (`--mcp`)
 - `brew services` integration
 - Configuration via environment variables (`APFEL_TOKEN`, `APFEL_MCP`, `APFEL_SYSTEM_PROMPT`)

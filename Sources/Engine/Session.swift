@@ -112,11 +112,16 @@ package func makeSession(systemPrompt: String?, options: SessionOptions = .defau
     return makeTranscriptSession(model: model, entries: [.instructions(instructions)])
 }
 
-package func makePromptEntry(_ prompt: String, options: SessionOptions = .defaults) -> Transcript.Entry {
+package func makePromptEntry(
+    _ prompt: String,
+    options: SessionOptions = .defaults,
+    responseSchema: GenerationSchema? = nil
+) -> Transcript.Entry {
     let segment = Transcript.TextSegment(content: prompt)
     let prompt = Transcript.Prompt(
         segments: [.text(segment)],
-        options: makeGenerationOptions(options)
+        options: makeGenerationOptions(options),
+        responseFormat: responseSchema.map { Transcript.ResponseFormat(schema: $0) }
     )
     return .prompt(prompt)
 }
@@ -124,10 +129,15 @@ package func makePromptEntry(_ prompt: String, options: SessionOptions = .defaul
 /// Prompt entry for a user turn with ordered text/image pieces (#510).
 /// Text-only pieces produce the same entry as `makePromptEntry(_:options:)`;
 /// images become native attachment segments (macOS 27, see VisionSupport).
-package func makePromptEntry(pieces: [PromptPiece], options: SessionOptions = .defaults) -> Transcript.Entry {
+package func makePromptEntry(
+    pieces: [PromptPiece],
+    options: SessionOptions = .defaults,
+    responseSchema: GenerationSchema? = nil
+) -> Transcript.Entry {
     .prompt(Transcript.Prompt(
         segments: promptSegments(pieces: pieces),
-        options: makeGenerationOptions(options)
+        options: makeGenerationOptions(options),
+        responseFormat: responseSchema.map { Transcript.ResponseFormat(schema: $0) }
     ))
 }
 
@@ -180,22 +190,51 @@ where BaseEntries.Element == Transcript.Entry, HistoryEntries.Element == Transcr
     return entries
 }
 
+/// Prices a candidate transcript for a budget decision. Generation uses
+/// `defaultBudgetCount`; the token preflight (#485) injects Apple's exact
+/// tokenizer with request-scoped failure tracking, so both trim through the
+/// SAME selection code and differ only in how a tokenizer failure surfaces.
+package typealias TranscriptBudgetCount = @Sendable ([Transcript.Entry]) async -> Int
+
+/// The runtime-input count (see `TokenCounter.countInput(entries:)`).
+package let defaultBudgetCount: TranscriptBudgetCount = { entries in
+    await TokenCounter.shared.countInput(entries: entries)
+}
+
+/// The entries as the runtime prices them: a transcript without an
+/// instructions entry gets the model's default instructions, which an empty
+/// instructions entry reproduces in `tokenCount(for:)`. Measured on macOS 27
+/// (#485): runtime input for a bare session == tokenCount([emptyInstructions,
+/// prompt]), while tokenCount([prompt]) alone undercounts by the default.
+package func runtimeInputEntries(_ entries: [Transcript.Entry]) -> [Transcript.Entry] {
+    let hasInstructions = entries.contains { entry in
+        if case .instructions = entry { return true }
+        return false
+    }
+    guard !hasInstructions else { return entries }
+    let empty = Transcript.Instructions(segments: [], toolDefinitions: [])
+    return [.instructions(empty)] + entries
+}
+
 package func fitsTranscriptBudget(
     _ entries: [Transcript.Entry],
-    budget: Int
+    budget: Int,
+    count: TranscriptBudgetCount = defaultBudgetCount
 ) async -> Bool {
-    await TokenCounter.shared.count(entries: entries) <= budget
+    await count(entries) <= budget
 }
 
 package func fitsTranscriptBudget(
     base: [Transcript.Entry],
     history: [Transcript.Entry],
     final: Transcript.Entry? = nil,
-    budget: Int
+    budget: Int,
+    count: TranscriptBudgetCount = defaultBudgetCount
 ) async -> Bool {
     await fitsTranscriptBudget(
         assembleTranscriptEntries(base: base, history: history, final: final),
-        budget: budget
+        budget: budget,
+        count: count
     )
 }
 
@@ -203,12 +242,14 @@ package func fitsTranscriptBudget<BaseEntries: Collection, HistoryEntries: Colle
     base: BaseEntries,
     history: HistoryEntries,
     final: Transcript.Entry? = nil,
-    budget: Int
+    budget: Int,
+    count: TranscriptBudgetCount = defaultBudgetCount
 ) async -> Bool
 where BaseEntries.Element == Transcript.Entry, HistoryEntries.Element == Transcript.Entry {
     await fitsTranscriptBudget(
         assembleTranscriptEntries(base: base, history: history, final: final),
-        budget: budget
+        budget: budget,
+        count: count
     )
 }
 
@@ -244,11 +285,13 @@ func selectEntries(_ history: [Transcript.Entry], in ranges: [Range<Int>]) -> [T
 /// selected history + the final prompt fit?
 func budgetPredicate(
     base: [Transcript.Entry], history: [Transcript.Entry],
-    final: Transcript.Entry?, budget: Int
+    final: Transcript.Entry?, budget: Int,
+    count: @escaping TranscriptBudgetCount = defaultBudgetCount
 ) -> ([Range<Int>]) async -> Bool {
     { ranges in
         await fitsTranscriptBudget(
-            base: base, history: selectEntries(history, in: ranges), final: final, budget: budget)
+            base: base, history: selectEntries(history, in: ranges), final: final,
+            budget: budget, count: count)
     }
 }
 
@@ -258,7 +301,8 @@ package func trimHistoryEntriesToBudget(
     finalEntry: Transcript.Entry? = nil,
     budget: Int,
     config: ContextConfig = .defaults,
-    pinLast: Bool = false
+    pinLast: Bool = false,
+    count: @escaping TranscriptBudgetCount = defaultBudgetCount
 ) async -> [Transcript.Entry]? {
     // A trailing tool result is only answerable together with the call that
     // produced it: pin that last exchange and price it as required, so a
@@ -268,21 +312,23 @@ package func trimHistoryEntriesToBudget(
     let pin = pinLast && !groups.isEmpty
     let pinnedEntries = pin ? Array(historyEntries[groups[groups.count - 1]]) : []
     let requiredEntries = assembleTranscriptEntries(base: baseEntries, history: pinnedEntries, final: finalEntry)
-    guard await fitsTranscriptBudget(requiredEntries, budget: budget) else {
+    guard await fitsTranscriptBudget(requiredEntries, budget: budget, count: count) else {
         return nil
     }
 
     switch config.strategy {
     case .newestFirst:
         return await trimNewestFirst(
-            base: baseEntries, history: historyEntries, final: finalEntry, budget: budget, pinLast: pin)
+            base: baseEntries, history: historyEntries, final: finalEntry, budget: budget,
+            pinLast: pin, count: count)
     case .oldestFirst:
         return await trimOldestFirst(
-            base: baseEntries, history: historyEntries, final: finalEntry, budget: budget, pinLast: pin)
+            base: baseEntries, history: historyEntries, final: finalEntry, budget: budget,
+            pinLast: pin, count: count)
     case .slidingWindow:
         return await trimSlidingWindow(
             base: baseEntries, history: historyEntries, final: finalEntry,
-            budget: budget, maxTurns: config.maxTurns, pinLast: pin)
+            budget: budget, maxTurns: config.maxTurns, pinLast: pin, count: count)
     case .summarize:
         return await trimWithSummary(
             base: baseEntries, history: historyEntries, final: finalEntry, budget: budget,
@@ -295,7 +341,7 @@ package func trimHistoryEntriesToBudget(
         // it here made the model see the prompt twice and double-counted it
         // in prompt_tokens.
         let all = assembleTranscriptEntries(base: baseEntries, history: historyEntries, final: finalEntry)
-        return await fitsTranscriptBudget(all, budget: budget)
+        return await fitsTranscriptBudget(all, budget: budget, count: count)
             ? assembleTranscriptEntries(base: baseEntries, history: historyEntries)
             : nil
     }
@@ -305,11 +351,12 @@ package func trimHistoryEntriesToBudget(
 
 package func trimNewestFirst(
     base: [Transcript.Entry], history: [Transcript.Entry],
-    final: Transcript.Entry?, budget: Int, pinLast: Bool = false
+    final: Transcript.Entry?, budget: Int, pinLast: Bool = false,
+    count: @escaping TranscriptBudgetCount = defaultBudgetCount
 ) async -> [Transcript.Entry] {
     let kept = await ToolExchangeGrouping.newestFirst(
         groups: historyGroups(history), pinLast: pinLast,
-        fits: budgetPredicate(base: base, history: history, final: final, budget: budget))
+        fits: budgetPredicate(base: base, history: history, final: final, budget: budget, count: count))
     return assembleTranscriptEntries(base: base, history: selectEntries(history, in: kept))
 }
 
@@ -317,11 +364,12 @@ package func trimNewestFirst(
 
 package func trimOldestFirst(
     base: [Transcript.Entry], history: [Transcript.Entry],
-    final: Transcript.Entry?, budget: Int, pinLast: Bool = false
+    final: Transcript.Entry?, budget: Int, pinLast: Bool = false,
+    count: @escaping TranscriptBudgetCount = defaultBudgetCount
 ) async -> [Transcript.Entry] {
     let kept = await ToolExchangeGrouping.oldestFirst(
         groups: historyGroups(history), pinLast: pinLast,
-        fits: budgetPredicate(base: base, history: history, final: final, budget: budget))
+        fits: budgetPredicate(base: base, history: history, final: final, budget: budget, count: count))
     return assembleTranscriptEntries(base: base, history: selectEntries(history, in: kept))
 }
 
@@ -331,14 +379,15 @@ package func trimOldestFirst(
 /// one turn, the same as a user or assistant message (#482).
 func trimSlidingWindow(
     base: [Transcript.Entry], history: [Transcript.Entry],
-    final: Transcript.Entry?, budget: Int, maxTurns: Int?, pinLast: Bool = false
+    final: Transcript.Entry?, budget: Int, maxTurns: Int?, pinLast: Bool = false,
+    count: @escaping TranscriptBudgetCount = defaultBudgetCount
 ) async -> [Transcript.Entry] {
     let windowed = ToolExchangeGrouping.window(
         groups: historyGroups(history), pinLast: pinLast, maxGroups: maxTurns)
     // Apply token-budget safety net (drop from front if over budget)
     let kept = await ToolExchangeGrouping.newestFirst(
         groups: windowed, pinLast: pinLast,
-        fits: budgetPredicate(base: base, history: history, final: final, budget: budget))
+        fits: budgetPredicate(base: base, history: history, final: final, budget: budget, count: count))
     return assembleTranscriptEntries(base: base, history: selectEntries(history, in: kept))
 }
 

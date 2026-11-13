@@ -218,7 +218,9 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
             tools: effectiveTools,
             options: sessionOpts,
             jsonMode: jsonMode,
-            toolChoice: chatRequest.tool_choice
+            toolChoice: chatRequest.tool_choice,
+            // The schema's prompt overhead is part of the budget (#485).
+            responseSchema: structuredSchema
         )
     } catch {
         let classified = classifyModelError(error)

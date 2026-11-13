@@ -152,6 +152,7 @@ suite("EngineOptionsPlumbingTests") { runEngineOptionsPlumbingTests() }
 suite("EngineOptionsTests") { runEngineOptionsTests() }
 suite("StopSequenceTests") { runStopSequenceTests() }
 suite("StopFlagTests") { runStopFlagTests() }
+suite("InputTokensCountTests") { runInputTokensCountTests() }
 
 // MARK: - Summary
 

@@ -579,7 +579,8 @@ func chat(systemPrompt: String?, initialContext: String? = nil, options: Session
 
             // Context window protection: check transcript size after each turn
             let transcript = session.transcript
-            let tokenCount = await TokenCounter.shared.count(entries: transcriptEntries(transcript))
+            // Priced like the trimmer prices it (runtime input, #485).
+            let tokenCount = await TokenCounter.shared.countInput(entries: transcriptEntries(transcript))
             let budget = await TokenCounter.shared.inputBudget(reservedForOutput: options.contextConfig.outputReserve)
             if contextStatus && !quietMode {
                 printContextStatus(tokenCount: tokenCount, budget: budget)
