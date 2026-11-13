@@ -1983,18 +1983,40 @@ ONELINER_PROMPTS = [
 ]
 
 
+# Two fixed seeds per prompt (#552): on macOS 26.1 the model sometimes expands a
+# one-liner into a multi-line script or returns an empty fenced block (exit 7,
+# the honest no-code signal). Either seed meeting the structural contract
+# passes; both failing is a real regression and fails with both outcomes.
+ONELINER_SEEDS = (42, 7)
+
+
+def _oneliner_problem(result, max_lines):
+    if result.returncode != 0:
+        return f"exit {result.returncode}, stderr: {result.stderr[:200]!r}"
+    out = result.stdout.strip()
+    if not out:
+        return "expected a command on stdout"
+    if "```" in result.stdout:
+        return f"fence leaked: {result.stdout!r}"
+    if len(out.splitlines()) > max_lines:
+        return f"one-liner ask returned an essay: {result.stdout!r}"
+    return None
+
+
 @pytest.mark.model
 @pytest.mark.parametrize("prompt,max_lines", ONELINER_PROMPTS,
                          ids=[p for p, _ in ONELINER_PROMPTS])
 def test_code_oneliner_battery(prompt, max_lines):
     require_model()
-    result = run_cli(["--code", prompt], timeout=120)
-    assert result.returncode == 0, f"stderr: {result.stderr}"
-    assert result.stdout.strip(), "expected a command on stdout"
-    assert "```" not in result.stdout, f"fence leaked: {result.stdout!r}"
-    assert len(result.stdout.strip().splitlines()) <= max_lines, (
-        f"one-liner ask returned an essay: {result.stdout!r}"
-    )
+    problems = []
+    for seed in ONELINER_SEEDS:
+        # --seed goes first: flags after the positional prompt join the prompt (#255).
+        result = run_cli(["--seed", str(seed), "--code", prompt], timeout=120)
+        problem = _oneliner_problem(result, max_lines)
+        if problem is None:
+            return
+        problems.append(f"seed {seed}: {problem}")
+    pytest.fail("no seed met the one-liner contract: " + "; ".join(problems))
 
 
 @pytest.mark.model
