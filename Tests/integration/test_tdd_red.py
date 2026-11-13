@@ -186,6 +186,109 @@ def test_171_streaming_json_schema_yields_valid_final_json():
     assert "steps" in final and isinstance(final["steps"], list)
 
 
+def test_532_streaming_json_schema_yields_incremental_chunks():
+    """Streaming with json_schema must deliver multiple content chunks, not
+    buffer everything into one final chunk (#532). The concatenated deltas
+    must form valid, schema-conforming JSON."""
+    schema = {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string"},
+            "lines": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["title", "lines"],
+        "additionalProperties": False,
+    }
+    content_chunks = []
+    with httpx.stream(
+        "POST",
+        f"{BASE_URL}/chat/completions",
+        json={
+            "model": MODEL,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Write a four-line poem about the sea, with a title.",
+                }
+            ],
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {"name": "Poem", "schema": schema, "strict": True},
+            },
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        },
+        timeout=TIMEOUT,
+    ) as r:
+        assert r.status_code == 200, f"streamed json_schema: got {r.status_code}"
+        for line in r.iter_lines():
+            if line.startswith("data: ") and "[DONE]" not in line:
+                chunk = json.loads(line[len("data: "):])
+                delta = chunk["choices"][0]["delta"].get("content")
+                if delta:
+                    content_chunks.append(delta)
+
+    acc = "".join(content_chunks)
+    final = json.loads(acc)
+    assert "title" in final and isinstance(final["title"], str)
+    assert "lines" in final and isinstance(final["lines"], list)
+    assert len(content_chunks) > 1, (
+        f"Expected incremental streaming (#532) but got {len(content_chunks)} "
+        "content chunk(s) - FoundationModels snapshots may not be append-only"
+    )
+
+
+def test_532_streaming_json_schema_concatenation_matches_non_streaming():
+    """The concatenated streamed deltas must produce the same JSON structure
+    as a non-streaming request with the same schema (#532)."""
+    schema = {
+        "type": "object",
+        "properties": {
+            "items": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["items"],
+        "additionalProperties": False,
+    }
+    prompt = "List three colours."
+    rf = {
+        "type": "json_schema",
+        "json_schema": {"name": "Colours", "schema": schema, "strict": True},
+    }
+
+    non_stream = _chat(
+        {"model": MODEL, "messages": [{"role": "user", "content": prompt}],
+         "response_format": rf}
+    )
+    assert non_stream.status_code == 200, non_stream.text
+    ns_json = json.loads(non_stream.json()["choices"][0]["message"]["content"])
+
+    acc = ""
+    with httpx.stream(
+        "POST",
+        f"{BASE_URL}/chat/completions",
+        json={
+            "model": MODEL,
+            "messages": [{"role": "user", "content": prompt}],
+            "response_format": rf,
+            "stream": True,
+        },
+        timeout=TIMEOUT,
+    ) as r:
+        assert r.status_code == 200, f"streamed: got {r.status_code}"
+        for line in r.iter_lines():
+            if line.startswith("data: ") and "[DONE]" not in line:
+                chunk = json.loads(line[len("data: "):])
+                delta = chunk["choices"][0]["delta"].get("content")
+                if delta:
+                    acc += delta
+
+    s_json = json.loads(acc)
+    assert set(ns_json.keys()) == set(s_json.keys()), (
+        f"Key mismatch: non-stream={set(ns_json.keys())} stream={set(s_json.keys())}"
+    )
+    assert isinstance(s_json["items"], list) and len(s_json["items"]) > 0
+
+
 # ---------------------------------------------------------------------------
 # #176 fallback token counter ignores tool definitions (this machine = 26.3.1,
 # so the buggy fallbackCount path is live)

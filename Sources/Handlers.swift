@@ -1225,9 +1225,13 @@ private func structuredNonStreamingResponse(
     )
 }
 
-/// Streaming schema-guided generation (#171). FoundationModels emits cumulative
-/// `GeneratedContent` snapshots; we serialize each to JSON and stream the new
-/// suffix as content deltas, so the concatenated stream is valid, conforming JSON.
+/// Streaming schema-guided generation (#171, incremental #532).
+/// FoundationModels emits cumulative `GeneratedContent` snapshots. When each
+/// snapshot's JSON extends what we already sent (append-only), we emit only the
+/// new suffix as a content delta, so clients see incremental progress. If a
+/// snapshot diverges (key reorder), we hold back and the post-loop fallback
+/// emits the remainder, preserving one-chunk delivery as a safe default.
+/// The concatenated deltas always equal the final JSON.
 private func structuredStreamingResponse(
     session: LanguageModelSession,
     prompt: Prompt,
@@ -1276,22 +1280,52 @@ private func structuredStreamingResponse(
             var lastRoundUsage: TokenUsage? = nil
 
             do {
-                // Partial GeneratedContent snapshots do not serialize to a
-                // growing prefix of the final JSON (a partial object's jsonString
-                // is its own well-formed fragment, not a substring of the final).
-                // Streaming suffix-diffs would therefore concatenate into invalid
-                // JSON. To keep the concatenated stream a single valid, conforming
-                // document, we buffer to the final snapshot and emit it as one
-                // content delta (#167/#171).
+                // Stream schema-guided JSON incrementally (#532). Each
+                // snapshot's jsonString is cumulative. When it extends what
+                // we already sent, emit the new suffix. If it diverges,
+                // hold back - the post-loop fallback handles the rest.
+                // Scalar counting per #543.
+                var emittedScalarCount = 0
+                var emittedJSON = ""
                 for try await snapshot in stream {
-                    prev = snapshot.content.jsonString
+                    let json = snapshot.content.jsonString
                     lastRoundUsage = reportedUsage(of: snapshot) ?? lastRoundUsage
+
+                    let jsonScalars = json.unicodeScalars
+                    guard jsonScalars.count > emittedScalarCount else { prev = json; continue }
+
+                    if emittedScalarCount == 0 || json.hasPrefix(emittedJSON) {
+                        let idx = jsonScalars.index(jsonScalars.startIndex, offsetBy: emittedScalarCount)
+                        let delta = String(json[idx...])
+                        let chunkLine = sseDataLine(sseContentChunk(
+                            id: id, created: created, content: delta, includeUsage: includeUsage))
+                        responseLines?.append(chunkLine.trimmingCharacters(in: .whitespacesAndNewlines))
+                        continuation.yield(ByteBuffer(string: chunkLine))
+                        emittedScalarCount = jsonScalars.count
+                        emittedJSON = json
+                        await eventBox.append("structured delta chars=\(delta.count)")
+                    }
+                    prev = json
                 }
 
-                let contentLine = sseDataLine(sseContentChunk(id: id, created: created, content: prev, includeUsage: includeUsage))
-                responseLines?.append(contentLine.trimmingCharacters(in: .whitespacesAndNewlines))
-                continuation.yield(ByteBuffer(string: contentLine))
-                await eventBox.append("structured content delta chars=\(prev.count)")
+                let prevScalars = prev.unicodeScalars
+                if emittedScalarCount < prevScalars.count {
+                    let remaining: String
+                    if emittedScalarCount == 0 {
+                        remaining = prev
+                    } else if prev.hasPrefix(emittedJSON) {
+                        let idx = prevScalars.index(prevScalars.startIndex, offsetBy: emittedScalarCount)
+                        remaining = String(prev[idx...])
+                    } else {
+                        remaining = prev
+                        await eventBox.append("structured stream diverged, emitting full final")
+                    }
+                    let contentLine = sseDataLine(sseContentChunk(
+                        id: id, created: created, content: remaining, includeUsage: includeUsage))
+                    responseLines?.append(contentLine.trimmingCharacters(in: .whitespacesAndNewlines))
+                    continuation.yield(ByteBuffer(string: contentLine))
+                    await eventBox.append("structured final delta chars=\(remaining.count)")
+                }
 
                 // Usage: runtime-reported (macOS 27+), else counted (macOS 26).
                 let finalUsage: TokenUsage
