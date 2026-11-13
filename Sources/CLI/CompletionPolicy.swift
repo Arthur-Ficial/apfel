@@ -80,11 +80,17 @@ public enum CompletionPolicy {
     /// usage report) those tokens are the chars/4 estimate, wrong in both
     /// directions. Nil when the signal is exact or no explicit cap is set.
     /// `.modelUnavailable` is left to the availability gate.
-    package static func unknownFinishNote(maxTokens: Int?, tokenCountFallback: TokenCountFallback?) -> String? {
+    /// `jsonEnvelope`: the run prints the `-o json` envelope, so the note also
+    /// says why `finish_reason` is missing there; plain output has no
+    /// envelope to mention (#564).
+    package static func unknownFinishNote(
+        maxTokens: Int?, tokenCountFallback: TokenCountFallback?, jsonEnvelope: Bool = false
+    ) -> String? {
         guard let maxTokens, case .osTooOld(let currentOS) = tokenCountFallback else { return nil }
-        return "cannot tell whether the --max-tokens \(maxTokens) cap cut this response: "
+        let note = "cannot tell whether the --max-tokens \(maxTokens) cap cut this response: "
             + "exact finish detection needs the on-device tokenizer API (macOS 26.4+), "
-            + "this Mac runs macOS \(currentOS); finish_reason is left out of the JSON envelope."
+            + "this Mac runs macOS \(currentOS)"
+        return note + (jsonEnvelope ? "; finish_reason is left out of the JSON envelope." : ".")
     }
 
     /// The finish reason apfel may report as fact, or nil when it is unknown.

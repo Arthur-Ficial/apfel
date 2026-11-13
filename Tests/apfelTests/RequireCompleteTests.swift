@@ -259,7 +259,15 @@ func runRequireCompleteTests() {
         try assertTrue(note.contains("--max-tokens 4"), note)
         try assertTrue(note.contains("macOS 26.4"), note)
         try assertTrue(note.contains("26.1.0"), note)
-        try assertTrue(note.contains("finish_reason"), note)
+        try assertTrue(!note.contains("JSON"), "plain output has no envelope to mention (#564): \(note)")
+    }
+
+    test("finish note: -o json also says finish_reason is left out of the envelope (#564)") {
+        guard let note = CompletionPolicy.unknownFinishNote(maxTokens: 4, tokenCountFallback: oldOS, jsonEnvelope: true) else {
+            throw TestFailure("expected a note")
+        }
+        try assertTrue(note.contains("--max-tokens 4"), note)
+        try assertTrue(note.contains("finish_reason is left out of the JSON envelope"), note)
     }
 
     test("finish note: exact count, or no explicit cap -> no note") {

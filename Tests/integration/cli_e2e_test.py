@@ -2251,6 +2251,8 @@ def test_default_capped_output_still_exits_0_with_partial_text():
         assert "finish_reason=length" in result.stderr
     else:
         assert "macOS 26.4" in result.stderr and "--max-tokens 4" in result.stderr, result.stderr
+        # Plain output has no envelope to explain (#564).
+        assert "JSON envelope" not in result.stderr, result.stderr
 
 
 @pytest.mark.model
@@ -2265,6 +2267,7 @@ def test_json_envelope_reports_finish_reason_length_when_capped():
         # Unknown is omitted, never reported as a guessed stop/length.
         assert "finish_reason" not in payload, payload
         assert "macOS 26.4" in result.stderr, result.stderr
+        assert "finish_reason is left out of the JSON envelope" in result.stderr, result.stderr
     assert isinstance(payload["content"], str) and payload["content"]
 
 
