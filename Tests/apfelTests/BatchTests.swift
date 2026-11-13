@@ -318,6 +318,23 @@ func runBatchTests() {
         try assertEqual(t.summary, "batch: 3 records, 1 ok, 2 failed")
     }
 
+    // MARK: - Truncation must be detectable (macOS < 26.4 preflight)
+
+    test("batch preflight: an explicit cap below 26.4 is refused (truncation would read as ok)") {
+        let msg = CompletionPolicy.batchPreflightRefusal(
+            maxTokens: 64, tokenCountFallback: .osTooOld(currentOS: "26.1.0"))
+        try assertNotNil(msg)
+        try assertTrue(msg!.contains("--batch cannot detect a --max-tokens cap on this Mac"), msg!)
+        try assertTrue(msg!.contains("26.1.0"), msg!)
+        try assertTrue(msg!.contains("Drop --max-tokens"), msg!)
+    }
+
+    test("batch preflight: no explicit cap, an exact tokenizer, or an unavailable model is not refused") {
+        try assertNil(CompletionPolicy.batchPreflightRefusal(maxTokens: nil, tokenCountFallback: .osTooOld(currentOS: "26.1.0")))
+        try assertNil(CompletionPolicy.batchPreflightRefusal(maxTokens: 64, tokenCountFallback: nil))
+        try assertNil(CompletionPolicy.batchPreflightRefusal(maxTokens: 64, tokenCountFallback: .modelUnavailable))
+    }
+
     // MARK: - Flag rules
 
     test("--batch is a known flag and a mode") {

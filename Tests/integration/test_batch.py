@@ -242,23 +242,24 @@ def test_batch_truncation_is_marked_incomplete_and_fails():
     require_model()
     r = _run(["--batch", "--max-tokens", "4"],
              '{"custom_id":"long","prompt":"Write a 300-word essay about apples."}\n')
+    if not _exact_finish_signal():
+        # Below macOS 26.4 the cap cannot be detected, so a cut-off answer
+        # would read as ok: refused before reading, like --require-complete.
+        assert r.returncode == 2, r.stderr
+        assert "--batch cannot detect a --max-tokens cap on this Mac" in r.stderr
+        assert r.stdout == ""
+        return
     [rec] = _records(r.stdout)
     if rec["status"] == "error":
         assert rec["error"]["type"] == "content_policy_violation", rec
         return
-    if _exact_finish_signal():
-        assert rec["status"] == "incomplete", rec
-        assert rec["content"] is None
-        assert rec["partial_content"]
-        assert rec["finish_reason"] == "length"
-        assert rec["error"]["type"] == "incomplete"
-        assert rec["error"]["exit_code"] == 8
-        assert r.returncode == 1
-    else:
-        # Below macOS 26.4 the cap cannot be detected: unknown, said so.
-        assert rec["status"] == "ok"
-        assert rec["finish_reason"] is None
-        assert "cannot tell whether the --max-tokens 4 cap" in r.stderr
+    assert rec["status"] == "incomplete", rec
+    assert rec["content"] is None
+    assert rec["partial_content"]
+    assert rec["finish_reason"] == "length"
+    assert rec["error"]["type"] == "incomplete"
+    assert rec["error"]["exit_code"] == 8
+    assert r.returncode == 1
 
 
 @pytest.mark.model
