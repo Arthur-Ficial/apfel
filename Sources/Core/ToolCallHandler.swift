@@ -112,6 +112,18 @@ public enum ToolCallHandler {
         """
     }
 
+    /// Build text-based schema injection for all tools (#555).
+    /// Transcript-only ToolDefinitions are ignored by the macOS 27 runtime
+    /// when the session has no registered tools, so descriptions and parameter
+    /// schemas must be rendered as instruction text to reach the model.
+    public static func buildToolSchemaPrompt(tools: [ToolDef]) -> String {
+        guard !tools.isEmpty else { return "" }
+        return """
+        Available function schemas:
+        \(serializedToolSchemas(tools))
+        """
+    }
+
     // MARK: - Tool Call Detection
 
     /// Detect and parse tool calls from model output.

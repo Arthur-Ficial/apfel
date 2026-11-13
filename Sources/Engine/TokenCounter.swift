@@ -244,12 +244,10 @@ public actor TokenCounter {
             switch entry {
             case .instructions(let i):
                 for seg in i.segments { if case .text(let t) = seg { total += max(1, t.content.count / 4) } }
-                // Native tool definitions are sent to the model as part of the
-                // prompt (name + description + parameter schema), so they must
-                // count toward prompt tokens. The real model.tokenCount(for:)
-                // includes them; the chars/4 fallback approximates each
-                // definition from its name and description (the parameter
-                // schema is not exposed as a readable property by the SDK).
+                // Tool schemas now live in instruction text segments (#555),
+                // so they are counted by the segment loop above. The native
+                // toolDefinitions loop stays for third-party callers that
+                // still build Instructions with definitions attached.
                 for def in i.toolDefinitions {
                     total += toolDefinitionTokens(def)
                 }

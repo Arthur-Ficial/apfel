@@ -508,6 +508,9 @@ func runApfelCorePublicAPIUsageTests() {
         let fallback = ToolCallHandler.buildFallbackPrompt(tools: [def])
         try assertTrue(fallback.contains("function schemas"))
 
+        let schemaPrompt = ToolCallHandler.buildToolSchemaPrompt(tools: [def])
+        try assertTrue(schemaPrompt.contains("Available function schemas"))
+
         try assertEqual(ToolCallHandler.ensureJSONArguments(""), "{}")
 
         let maybeCalls: [ParsedToolCall]? = ToolCallHandler.detectToolCall(

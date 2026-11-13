@@ -589,6 +589,51 @@ func runToolCallHandlerTests() {
         try assertTrue(instr.contains("search"), "must list tool names")
     }
 
+    // MARK: - buildToolSchemaPrompt (#555)
+
+    test("buildToolSchemaPrompt returns empty for no tools") {
+        let result = ToolCallHandler.buildToolSchemaPrompt(tools: [])
+        try assertEqual(result, "")
+    }
+
+    test("buildToolSchemaPrompt includes description and parameters for all tools") {
+        let tools = [
+            ToolDef(
+                name: "get_weather",
+                description: "Get current weather for a city",
+                parametersJSON: #"{"type":"object","properties":{"city":{"type":"string"}}}"#
+            ),
+            ToolDef(name: "search", description: "Search the web", parametersJSON: nil)
+        ]
+        let prompt = ToolCallHandler.buildToolSchemaPrompt(tools: tools)
+        try assertTrue(prompt.contains("get_weather"), "missing first tool name")
+        try assertTrue(prompt.contains("Get current weather for a city"), "missing first description")
+        try assertTrue(prompt.contains("city"), "missing parameter name from schema")
+        try assertTrue(prompt.contains("search"), "missing second tool name")
+        try assertTrue(prompt.contains("Search the web"), "missing second description")
+        try assertTrue(prompt.contains("Available function schemas"), "missing header")
+    }
+
+    test("buildToolSchemaPrompt produces valid JSON array") {
+        let tools = [
+            ToolDef(
+                name: "add",
+                description: "Add numbers",
+                parametersJSON: #"{"type":"object","properties":{"a":{"type":"integer"},"b":{"type":"integer"}}}"#
+            )
+        ]
+        let prompt = ToolCallHandler.buildToolSchemaPrompt(tools: tools)
+        guard let json = extractToolSchemaJSON(from: prompt),
+              let data = json.data(using: .utf8),
+              let parsed = try JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+              let first = parsed.first else {
+            throw TestError("could not parse tool schema JSON from prompt")
+        }
+        try assertEqual(first["name"] as? String, "add")
+        try assertEqual(first["description"] as? String, "Add numbers")
+        try assertNotNil(first["parameters"])
+    }
+
     // MARK: - ToolLogEntry
 
     test("ToolLogEntry stores tool execution result") {

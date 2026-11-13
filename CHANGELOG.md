@@ -18,6 +18,7 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ### Fixed
 
+- Tool definitions (descriptions and parameter schemas) now reach the model on macOS 27. Transcript-only `ToolDefinition`s were silently ignored by the runtime when the session had no registered tools; the model saw tool names but not descriptions or parameter schemas. All tool schemas are now rendered as instruction text, matching the CLI chat-mode pattern (#555).
 - The man page described the `-o json` envelope as having `usage` and `finish_reason` keys; it now lists the real keys (`model`, `content`, `finish_reason`, `metadata`) (#484).
 - `--code` no longer exits 0 with empty stdout when the extracted code block is empty. A capped run (`--code --max-tokens 4`) often produced only the opening fence, and the empty block was printed as success (`"content": ""` with `-o json`). Empty extracted code now exits 7 (no code) like an empty response, with a stderr message (#484).
 - The truncation warning named the context window even when an explicit `--max-tokens` cap was hit and told the user to pass `--max-tokens`. It now says the `--max-tokens N` cap was reached, and mentions the context window only when the context window was the cause; the `--require-complete` error names the cause the same way (#484).
