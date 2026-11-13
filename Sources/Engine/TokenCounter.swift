@@ -203,6 +203,40 @@ public actor TokenCounter {
         }
     }
 
+    /// Exact count of the input the runtime will see for these entries, from
+    /// Apple's tokenizer only (#485). Applies `runtimeInputEntries` (the
+    /// default instructions a bare transcript gets). Never falls back: an OS
+    /// without the tokenizer API, an unavailable model, or a tokenizer that
+    /// throws is a `TokenCountingError`, and `runtimeFellBack` is untouched,
+    /// so concurrent callers cannot see each other's provenance.
+    public func exactCount(entries: [Transcript.Entry]) async throws -> Int {
+        if let reason = tokenCountFallback {
+            throw TokenCountingError.unavailable(reason)
+        }
+        if #available(macOS 26.4, *) {
+            do {
+                return try await model.tokenCount(for: runtimeInputEntries(entries))
+            } catch {
+                throw TokenCountingError.failed(String(describing: error))
+            }
+        }
+        let v = ProcessInfo.processInfo.operatingSystemVersion
+        throw TokenCountingError.unavailable(
+            .osTooOld(currentOS: "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)"))
+    }
+
+    /// The runtime-input count generation budgets and prices prompts with:
+    /// `exactCount(entries:)` when Apple's tokenizer is usable, else the same
+    /// chars/4 fallback as `count(entries:)` (flagging `runtimeFellBack`).
+    public func countInput(entries: [Transcript.Entry]) async -> Int {
+        guard !entries.isEmpty else { return 0 }
+        do {
+            return try await exactCount(entries: entries)
+        } catch {
+            return fallbackCount(entries: entries)
+        }
+    }
+
     private func fallbackCount(entries: [Transcript.Entry]) -> Int {
         runtimeFellBack = true
         var total = 0

@@ -233,77 +233,18 @@ func startServer(config: ServerConfig, mcpManager: MCPManager? = nil) async thro
 
     // Responses API (#365) - same logging/concurrency wrapper as chat.
     router.post("/v1/responses") { request, context -> Response in
-        let start = Date()
-        let requestId = "resp-\(UUID().uuidString.prefix(12).lowercased())"
+        try await runLimitedPOST(
+            path: "/v1/responses", idPrefix: "resp", maxConcurrent: config.maxConcurrent,
+            request: request, context: context, handler: { try await handleResponses($0, context: $1) })
+    }
 
-        do {
-            try await serverState.semaphore.wait(timeout: .seconds(30))
-        } catch {
-            let log = RequestLog(
-                id: requestId, timestamp: ISO8601DateFormatter().string(from: Date()),
-                method: "POST", path: "/v1/responses", status: 429,
-                duration_ms: Int(Date().timeIntervalSince(start) * 1000),
-                stream: false, estimated_tokens: nil,
-                error: "Too many concurrent requests", request_body: nil, response_body: nil, events: ["semaphore timeout"]
-            )
-            await serverState.logStore.append(log)
-            return openAIError(status: .tooManyRequests, message: "Server at max concurrent capacity (\(config.maxConcurrent)). Try again later or increase with --max-concurrent.", type: "rate_limit_error")
-        }
-
-        await serverState.logStore.requestStarted()
-
-        // Same inbound-close cancellation as chat completions (#542).
-        let result: (response: Response, trace: ChatRequestTrace)
-        do {
-            result = try await request.body.consumeWithCancellationOnInboundClose { body in
-                var req = request
-                req.body = body
-                let handlerResult = try await handleResponses(req, context: context)
-                if Task.isCancelled { throw CancellationError() }
-                return handlerResult
-            }
-        } catch is CancellationError {
-            await serverState.semaphore.signal()
-            await serverState.logStore.requestFinished()
-            let log = RequestLog(
-                id: requestId, timestamp: ISO8601DateFormatter().string(from: start),
-                method: "POST", path: "/v1/responses", status: 499,
-                duration_ms: Int(Date().timeIntervalSince(start) * 1000),
-                stream: false, estimated_tokens: nil,
-                error: "Client disconnected", request_body: nil,
-                response_body: nil, events: ["client disconnected (#542)"]
-            )
-            await serverState.logStore.append(log)
-            return Response(status: .init(code: 499))
-        } catch {
-            await serverState.semaphore.signal()
-            await serverState.logStore.requestFinished()
-            throw error
-        }
-        // Same permit rule as chat completions (#213): only live SSE streams
-        // own their cleanup via onTermination.
-        if !result.trace.ownsCleanup {
-            await serverState.semaphore.signal()
-            await serverState.logStore.requestFinished()
-        }
-
-        let durationMs = Int(Date().timeIntervalSince(start) * 1000)
-        let log = RequestLog(
-            id: requestId,
-            timestamp: ISO8601DateFormatter().string(from: start),
-            method: "POST", path: "/v1/responses",
-            status: result.response.status == .ok ? 200 : result.response.status.code,
-            duration_ms: durationMs,
-            stream: result.trace.stream,
-            estimated_tokens: result.trace.estimatedTokens,
-            error: result.trace.error,
-            request_body: result.trace.requestBody,
-            response_body: result.trace.responseBody,
-            events: result.trace.events
-        )
-        await serverState.logStore.append(log)
-
-        return result.response
+    // Token preflight for the Responses API (#485): counts the input with
+    // Apple's tokenizer; never generates, never runs a tool. Same permit,
+    // cancellation and logging policy as generation - it touches the model.
+    router.post("/v1/responses/input_tokens") { request, context -> Response in
+        try await runLimitedPOST(
+            path: "/v1/responses/input_tokens", idPrefix: "tok", maxConcurrent: config.maxConcurrent,
+            request: request, context: context, handler: { try await handleInputTokens($0, context: $1) })
     }
 
     // Logs query
@@ -453,4 +394,88 @@ func jsonResponse(_ body: String, status: HTTPResponse.Status = .ok) -> Response
         headers: headers,
         body: .init(byteBuffer: .init(string: body))
     )
+}
+
+/// The concurrency permit, inbound-close cancellation (#542), permit release
+/// rule (#213) and request log every model-touching POST route shares.
+/// Used by /v1/responses and /v1/responses/input_tokens (#485).
+func runLimitedPOST(
+    path: String,
+    idPrefix: String,
+    maxConcurrent: Int,
+    request: Request,
+    context: BasicRequestContext,
+    handler: @escaping @Sendable (Request, BasicRequestContext) async throws -> (response: Response, trace: ChatRequestTrace)
+) async throws -> Response {
+    let start = Date()
+    let requestId = "\(idPrefix)-\(UUID().uuidString.prefix(12).lowercased())"
+
+    do {
+        try await serverState.semaphore.wait(timeout: .seconds(30))
+    } catch {
+        let log = RequestLog(
+            id: requestId, timestamp: ISO8601DateFormatter().string(from: Date()),
+            method: "POST", path: path, status: 429,
+            duration_ms: Int(Date().timeIntervalSince(start) * 1000),
+            stream: false, estimated_tokens: nil,
+            error: "Too many concurrent requests", request_body: nil, response_body: nil, events: ["semaphore timeout"]
+        )
+        await serverState.logStore.append(log)
+        return openAIError(status: .tooManyRequests, message: "Server at max concurrent capacity (\(maxConcurrent)). Try again later or increase with --max-concurrent.", type: "rate_limit_error")
+    }
+
+    await serverState.logStore.requestStarted()
+
+    // Same inbound-close cancellation as chat completions (#542).
+    let result: (response: Response, trace: ChatRequestTrace)
+    do {
+        result = try await request.body.consumeWithCancellationOnInboundClose { body in
+            var req = request
+            req.body = body
+            let handlerResult = try await handler(req, context)
+            if Task.isCancelled { throw CancellationError() }
+            return handlerResult
+        }
+    } catch is CancellationError {
+        await serverState.semaphore.signal()
+        await serverState.logStore.requestFinished()
+        let log = RequestLog(
+            id: requestId, timestamp: ISO8601DateFormatter().string(from: start),
+            method: "POST", path: path, status: 499,
+            duration_ms: Int(Date().timeIntervalSince(start) * 1000),
+            stream: false, estimated_tokens: nil,
+            error: "Client disconnected", request_body: nil,
+            response_body: nil, events: ["client disconnected (#542)"]
+        )
+        await serverState.logStore.append(log)
+        return Response(status: .init(code: 499))
+    } catch {
+        await serverState.semaphore.signal()
+        await serverState.logStore.requestFinished()
+        throw error
+    }
+    // Same permit rule as chat completions (#213): only live SSE streams
+    // own their cleanup via onTermination.
+    if !result.trace.ownsCleanup {
+        await serverState.semaphore.signal()
+        await serverState.logStore.requestFinished()
+    }
+
+    let durationMs = Int(Date().timeIntervalSince(start) * 1000)
+    let log = RequestLog(
+        id: requestId,
+        timestamp: ISO8601DateFormatter().string(from: start),
+        method: "POST", path: path,
+        status: result.response.status == .ok ? 200 : result.response.status.code,
+        duration_ms: durationMs,
+        stream: result.trace.stream,
+        estimated_tokens: result.trace.estimatedTokens,
+        error: result.trace.error,
+        request_body: result.trace.requestBody,
+        response_body: result.trace.responseBody,
+        events: result.trace.events
+    )
+    await serverState.logStore.append(log)
+
+    return result.response
 }

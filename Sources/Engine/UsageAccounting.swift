@@ -71,7 +71,7 @@ package enum PromptTokens: Sendable {
         if runtimeReportsUsage {
             return .deferred(entries: entries)
         }
-        return .counted(await TokenCounter.shared.count(entries: entries))
+        return .counted(await TokenCounter.shared.countInput(entries: entries))
     }
 
     /// The prompt-token number for a path with no runtime-reported usage.
@@ -80,7 +80,7 @@ package enum PromptTokens: Sendable {
         case .counted(let n):
             return n
         case .deferred(let entries):
-            return await TokenCounter.shared.count(entries: entries)
+            return await TokenCounter.shared.countInput(entries: entries)
         }
     }
 

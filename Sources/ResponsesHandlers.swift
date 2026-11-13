@@ -157,19 +157,10 @@ func handleResponses(_ request: Request, context: some RequestContext) async thr
             param: scopeError.param)
     }
 
-    let truncationStrategy: ContextStrategy = responsesRequest.truncation == "disabled" ? .strict : .newestFirst
-    let sessionOpts = SessionOptions(
-        temperature: responsesRequest.temperature,
-        topP: responsesRequest.top_p,
-        maxTokens: responsesRequest.max_output_tokens,
-        seed: nil,
-        permissive: serverState.config.permissive,
-        contextConfig: ContextConfig(
-            strategy: truncationStrategy, maxTurns: nil,
-            outputReserve: BodyLimits.defaultOutputReserveTokens),
-        retryEnabled: serverState.config.retryEnabled,
-        retryCount: serverState.config.retryCount
-    )
+    // Shared with POST /v1/responses/input_tokens (#485), so a preflight count
+    // prepares and trims exactly what this generation will.
+    let sessionOpts = responsesSessionOptions(
+        responsesRequest, truncation: ResponsesTruncation(requestValue: responsesRequest.truncation))
 
     let session: LanguageModelSession
     let finalPrompt: String
@@ -178,7 +169,8 @@ func handleResponses(_ request: Request, context: some RequestContext) async thr
     do {
         (session, finalPrompt, inputEntries, finalPieces) = try await ContextManager.makeSession(
             messages: messages, tools: toolPolicy.scopedTools(from: tools), options: sessionOpts,
-            jsonMode: jsonMode, toolChoice: responsesRequest.tool_choice)
+            jsonMode: jsonMode, toolChoice: responsesRequest.tool_choice,
+            responseSchema: structuredSchema)
     } catch {
         let classified = classifyModelError(error)
         return openAIFailure(
