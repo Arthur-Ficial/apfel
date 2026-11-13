@@ -24,7 +24,7 @@ import subprocess
 import tempfile
 import time
 
-from conftest import GUARDRAIL_SEEDS, is_guardrail_refusal, post_chat_rotating_seeds, TOOL_CHOICE_NOT_SATISFIED
+from conftest import GUARDRAIL_SEEDS, MCP_SERVER, is_guardrail_refusal, post_chat_rotating_seeds, TOOL_CHOICE_NOT_SATISFIED
 
 # Whole-suite marker: these tests drive real on-device generation (or, for
 # the permit/benchmark suites, need Apple Intelligence up); GitHub CI cannot
@@ -456,22 +456,46 @@ def test_mcp_tool_iserror_is_fed_back_to_model_not_500():
     Per the MCP spec, execution errors "should be reported inside the result
     object ... so the LLM can see it and act". Previously apfel turned isError
     into a thrown MCPError.serverError -> HTTP 500. Now the request completes
-    normally (200) with a natural-language answer; only transport/protocol
-    failures (timeout, dead pipe) still surface as 500 (covered by the timeout
-    and crashed-server tests below).
+    normally (200); only transport/protocol failures (timeout, dead pipe)
+    still surface as 500 (covered by the timeout and crashed-server tests
+    below).
+
+    The --debug event log proves the divide tool really ran and its error
+    result went back to the model. What the model then says is its own
+    business: on macOS 26.1 it refuses on every seed after the error (#562),
+    and a refusal is still a 200 with content, which is the contract.
     """
-    data = post_chat_rotating_seeds(f"{API_URL}/chat/completions", {
-        "model": MODEL,
-        "messages": [
-            {"role": "user", "content": "Use the divide tool to divide 10 by 0, then tell me what happened."}
-        ],
-    }, TIMEOUT)
-    choice = data["choices"][0]
-    assert choice["finish_reason"] == "stop"
-    content = choice["message"]["content"]
-    assert content and content.strip(), "model must produce a recovery answer, not empty content"
-    # The raw tool-call JSON must not leak to the client as the answer.
-    assert '"tool_calls"' not in content
+    with _running_mcp_server_with_log(MCP_SERVER, debug=True) as (api_url, read_log):
+        outcomes = []
+        for seed in GUARDRAIL_SEEDS:
+            seen = len(read_log())
+            resp = httpx.post(f"{api_url}/chat/completions", json={
+                "model": MODEL,
+                "seed": seed,
+                "messages": [
+                    {"role": "user", "content": "Use the divide tool to divide 10 by 0, then tell me what happened."}
+                ],
+            }, timeout=TIMEOUT)
+            # The runtime failing to decode its own output on one trajectory
+            # is a model outcome (#544), like in post_chat_rotating_seeds.
+            if resp.status_code == 500 and "could not be decoded" in resp.text:
+                outcomes.append(f"seed {seed}: decode error")
+                continue
+            assert resp.status_code == 200, f"HTTP {resp.status_code} (seed {seed}): {resp.text[:200]}"
+            time.sleep(0.3)
+            events = read_log()[seen:]
+            if "mcp tool: divide(" not in events:
+                outcomes.append(f"seed {seed}: the model did not call divide")
+                continue
+            assert "= error:" in events, f"divide by zero must come back as a tool error: {events[-600:]}"
+            choice = resp.json()["choices"][0]
+            assert choice["finish_reason"] == "stop"
+            content = choice["message"]["content"]
+            assert content and content.strip(), "the model must answer after the tool error, not return empty content"
+            # The raw tool-call JSON must not leak to the client as the answer.
+            assert '"tool_calls"' not in content
+            return
+        pytest.fail("no seed exercised the isError path: " + "; ".join(outcomes))
 
 
 def test_mcp_tool_timeout_returns_structured_error():
