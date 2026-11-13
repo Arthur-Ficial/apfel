@@ -11,7 +11,9 @@ public enum UnsupportedChatParameter: String, Sendable, Equatable, Hashable, Cus
     case logprobs
     /// Requests multiple completions from one prompt.
     case n
-    /// Requests stop-sequence handling that Apple's local model does not expose.
+    /// Stop sequences. No longer detected: `stop` is supported for plain-text
+    /// generation since #483 (validated as `ChatRequestValidationFailure.invalidStop`).
+    /// Kept for source stability of this public enum.
     case stop
     /// Requests OpenAI presence-penalty tuning.
     case presencePenalty = "presence_penalty"
@@ -54,9 +56,6 @@ public enum UnsupportedChatParameter: String, Sendable, Equatable, Hashable, Cus
         if let count = request.n, count != 1 {
             return .n
         }
-        if request.stop != nil {
-            return .stop
-        }
         if request.presence_penalty != nil {
             return .presencePenalty
         }
@@ -95,6 +94,9 @@ public enum ChatRequestValidationFailure: Sendable, Equatable, Hashable, CustomS
     case conflictingMaxTokens(legacy: Int, modern: Int)
     /// The request asked for a model name other than `apple-foundationmodel`.
     case invalidModel(String)
+    /// The `stop` value was malformed, over the limits, or combined with
+    /// tool calling / structured output (#483).
+    case invalidStop(StopSequenceFailure)
 
     /// The stable HTTP-facing error message for this validation failure.
     public var message: String {
@@ -121,6 +123,8 @@ public enum ChatRequestValidationFailure: Sendable, Equatable, Hashable, CustomS
             return "Both 'max_tokens' (\(legacy)) and 'max_completion_tokens' (\(modern)) were provided with different values. Use 'max_completion_tokens' only, or provide the same value for both."
         case .invalidModel(let model):
             return "The model '\(model)' does not exist. The only available model is 'apple-foundationmodel'."
+        case .invalidStop(let failure):
+            return failure.message
         }
     }
 
@@ -149,6 +153,8 @@ public enum ChatRequestValidationFailure: Sendable, Equatable, Hashable, CustomS
             return "validation failed: conflicting max_tokens=\(legacy) vs max_completion_tokens=\(modern)"
         case .invalidModel(let model):
             return "validation failed: unknown model \(model)"
+        case .invalidStop(let failure):
+            return "validation failed: stop (\(failure.message))"
         }
     }
 
@@ -182,6 +188,8 @@ public enum ChatRequestValidationFailure: Sendable, Equatable, Hashable, CustomS
             return "messages"
         case .conflictingMaxTokens:
             return "max_completion_tokens"
+        case .invalidStop:
+            return "stop"
         default:
             return nil
         }
@@ -230,6 +238,21 @@ public enum ChatRequestValidator {
 
         if let unsupported = UnsupportedChatParameter.detect(in: request) {
             return .unsupportedParameter(unsupported)
+        }
+
+        // Stop sequences (#483): plain-text generation only. Client tools are
+        // in scope unless tool_choice is 'none'; server-attached MCP tools
+        // are checked by the server after tool resolution.
+        switch StopSequences.decode(request.stop) {
+        case .failure(let failure):
+            return .invalidStop(failure)
+        case .success(let stops):
+            let clientToolsInScope = !(request.tools ?? []).isEmpty && request.tool_choice != ToolChoice.none
+            if let failure = StopSequences.combinationFailure(
+                stops: stops, toolsInScope: clientToolsInScope,
+                responseFormat: request.response_format?.type) {
+                return .invalidStop(failure)
+            }
         }
 
         guard let lastRole = request.messages.last?.role, ["user", "tool"].contains(lastRole) else {

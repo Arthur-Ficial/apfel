@@ -97,6 +97,8 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
     }
 
     events.append("decoded messages=\(chatRequest.messages.count) stream=\(isStreaming) model=\(chatRequest.model)")
+    // Stop sequences (#483): already validated above, so decoding succeeds.
+    let stopSequences = (try? StopSequences.decode(chatRequest.stop).get()) ?? []
 
     // response_format: json_schema -> guaranteed structured outputs (#167).
     // Build the native GenerationSchema up front so a malformed/unsupported
@@ -181,6 +183,24 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
     // and nothing is auto-executed, so tool-shaped output stays content.
     let effectiveTools = toolPolicy.scopedTools(from: resolvedTools.tools)
     let toolsAreMCPInjected = resolvedTools.injected && toolPolicy.toolsInScope
+    // Client tools with stop were rejected by the validator; what is left in
+    // scope here is the server's MCP tools (#483).
+    if StopSequences.combinationFailure(stops: stopSequences, toolsInScope: toolPolicy.toolsInScope, responseFormat: nil) != nil {
+        let failure: StopSequenceFailure = resolvedTools.injected ? .withMCPTools : .withTools
+        return openAIFailure(
+            status: .badRequest,
+            message: failure.message,
+            type: "invalid_request_error",
+            stream: isStreaming,
+            requestBody: requestBodyString,
+            events: events,
+            event: "stop rejected: \(failure.message)",
+            param: "stop"
+        )
+    }
+    if !stopSequences.isEmpty {
+        events.append("stop sequences=\(stopSequences.count)")
+    }
     // macOS 27 runtime-side tool_choice (#510): resolved here, applied to the
     // generation options below; a no-op on macOS 26 and for tool-free requests.
     let toolDirective = ToolCallingDirective.resolve(
@@ -278,7 +298,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
                                        id: requestId, created: created,
                                        genOpts: genOpts, promptTokens: promptTokens,
                                        includeUsage: includeUsage, jsonMode: jsonMode,
-                                       policy: toolPolicy,
+                                       policy: toolPolicy, stopSequences: stopSequences,
                                        requestBody: requestBodyString, events: events)
         return (result.response, result.trace)
     } else {
@@ -286,6 +306,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
                                                      id: requestId, created: created,
                                                      genOpts: genOpts, promptTokens: promptTokens,
                                                      jsonMode: jsonMode, policy: toolPolicy,
+                                                     stopSequences: stopSequences,
                                                      requestBody: requestBodyString, events: events)
         return (result.response, result.trace)
     }
@@ -517,6 +538,7 @@ private func nonStreamingResponse(
     promptTokens: PromptTokens,
     jsonMode: Bool,
     policy: ToolPolicy,
+    stopSequences: [String] = [],
     requestBody: String?,
     events: [String]
 ) async throws -> (response: Response, trace: ChatRequestTrace) {
@@ -533,9 +555,13 @@ private func nonStreamingResponse(
         // Route non-streaming through collectStream so output-side context
         // overflow surfaces as a graceful length-finish on this path too.
         outcome = try await withModelRetry(maxRetries: nsRetryMax) {
-            try await collectStream(session, prompt: prompt, options: genOpts)
+            // Stop sequences end the stream early, the same matcher as SSE (#483).
+            try await collectStream(session, prompt: prompt, options: genOpts, stopSequences: stopSequences)
         }
         if let roundUsage = outcome.usage { usageRounds.append(roundUsage) }
+        if let matched = outcome.matchedStop {
+            events.append("stop sequence matched: \(matched.debugDescription)")
+        }
         // Hold detected calls to the request's tool contract (#480): tool_choice
         // none makes tool-shaped output content, a forced choice the model
         // ignored or a call outside the scope is a violation, parallel_tool_calls
@@ -657,6 +683,7 @@ private func streamingResponse(
     includeUsage: Bool,
     jsonMode: Bool,
     policy: ToolPolicy,
+    stopSequences: [String] = [],
     requestBody: String?,
     events: [String]
 ) -> (response: Response, trace: ChatRequestTrace) {
@@ -716,6 +743,10 @@ private func streamingResponse(
             // contract violation (#480), and content must not stream out before
             // that verdict is known.
             let holdAllContent = jsonMode || policy.forcesToolCall
+            // Stop sequences (#483): `prev` tracks only the text the matcher
+            // released, so a delimiter fragment never reaches a delta and the
+            // held-back suffix is flushed by the normal end-of-stream path.
+            var stopMatcher: StopSequenceMatcher? = stopSequences.isEmpty ? nil : StopSequenceMatcher(stops: stopSequences)
 
             do {
               generation: while true {
@@ -724,10 +755,23 @@ private func streamingResponse(
                 lastRoundUsage = nil
                 toolGateHolding = policy.toolsInScope
                 for try await snapshot in stream {
-                    let content = snapshot.content
+                    var content = snapshot.content
                     // Capture usage before the no-growth guard: output tokens
                     // keep advancing on snapshots whose text has not grown.
                     lastRoundUsage = reportedUsage(of: snapshot) ?? lastRoundUsage
+                    if var matcher = stopMatcher {
+                        matcher.feed(cumulative: content)
+                        stopMatcher = matcher
+                        content = matcher.delivered
+                    }
+                    // A completed delimiter ends generation: stop consuming
+                    // the model stream. Released text is still emitted below
+                    // by the end-of-stream flush; held text never is.
+                    if let matched = stopMatcher?.matchedStop {
+                        prev = content
+                        await eventBox.append("stop sequence matched: \(matched.debugDescription)")
+                        break
+                    }
                     guard content.unicodeScalars.count > prev.unicodeScalars.count else { prev = content; continue }
                     prev = content
 
@@ -777,6 +821,13 @@ private func streamingResponse(
                 }
                 break generation
               }
+                // End of stream without a match: the held-back suffix was not
+                // a delimiter after all, deliver it like any other content.
+                if var matcher = stopMatcher, !matcher.isMatched {
+                    matcher.finish()
+                    stopMatcher = matcher
+                    prev = matcher.delivered
+                }
                 if let roundUsage = lastRoundUsage {
                     usageRounds.append(roundUsage)
                     lastRoundUsage = nil
@@ -831,7 +882,9 @@ private func streamingResponse(
                         promptTokens: await promptTokens.resolve() + promptAdjustment,
                         completionTokens: completionTokens)
                 }
-                let resolved = FinishReasonResolver.resolve(
+                // A matched stop sequence is a natural stop, whatever the
+                // token count of the consumed snapshots says (#483).
+                let resolved = stopMatcher?.isMatched == true ? FinishReason.stop : FinishReasonResolver.resolve(
                     hasToolCalls: toolCalls != nil,
                     completionTokens: finishTokens ?? completionTokens,
                     maxTokens: genOpts.maximumResponseTokens
@@ -920,6 +973,13 @@ private func streamingResponse(
                 await eventBox.append("tool policy violation: \(violation.code)")
             } catch {
                 let classified = classifyModelError(error)
+                // An error ends the stream: text held back for a delimiter
+                // that never completed is real output (#483).
+                if var matcher = stopMatcher, !matcher.isMatched {
+                    matcher.finish()
+                    stopMatcher = matcher
+                    prev = matcher.delivered
+                }
                 // Output-side context overflow with content already streamed is
                 // a graceful length-finish, not an error. See StreamErrorResolver.
                 if case .truncated(let truncatedContent) = StreamErrorResolver.resolve(prev: prev, error: classified) {

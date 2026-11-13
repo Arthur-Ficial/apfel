@@ -10,5 +10,6 @@ Key types include:
 - ``OpenAITool``
 - ``ToolChoice``
 - ``ResponseFormat``
+- ``StopSequences`` and ``StopSequenceMatcher`` - OpenAI `stop` decoding, limits, and the incremental output-side matcher shared by streaming and non-streaming generation
 
 These types are pure Swift values, `Sendable`, and hashable where it is useful for callers building caches, sets, or maps of request metadata.

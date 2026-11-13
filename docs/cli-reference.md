@@ -36,6 +36,7 @@ MODEL
   --seed <n>                              Random seed for reproducibility
   --max-tokens <n>                        Maximum response tokens
   --permissive                            Relaxed guardrails (reduces false positives)
+  --stop <text>                           End the output before <text> (repeatable, max 4; plain text only)
   --retry [n]                             Retry transient errors with backoff (default: 3)
   --debug                                 Enable debug logging to stderr (all modes)
   --count-tokens                          Count tokens without calling the model
@@ -136,6 +137,10 @@ apfel --max-tokens 50 "Explain quantum computing"
 # --permissive
 apfel --permissive "Write a villain monologue"
 apfel --permissive -f long-document.md "Summarize this"
+
+# --stop (repeatable; the delimiter and everything after it are not printed)
+apfel --stop "5" "Count from 1 to 10, separated by spaces"
+apfel --stream --stop $'\nObservation' "Write one short action, then a line beginning Observation."
 
 # --retry
 apfel --retry "What is 2+2?"
@@ -255,6 +260,7 @@ fi
 - Non-streaming (including `-o json` and `--code`): a length finish writes nothing to stdout and exits 8. `--quiet` does not change the exit code.
 - `--stream`: tokens already printed cannot be taken back; the exit code 8 is the contract.
 - `-o json` always carries `finish_reason` (`"stop"` or `"length"`) next to `content`, with or without the flag. `--schema` output omits it, and so does a run with an explicit `--max-tokens` cap on macOS older than 26.4, where apfel can only estimate whether the cap cut the response (stderr says so). A missing key means unknown, never a guess.
+- A matched `--stop` sequence ends the answer with `finish_reason=stop`, so it is complete (exit 0). The match is observed, not estimated, so `-o json` reports `"stop"` for it on every macOS, also with an explicit `--max-tokens` cap below 26.4. `--require-complete --max-tokens N --stop X` is still refused below 26.4, because a run that never reaches the delimiter could not be judged.
 - Completion only means the engine stopped on its own. It is not a correctness check: a naturally finished answer can still be wrong or syntactically incomplete.
 
 When apfel runs inside a pipeline, the shell reports the exit status of the last command, so turn on `pipefail` to see exit 8:

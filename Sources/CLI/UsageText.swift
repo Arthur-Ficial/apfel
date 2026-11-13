@@ -48,6 +48,7 @@ public enum UsageText {
               --seed <n>            Random seed for reproducible output
               --max-tokens <n>      Maximum response tokens
               --permissive          Use permissive content guardrails
+              --stop <text>         End the output before <text> (repeatable, max 4; plain text only)
               --retry [n]           Enable retry with exponential backoff [default: 3 retries]
                                     Ambiguous with a numeric prompt: `--retry 7` alone keeps
                                     "7" as the prompt; use --retry=N to set the count unambiguously

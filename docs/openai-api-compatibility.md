@@ -26,9 +26,31 @@
 | CORS | Supported | Enable with `--cors` |
 | `POST /v1/completions` | 501 | Legacy text completions not supported |
 | `POST /v1/embeddings` | 501 | Embeddings not available on-device |
-| `logprobs=true`, `n>1`, `stop`, `presence_penalty`, `frequency_penalty` | 400 | Rejected explicitly. `n=1` and `logprobs=false` are accepted as no-ops |
+| `stop` | Supported | String or array of up to 4 strings; plain text only. See [Stop sequences](#stop-sequences) |
+| `logprobs=true`, `n>1`, `presence_penalty`, `frequency_penalty` | 400 | Rejected explicitly. `n=1` and `logprobs=false` are accepted as no-ops |
 | Multi-modal (images) | Supported on macOS 27 | `image_url` parts as base64 data URLs reach the model natively; `detail` is accepted and ignored. On macOS 26: 400 ("image input requires macOS 27"). See [Images](#images) |
 | `Authorization` header | Supported | Required when `--token` is set. See [server-security.md](server-security.md) |
+
+## Stop sequences
+
+Apple's `GenerationOptions` has no stop field, so apfel applies `stop` on the output side, the same way for streaming and non-streaming requests (one shared matcher, `StopSequenceMatcher` in ApfelCore):
+
+- **Forms:** a string, or an array of up to 4 strings (OpenAI's limit), at most 256 Unicode scalars in total. `null` and `[]` mean no stop sequences. An empty string, a non-string entry, a fifth sequence or a longer total is a 400 with `param: "stop"`.
+- **Matching:** exact Unicode scalars, no normalization (a precomposed `é` does not match `e` plus a combining accent). The first delimiter to be completely generated wins; if two complete at the same position, the longer one wins.
+- **Delivery:** everything before the delimiter is delivered; the delimiter and everything after it never are. While streaming, text that cannot become part of a delimiter is sent at once and only the ambiguous suffix (at most the longest delimiter minus one scalar) is held back. If the answer ends without a match, the held text is sent.
+- **Ending:** a match ends the answer with `finish_reason: "stop"` and apfel stops consuming the model stream, which ends the request and releases its concurrency permit. Cancellation in FoundationModels is cooperative: the framework may still generate a few more tokens internally, but none of them are delivered.
+- **Usage:** `completion_tokens` is not a count of the delivered text alone. On macOS 27 it is the runtime's own number for what the model generated up to the snapshot that completed the delimiter (so it includes the delimiter and can include a few tokens after it). On macOS 26 apfel counts the delivered text (the delimiter is not counted).
+- **Plain text only (for now):** `stop` together with tools in scope (client `tools`, or the server's `--mcp` tools, unless `tool_choice` is `"none"`), `response_format: json_object` or `json_schema` is a 400 - a cut tool call or a cut JSON document would be invalid. `response_format: text` is fine.
+
+LangChain's classic ReAct agent binds `stop: ["\nObservation"]` by default; this request is accepted and the answer ends before the observation line:
+
+```bash
+curl --fail-with-body http://localhost:11434/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"apple-foundationmodel","messages":[{"role":"user","content":"Write one short action, then a line beginning Observation."}],"stop":["\nObservation"],"stream":true}'
+```
+
+The CLI twin is `--stop` (see [cli-reference.md](cli-reference.md)).
 
 ## Images
 

@@ -81,7 +81,8 @@ Both tools start a local server. apfel: `apfel --serve` (port 11434). `fm`: `fm 
 | `max_tokens` | honoured, `finish_reason: length` at the cap | **ignored**: `max_tokens: 5` returned 141 completion tokens with `finish_reason: stop` |
 | `temperature`, `top_p`, `seed` | mapped to `GenerationOptions`; `temperature` below 0.001 (0 included) is greedy | `temperature` accepted silently (effect not verified); `top_p`, `seed` not documented |
 | Unsupported endpoints | honest `501` for `/v1/embeddings`, `/v1/completions` | `404 not_found` |
-| Explicit `400` for unsupported params | yes for `n>1`, `logprobs`, `stop`, penalties, images | `n>1` gets a clear 400; `logprobs: true` is accepted silently |
+| `stop` sequences | yes: string or up to 4 strings for plain-text generation, applied on the output side (streaming and non-streaming identical, `finish_reason: stop`); CLI `--stop` | no: `stop: ["5"]` gets HTTP 400 "stop sequences are not supported. Truncate the model's output client-side." (probed 2026-11-13, macOS 27.0.1); `fm respond` has no stop option |
+| Explicit `400` for unsupported params | yes for `n>1`, `logprobs`, penalties, images | `n>1` gets a clear 400; `logprobs: true` is accepted silently |
 | Context overflow | HTTP 400, `type: context_length_exceeded`; on macOS 27 the message carries the runtime's real token count and window | CLI: exit 1 with "The session's transcript exceeded the model's context size"; server shape not probed |
 | Guardrail hit | HTTP 400, `type: content_policy_violation` | HTTP 500, `type: server_error`; in a stream an `event: error` frame after HTTP 200 was already sent |
 | Error body shape | OpenAI `error.type` / `error.code` with mapped HTTP status (400 guardrail, 429 rate limit, 503 unavailable) | OpenAI-like `error` object, `code` is the HTTP status as a string |

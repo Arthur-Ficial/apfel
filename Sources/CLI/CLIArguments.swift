@@ -130,6 +130,9 @@ public struct CLIArguments: Sendable, Equatable {
     public var seed: UInt64? = nil
     public var maxTokens: Int? = nil
     public var permissive: Bool = false
+    /// `--stop <text>` (repeatable, #483): output-side stop sequences for
+    /// plain-text generation. Empty => none.
+    public var stopSequences: [String] = []
 
     // MARK: - Retry
 
@@ -184,7 +187,7 @@ public struct CLIArguments: Sendable, Equatable {
         "--public-health", "--footgun",
         "--mcp", "--mcp-timeout", "--mcp-token",
         "--temperature", "--top-p", "--seed", "--max-tokens", "--permissive",
-        "--retry",
+        "--stop", "--retry",
         "--context-strategy", "--context-max-turns", "--context-output-reserve",
         "--context-status",
         "-f", "--file",
@@ -280,6 +283,23 @@ extension CLIArguments {
             }
             if !mcpServerPaths.isEmpty {
                 throw CLIParseError("--schema cannot be combined with MCP tool calling (--mcp / APFEL_MCP)")
+            }
+        }
+        if !stopSequences.isEmpty {
+            // Stop sequences cut plain-text generation (#483): one-shot
+            // prompts only (single, --stream, --messages), never a cut tool
+            // call or a cut schema-constrained JSON document.
+            if mode != .single && mode != .stream {
+                throw CLIParseError("--stop requires a one-shot prompt; cannot combine with --\(mode.rawValue)")
+            }
+            if schemaJSON != nil {
+                throw CLIParseError("--stop cannot be combined with --schema; a cut JSON document would be invalid")
+            }
+            if !mcpServerPaths.isEmpty {
+                throw CLIParseError("--stop cannot be combined with MCP tool calling (--mcp / APFEL_MCP)")
+            }
+            if let failure = StopSequences.validate(stopSequences) {
+                throw CLIParseError("--stop: \(Self.stopLimitMessage(failure))")
             }
         }
         if codeOnly {
@@ -805,6 +825,13 @@ extension CLIArguments {
             case "--permissive":
                 result.permissive = true
 
+            case "--stop":
+                i += 1
+                guard i < args.count, !args[i].isEmpty else {
+                    throw CLIErrors.requires("--stop", "a non-empty stop sequence")
+                }
+                result.stopSequences.append(args[i])
+
             // -- Retry --
 
             case "--retry":
@@ -1011,6 +1038,19 @@ extension CLIArguments {
             return "unsupported file: \(path) -- apfel -f reads text, PDF, and images (JPEG, PNG, HEIC, TIFF, ...)"
         default:
             return "file is not valid UTF-8 text: \(path) (binary file?)"
+        }
+    }
+
+    /// CLI wording for a `--stop` limit failure (#483): the request-side
+    /// messages name the JSON field, the CLI names the flag.
+    static func stopLimitMessage(_ failure: StopSequenceFailure) -> String {
+        switch failure {
+        case .tooMany(let count):
+            return "at most \(StopSequences.maxCount) stop sequences allowed, got \(count)"
+        case .tooLong(let scalars):
+            return "stop sequences may total at most \(StopSequences.maxTotalScalars) characters (Unicode scalars), got \(scalars)"
+        default:
+            return failure.message
         }
     }
 

@@ -354,6 +354,12 @@ func trimSlidingWindow(
 ///     ceiling after producing content): graceful `.length`. Prompt-side
 ///     overflow (no content produced before the throw) still throws.
 ///
+///   - Stop sequences (#483): the first completed delimiter ends the call
+///     with `.stop`. The delimiter and everything after it are dropped, the
+///     sink only ever sees released text, and the model stream is no longer
+///     consumed (cooperative cancellation: the framework may still have
+///     produced a little more internally).
+///
 /// - Returns: A `GenerationOutcome` carrying the accumulated content, the
 ///   resolved finish reason, and the runtime-reported usage when the SDK
 ///   provides it (macOS 27+; nil on macOS 26).
@@ -361,9 +367,10 @@ package func collectStream(
     _ session: LanguageModelSession,
     prompt: String,
     sink: StreamPrintSink? = nil,
-    options: GenerationOptions = GenerationOptions()
+    options: GenerationOptions = GenerationOptions(),
+    stopSequences: [String] = []
 ) async throws -> GenerationOutcome {
-    try await collectStream(session, prompt: Prompt(prompt), sink: sink, options: options)
+    try await collectStream(session, prompt: Prompt(prompt), sink: sink, options: options, stopSequences: stopSequences)
 }
 
 /// Prompt-typed variant so an image-bearing user turn (macOS 27, #510)
@@ -372,14 +379,24 @@ package func collectStream(
     _ session: LanguageModelSession,
     prompt: Prompt,
     sink: StreamPrintSink? = nil,
-    options: GenerationOptions = GenerationOptions()
+    options: GenerationOptions = GenerationOptions(),
+    stopSequences: [String] = []
 ) async throws -> GenerationOutcome {
     let stream = session.streamResponse(to: prompt, options: options)
     var prev = ""
     var reported: TokenUsage? = nil
+    // One matcher per call: a retried call restarts from an empty snapshot,
+    // and the sink's high-water mark keeps the printed prefix printed once.
+    var matcher: StopSequenceMatcher? = stopSequences.isEmpty ? nil : StopSequenceMatcher(stops: stopSequences)
     do {
         for try await snapshot in stream {
-            let content = snapshot.content
+            reported = reportedUsage(of: snapshot) ?? reported
+            var content = snapshot.content
+            if var active = matcher {
+                active.feed(cumulative: content)
+                matcher = active
+                content = active.delivered
+            }
             // Feed the cumulative snapshot to the (optional) print sink. The sink
             // tracks a high-water mark across retries and emits only the suffix
             // beyond what it has already printed, so a retried re-run never
@@ -388,7 +405,16 @@ package func collectStream(
                 await sink.feed(cumulative: content)
             }
             prev = content
-            reported = reportedUsage(of: snapshot) ?? reported
+            if let matched = matcher?.matchedStop {
+                // Stop consuming: dropping the iterator ends the stream.
+                return GenerationOutcome(content: prev, finishReason: .stop, usage: reported, matchedStop: matched)
+            }
+        }
+        // End of stream without a match: release the held-back suffix.
+        if var active = matcher {
+            active.finish()
+            prev = active.delivered
+            if let sink { await sink.feed(cumulative: prev) }
         }
         // Completion tokens for the finish-reason decision: the runtime's own
         // number when reported (macOS 27+), else one tokenizer count (macOS 26).
@@ -408,6 +434,13 @@ package func collectStream(
             truncation: TruncationCause.resolve(finishReason: reason, maxTokens: options.maximumResponseTokens))
     } catch {
         let classified = classifyModelError(error)
+        // An error ends the stream too: text held back for a delimiter that
+        // never completed is real output and belongs to the truncated answer.
+        if var active = matcher, !active.isMatched {
+            active.finish()
+            prev = active.delivered
+            if let sink { await sink.feed(cumulative: prev) }
+        }
         switch StreamErrorResolver.resolve(prev: prev, error: classified) {
         case .truncated(let content):
             // The last snapshot's reported usage prices the truncated content.
@@ -426,11 +459,17 @@ package struct GenerationOutcome: Sendable {
     public let usage: TokenUsage?
     /// Why a `.length` finish happened; nil for every other finish.
     public let truncation: TruncationCause?
+    /// The stop sequence that ended generation (#483), else nil.
+    public let matchedStop: String?
 
-    public init(content: String, finishReason: FinishReason, usage: TokenUsage?, truncation: TruncationCause? = nil) {
+    public init(
+        content: String, finishReason: FinishReason, usage: TokenUsage?,
+        truncation: TruncationCause? = nil, matchedStop: String? = nil
+    ) {
         self.content = content
         self.finishReason = finishReason
         self.usage = usage
         self.truncation = truncation
+        self.matchedStop = matchedStop
     }
 }

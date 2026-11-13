@@ -74,9 +74,9 @@ func runStopSequenceTests() {
         try assertEqual(m.feed(cumulative: "Action: x\nObs"), "Action: x")
         try assertEqual(m.heldBack, "\nObs")
         // The prefix diverges: the held text is released, nothing is lost.
-        try assertEqual(m.feed(cumulative: "Action: x\nObject"), "\nObject")
+        try assertEqual(m.feed(cumulative: "Action: x\nObsolete"), "\nObsolete")
         try assertEqual(m.heldBack, "")
-        try assertEqual(m.delivered, "Action: x\nObject")
+        try assertEqual(m.delivered, "Action: x\nObsolete")
     }
 
     test("a completed delimiter and everything after it are dropped") {
@@ -202,7 +202,8 @@ func runStopSequenceTests() {
         var m = StopSequenceMatcher(stops: ["xyz", "yq"])
         try assertEqual(m.feed(cumulative: "axy"), "a")
         try assertEqual(m.heldBack, "xy")
-        try assertEqual(m.feed(cumulative: "axyq"), "")
+        // "yq" completes: the "x" before it is released, the delimiter is not.
+        try assertEqual(m.feed(cumulative: "axyq"), "x")
         try assertEqual(m.delivered, "ax")
         try assertEqual(m.matchedStop, "yq")
     }

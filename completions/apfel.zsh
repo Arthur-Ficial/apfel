@@ -47,6 +47,7 @@ _apfel() {
     '--seed[Random seed]:value:' \
     '--max-tokens[Maximum response tokens]:value:' \
     '--permissive[Use permissive guardrails]' \
+    '--stop[Stop sequence: end output before it (repeatable)]:value:' \
     '--retry[Enable retry with backoff]' \
     '--context-strategy[Context management strategy]:value:(newest-first oldest-first sliding-window summarize strict)' \
     '--context-max-turns[Max history turns]:value:' \

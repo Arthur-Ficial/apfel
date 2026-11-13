@@ -128,4 +128,52 @@ func runStopFlagTests() {
     test("--stop cannot combine with APFEL_MCP from the environment") {
         try expectParseError(["--stop", "END", "x"], env: ["APFEL_MCP": "calc.py"], contains: "APFEL_MCP")
     }
+
+    // MARK: - With --require-complete (#484)
+
+    test("--stop composes with --require-complete on a single prompt") {
+        let args = try CLIArguments.parse(["--stop", "END", "--require-complete", "x"])
+        try assertEqual(args.stopSequences, ["END"])
+        try assertTrue(args.requireComplete)
+        try assertEqual(args.mode, .single)
+    }
+
+    test("--stop composes with --require-complete and --stream") {
+        let args = try CLIArguments.parse(["--require-complete", "--stream", "--stop", "END", "x"])
+        try assertEqual(args.stopSequences, ["END"])
+        try assertTrue(args.requireComplete)
+        try assertEqual(args.mode, .stream)
+    }
+
+    test("--stop composes with --require-complete and --messages") {
+        let args = try CLIArguments.parse(
+            ["--require-complete", "--stop", "END", "--messages", "c.json"],
+            readFile: { _ in #"[{"role":"user","content":"hi"}]"# })
+        try assertEqual(args.stopSequences, ["END"])
+        try assertTrue(args.requireComplete)
+        try assertNotNil(args.messagesJSON)
+    }
+
+    test("a matched stop is a complete stop finish under --require-complete") {
+        let decision = CompletionPolicy.decide(finishReason: .stop, requireComplete: true)
+        try assertEqual(decision, .complete)
+        try assertNil(decision.exitCode)
+    }
+
+    test("a matched stop is reported as stop even when the cap signal is approximate") {
+        // macOS < 26.4 with an explicit cap: an unmatched stop is a chars/4
+        // guess, but an observed delimiter is an exact signal on every OS.
+        try assertEqual(
+            CompletionPolicy.reportedFinishReason(.stop, truncation: nil, finishSignalExact: false, stopMatched: true),
+            .stop)
+        try assertNil(
+            CompletionPolicy.reportedFinishReason(.stop, truncation: nil, finishSignalExact: false, stopMatched: false))
+    }
+
+    test("ProcessPromptResult carries the matched stop sequence") {
+        let matched = ProcessPromptResult(
+            content: "1 2 3", toolLog: [], finishReason: .stop, truncation: nil, matchedStop: " 4")
+        try assertEqual(matched.matchedStop, " 4")
+        try assertNil(ProcessPromptResult(content: "x", toolLog: [], finishReason: .stop).matchedStop)
+    }
 }

@@ -103,6 +103,7 @@ public enum ShellCompletions {
             CompletionFlag(["--seed"], .generic, "Random seed"),
             CompletionFlag(["--max-tokens"], .generic, "Maximum response tokens"),
             CompletionFlag(["--permissive"], .none, "Use permissive guardrails"),
+            CompletionFlag(["--stop"], .generic, "Stop sequence: end output before it (repeatable)"),
             CompletionFlag(["--retry"], .none, "Enable retry with backoff"),
             CompletionFlag(["--context-strategy"], .values(contextStrategyValues), "Context management strategy"),
             CompletionFlag(["--context-max-turns"], .generic, "Max history turns"),

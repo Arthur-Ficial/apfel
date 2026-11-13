@@ -406,3 +406,72 @@ def test_cli_stop_json_output():
     r = _cli_rotating(["-o", "json"], extract=lambda out: json.loads(out)["content"])
     content = json.loads(r.stdout)["content"]
     assert COUNT_STOP not in content, content
+    assert json.loads(r.stdout)["finish_reason"] == "stop", r.stdout
+
+
+# ============================================================================
+# Model: --stop together with --require-complete / --max-tokens (#484)
+# A matched delimiter is finish_reason=stop: complete, exit 0. The match is
+# observed, not estimated, so it is exact on every OS, also where an explicit
+# --max-tokens cap is only a chars/4 estimate (macOS < 26.4).
+# ============================================================================
+
+_EXACT_FINISH_SIGNAL = None
+
+
+def _exact_finish_signal():
+    """Whether this Mac detects an explicit --max-tokens cap exactly, read from
+    the binary's own #315 capability report (same as cli_e2e_test.py)."""
+    global _EXACT_FINISH_SIGNAL
+    if _EXACT_FINISH_SIGNAL is None:
+        r = _run_cli(["--count-tokens", "-o", "json", "hello"], timeout=30)
+        assert r.returncode == 0, r.stderr
+        _EXACT_FINISH_SIGNAL = "macOS 26.4" not in r.stderr
+    return _EXACT_FINISH_SIGNAL
+
+
+def _json_content(out):
+    return json.loads(out)["content"]
+
+
+@pytest.mark.model
+def test_cli_stop_with_require_complete_is_complete():
+    require_model()
+    r = _cli_rotating(["--require-complete", "-o", "json"], extract=_json_content)
+    envelope = json.loads(r.stdout)
+    assert COUNT_STOP not in envelope["content"], envelope
+    assert envelope["finish_reason"] == "stop", envelope
+
+
+@pytest.mark.model
+def test_cli_stop_with_require_complete_stream_is_complete():
+    require_model()
+    r = _cli_rotating(["--require-complete", "--stream"])
+    assert COUNT_STOP not in r.stdout, r.stdout
+
+
+@pytest.mark.model
+def test_cli_matched_stop_with_cap_reports_stop_on_every_os():
+    """Default mode, explicit cap, delimiter matched well before the cap: the
+    envelope says stop everywhere, never the macOS < 26.4 'unknown' omission."""
+    require_model()
+    r = _cli_rotating(["--max-tokens", "64", "-o", "json"], extract=_json_content)
+    envelope = json.loads(r.stdout)
+    assert envelope.get("finish_reason") == "stop", (envelope, r.stderr)
+    assert "cannot tell whether" not in r.stderr, r.stderr
+
+
+@pytest.mark.model
+def test_cli_stop_require_complete_with_cap():
+    """--require-complete with an explicit cap: exact Macs run it and a matched
+    stop is complete (exit 0); Macs without an exact cap signal still refuse
+    up front (exit 2), because an unmatched run could not be judged."""
+    require_model()
+    if _exact_finish_signal():
+        r = _cli_rotating(["--require-complete", "--max-tokens", "64", "-o", "json"], extract=_json_content)
+        assert json.loads(r.stdout)["finish_reason"] == "stop", r.stdout
+    else:
+        r = _run_cli(["--stop", COUNT_STOP, "--require-complete", "--max-tokens", "64", COUNT_PROMPT], timeout=60)
+        assert r.returncode == 2, r.stderr
+        assert r.stdout == "", r.stdout
+        assert "macOS 26.4" in r.stderr, r.stderr
