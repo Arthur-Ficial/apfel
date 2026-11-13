@@ -69,3 +69,22 @@ def test_binary_built_on_sdk_27_is_launched_on_macos_26():
     )
     uploads = [n for n, t in jobs.items() if "actions/upload-artifact" in t]
     assert uploads, "The build job must upload the release binary as an artifact."
+
+
+def test_unit_tests_and_model_free_suites_also_run_on_macos_26():
+    """The N-1 leg of the CI matrix (#510 item 7, #205): the 27-SDK runner
+    builds the unit-test runner once, and a macos-26 job executes that same
+    binary plus the model-free CLI and HTTP suites against the release binary.
+    Launch alone does not exercise the macOS 26 side of each #available branch."""
+    jobs = _jobs()
+    builders = [t for t in jobs.values()
+                if _runs_on(t).startswith("xcode-27") and "apfel-tests" in t
+                and "actions/upload-artifact" in t]
+    assert builders, "the xcode-27 build job must upload the apfel-tests binary"
+    legs = [t for t in jobs.values() if _runs_on(t) == "macos-26"]
+    assert any("apfel-tests" in t and "actions/checkout" in t for t in legs), (
+        "a macos-26 job must check out the repo and run the downloaded apfel-tests binary")
+    assert any(re.search(r'-m "not model"', t) and "cli_e2e_test.py" in t
+               and "server_validation_test.py" in t and "APFEL_MODELFREE_ONLY=1" in t
+               for t in legs), (
+        "a macos-26 job must run the model-free CLI and HTTP server suites")
