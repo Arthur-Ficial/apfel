@@ -259,8 +259,12 @@ extension SchemaParser {
             let declared = SchemaParser.extractKeyOrder(
                 from: rawData, at: path + "/properties"
             )
+            // The scanned order is only trusted when it names exactly the parsed
+            // keys, each once: a duplicate key in the raw JSON (JSONSerialization
+            // keeps one value) or a scan that missed the object falls back to
+            // the sorted order, never to a duplicated property.
             let orderedKeys = declared.flatMap {
-                Set($0) == Set(propsDict.keys) ? $0 : nil
+                $0.count == propsDict.count && Set($0) == Set(propsDict.keys) ? $0 : nil
             } ?? propsDict.keys.sorted()
             var properties: [SchemaIR.Property] = []
             properties.reserveCapacity(orderedKeys.count)
