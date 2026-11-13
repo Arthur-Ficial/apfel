@@ -121,7 +121,7 @@ func runRequireCompleteTests() {
     }
 
     test("policy: rejection message names finish_reason=length and exit 8 context") {
-        let msg = CompletionPolicy.incompleteMessage
+        let msg = CompletionPolicy.incompleteMessage(cause: .contextWindow)
         try assertTrue(msg.contains("finish_reason=length"), msg)
         try assertTrue(msg.contains("--require-complete"), msg)
     }
@@ -195,5 +195,124 @@ func runRequireCompleteTests() {
     test("--require-complete --mcp throws a specific error") {
         try expectParseError(["--require-complete", "--mcp", "server.py", "hi"],
                              contains: ["--require-complete", "MCP"])
+    }
+
+    // ========================================================================
+    // MARK: - Preflight: no exact finish signal + explicit cap (PR #551 review)
+    //
+    // Below macOS 26.4 completion tokens are the chars/4 estimate, so an
+    // explicit --max-tokens cap cannot be detected; the flag must refuse
+    // before generating instead of guessing. Capability injected via the
+    // existing #315 TokenCountFallback.
+    // ========================================================================
+
+    let oldOS = TokenCountFallback.osTooOld(currentOS: "26.1.0")
+
+    test("preflight: approximate count + --max-tokens + --require-complete -> refusal") {
+        let refusal = CompletionPolicy.preflightRefusal(
+            requireComplete: true, maxTokens: 4, tokenCountFallback: oldOS)
+        guard let refusal else { throw TestFailure("expected a refusal") }
+        try assertTrue(refusal.contains("--require-complete"), refusal)
+        try assertTrue(refusal.contains("--max-tokens"), refusal)
+        try assertTrue(refusal.contains("macOS 26.4"), refusal)
+        try assertTrue(refusal.contains("26.1.0"), refusal)
+        try assertTrue(refusal.contains("update macOS"), refusal)
+    }
+
+    test("preflight: refusal exit code is the usage error (2), not incomplete (8)") {
+        try assertEqual(CompletionPolicy.preflightExitCode, ApfelExitCodes.usageError)
+        try assertTrue(CompletionPolicy.preflightExitCode != ApfelExitCodes.incomplete)
+    }
+
+    test("preflight: exact count (tokenizer API usable) -> no refusal") {
+        try assertNil(CompletionPolicy.preflightRefusal(
+            requireComplete: true, maxTokens: 4, tokenCountFallback: nil))
+    }
+
+    test("preflight: approximate count without --max-tokens -> no refusal (context truncation is exact)") {
+        try assertNil(CompletionPolicy.preflightRefusal(
+            requireComplete: true, maxTokens: nil, tokenCountFallback: oldOS))
+    }
+
+    test("preflight: approximate count + --max-tokens without the flag -> no refusal (default unchanged)") {
+        try assertNil(CompletionPolicy.preflightRefusal(
+            requireComplete: false, maxTokens: 4, tokenCountFallback: oldOS))
+    }
+
+    test("preflight: model unavailable is not this refusal's business (availability gate owns it)") {
+        try assertNil(CompletionPolicy.preflightRefusal(
+            requireComplete: true, maxTokens: 4, tokenCountFallback: .modelUnavailable))
+    }
+
+    // ========================================================================
+    // MARK: - Truncation warning names the real cause (PR #551 review)
+    // ========================================================================
+
+    test("length warning: explicit cap names --max-tokens and not the context window") {
+        let msg = CompletionPolicy.lengthWarning(cause: .tokenCap(4))
+        try assertTrue(msg.contains("--max-tokens 4"), msg)
+        try assertTrue(msg.contains("finish_reason=length"), msg)
+        try assertTrue(!msg.contains("context window"), msg)
+    }
+
+    test("length warning: context window names the context window") {
+        let msg = CompletionPolicy.lengthWarning(cause: .contextWindow)
+        try assertTrue(msg.contains("context window"), msg)
+        try assertTrue(msg.contains("finish_reason=length"), msg)
+    }
+
+    test("incomplete message: names the actual cause") {
+        let cap = CompletionPolicy.incompleteMessage(cause: .tokenCap(4))
+        try assertTrue(cap.contains("--max-tokens 4"), cap)
+        try assertTrue(!cap.contains("context window"), cap)
+        try assertTrue(cap.contains("finish_reason=length") && cap.contains("--require-complete"), cap)
+        let ctx = CompletionPolicy.incompleteMessage(cause: .contextWindow)
+        try assertTrue(ctx.contains("context window"), ctx)
+    }
+
+    test("truncation cause: the cap path reports tokenCap with the limit") {
+        try assertEqual(TruncationCause.resolve(finishReason: capOutcome(), maxTokens: 128), .tokenCap(128))
+    }
+
+    test("truncation cause: a non-length finish has no cause") {
+        try assertNil(TruncationCause.resolve(finishReason: stopOutcome(), maxTokens: 128))
+    }
+
+    // ========================================================================
+    // MARK: - --code: empty extracted code is never a silent success
+    // ========================================================================
+
+    test("code output: unterminated fence with no body (capped run) -> noCode, exit 7") {
+        let r = CodeOutputPolicy.resolve(response: "```python\n")
+        guard case .noCode(let msg) = r else { throw TestFailure("expected noCode, got \(r)") }
+        try assertTrue(msg.contains("empty"), msg)
+        try assertEqual(CodeOutputPolicy.Resolution.noCode(msg).exitCode, ApfelExitCodes.noCode)
+    }
+
+    test("code output: closed but empty block -> noCode") {
+        guard case .noCode = CodeOutputPolicy.resolve(response: "```bash\n\n```\n") else {
+            throw TestFailure("expected noCode")
+        }
+    }
+
+    test("code output: empty response -> noCode") {
+        guard case .noCode = CodeOutputPolicy.resolve(response: "  \n") else {
+            throw TestFailure("expected noCode")
+        }
+    }
+
+    test("code output: a real block -> code, exit 0") {
+        let r = CodeOutputPolicy.resolve(response: "```python\nprint(1)\n```")
+        guard case .code(let crop) = r else { throw TestFailure("expected code, got \(r)") }
+        try assertEqual(crop.code, "print(1)\n")
+        try assertEqual(crop.language, "python")
+        try assertEqual(r.exitCode, ApfelExitCodes.success)
+    }
+
+    test("code output: unterminated fence with partial code salvages it") {
+        guard case .code(let crop) = CodeOutputPolicy.resolve(response: "```python\nimport csv") else {
+            throw TestFailure("expected code")
+        }
+        try assertEqual(crop.code, "import csv\n")
     }
 }
