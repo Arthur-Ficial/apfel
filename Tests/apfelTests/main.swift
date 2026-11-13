@@ -138,6 +138,7 @@ suite("CompletionsTests") { runCompletionsTests() }
 suite("SchemaFlagTests") { runSchemaFlagTests() }
 suite("MessagesFlagTests") { runMessagesFlagTests() }
 suite("CodeFlagTests") { runCodeFlagTests() }
+suite("RequireCompleteTests") { runRequireCompleteTests() }
 suite("PrewarmDecisionTests") { runPrewarmDecisionTests() }
 suite("ResponsesModelsTests") { runResponsesModelsTests() }
 suite("ShellOutputTests") { runShellOutputTests() }
