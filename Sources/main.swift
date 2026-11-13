@@ -383,6 +383,16 @@ if parsed.requireComplete {
     }
 }
 
+// --batch reports a truncated record as incomplete, never ok (#481): an
+// explicit cap this Mac cannot detect is refused before reading records.
+if parsed.mode == .batch,
+   let refusal = CompletionPolicy.batchPreflightRefusal(
+       maxTokens: parsed.maxTokens,
+       tokenCountFallback: await TokenCounter.shared.tokenCountFallback) {
+    printError(refusal)
+    exit(CompletionPolicy.preflightExitCode)
+}
+
 // Initialize MCP servers if any.
 var mcpManager: MCPManager?
 if !parsed.mcpServerPaths.isEmpty {

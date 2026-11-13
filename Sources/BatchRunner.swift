@@ -40,14 +40,12 @@ func runBatch(
         schema = nil
     }
 
-    // Below macOS 26.4 an explicit --max-tokens cap cannot be told apart from
-    // a natural stop: such finish reasons are reported as null, said once.
-    let unknownFinishNote = CompletionPolicy.unknownFinishNote(
+    // main.swift refuses an undetectable explicit cap before we get here
+    // (CompletionPolicy.batchPreflightRefusal); this stays as the guard that
+    // an inexact finish signal is reported as unknown (null), never a guess.
+    let finishSignalExact = CompletionPolicy.unknownFinishNote(
         maxTokens: options.maxTokens,
-        tokenCountFallback: await TokenCounter.shared.tokenCountFallback)
-    if let unknownFinishNote, schema == nil, !quietMode {
-        printStderr("\(styledErr("apfel:", .yellow)) \(unknownFinishNote)")
-    }
+        tokenCountFallback: await TokenCounter.shared.tokenCountFallback) == nil
 
     var framer = BatchLineFramer()
     var tally = BatchTally()
@@ -69,7 +67,7 @@ func runBatch(
                 case .record(let record):
                     result = await generateBatchRecord(
                         record, systemPrompt: systemPrompt, schema: schema, options: options,
-                        stopSequences: stopSequences, finishSignalExact: unknownFinishNote == nil)
+                        stopSequences: stopSequences, finishSignalExact: finishSignalExact)
                 }
             }
             tally.add(result)

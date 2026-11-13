@@ -139,6 +139,27 @@ public enum CompletionPolicy {
     }
 }
 
+extension CompletionPolicy {
+    /// `--batch` promises that a truncated record is never reported as ok
+    /// (#481). With an explicit output cap that needs the exact finish
+    /// signal of the on-device tokenizer API (macOS 26.4+); below it the
+    /// cap comparison is a chars/4 estimate and a cut-off answer could read
+    /// as `ok`, so the run is refused before any record is read, like
+    /// `preflightRefusal` for `--require-complete`. A context-window
+    /// cut-off is exact on every OS, so without a cap nothing is refused.
+    /// Exit code: `preflightExitCode` (2). Nil when the run may proceed.
+    public static func batchPreflightRefusal(
+        maxTokens: Int?,
+        tokenCountFallback: TokenCountFallback?
+    ) -> String? {
+        guard maxTokens != nil, case .osTooOld(let currentOS) = tokenCountFallback else { return nil }
+        return "--batch cannot detect a --max-tokens cap on this Mac: "
+            + "an exact finish signal needs the on-device tokenizer API (macOS 26.4+), "
+            + "this Mac runs macOS \(currentOS) and only estimates token counts, so a cut-off record would read as ok. "
+            + "Drop --max-tokens (and APFEL_MAX_TOKENS), or update macOS to 26.4 or later."
+    }
+}
+
 /// The `--code` output decision (#373, PR #551 review): what goes to stdout
 /// and with which exit code. Empty extracted code is never a silent success:
 /// an empty response, an empty block, and a capped run that produced only
