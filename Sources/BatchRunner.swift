@@ -47,7 +47,8 @@ func runBatch(
     // an inexact finish signal is reported as unknown (null), never a guess.
     let finishSignalExact = CompletionPolicy.unknownFinishNote(
         maxTokens: options.maxTokens,
-        tokenCountFallback: await TokenCounter.shared.tokenCountFallback) == nil
+        tokenCountFallback: await TokenCounter.shared.tokenCountFallback,
+        jsonOutput: true) == nil
 
     var framer = BatchLineFramer()
     var tally = BatchTally()

@@ -252,20 +252,31 @@ func runRequireCompleteTests() {
     // directions. apfel must not report it as fact.
     // ========================================================================
 
-    test("finish note: approximate count + explicit cap -> note naming the cap and macOS 26.4") {
-        guard let note = CompletionPolicy.unknownFinishNote(maxTokens: 4, tokenCountFallback: oldOS) else {
+    test("finish note: approximate count + explicit cap + JSON -> note with JSON envelope clause") {
+        guard let note = CompletionPolicy.unknownFinishNote(maxTokens: 4, tokenCountFallback: oldOS, jsonOutput: true) else {
             throw TestFailure("expected a note")
         }
         try assertTrue(note.contains("--max-tokens 4"), note)
         try assertTrue(note.contains("macOS 26.4"), note)
         try assertTrue(note.contains("26.1.0"), note)
         try assertTrue(note.contains("finish_reason"), note)
+        try assertTrue(note.contains("JSON envelope"), note)
+    }
+
+    test("finish note: approximate count + explicit cap + plain -> note without JSON envelope clause (#564)") {
+        guard let note = CompletionPolicy.unknownFinishNote(maxTokens: 4, tokenCountFallback: oldOS, jsonOutput: false) else {
+            throw TestFailure("expected a note")
+        }
+        try assertTrue(note.contains("--max-tokens 4"), note)
+        try assertTrue(note.contains("macOS 26.4"), note)
+        try assertTrue(note.contains("26.1.0"), note)
+        try assertTrue(!note.contains("JSON envelope"), note)
     }
 
     test("finish note: exact count, or no explicit cap -> no note") {
-        try assertNil(CompletionPolicy.unknownFinishNote(maxTokens: 4, tokenCountFallback: nil))
-        try assertNil(CompletionPolicy.unknownFinishNote(maxTokens: nil, tokenCountFallback: oldOS))
-        try assertNil(CompletionPolicy.unknownFinishNote(maxTokens: 4, tokenCountFallback: .modelUnavailable))
+        try assertNil(CompletionPolicy.unknownFinishNote(maxTokens: 4, tokenCountFallback: nil, jsonOutput: true))
+        try assertNil(CompletionPolicy.unknownFinishNote(maxTokens: nil, tokenCountFallback: oldOS, jsonOutput: false))
+        try assertNil(CompletionPolicy.unknownFinishNote(maxTokens: 4, tokenCountFallback: .modelUnavailable, jsonOutput: true))
     }
 
     test("reported finish: exact signal reports the engine's reason") {
