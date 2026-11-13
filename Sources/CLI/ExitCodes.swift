@@ -24,6 +24,10 @@ public enum ApfelExitCodes {
     /// no fenced code block. Distinct from `runtimeError` so scripts can
     /// branch on "re-prompt or fall back" vs "the run itself failed".
     public static let noCode: Int32 = 7
+    /// `--require-complete` (#484): generation ended with
+    /// finish_reason=length (token cap or context window). Engine
+    /// termination only, not a correctness check.
+    public static let incomplete: Int32 = 8
 
     /// Build the CLI error line for a classified error.
     /// When file input was attached and the error is a guardrail violation,

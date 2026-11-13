@@ -75,6 +75,11 @@ public struct CLIArguments: Sendable, Equatable {
     /// without a code block exits `ApfelExitCodes.noCode` (7).
     public var codeOnly: Bool = false
 
+    /// Treat a length finish (token cap or context window) as a failure:
+    /// no stdout for buffered output, exit `ApfelExitCodes.incomplete` (8)
+    /// (#484). Valid for one-shot prompts only.
+    public var requireComplete: Bool = false
+
     /// Raw JSON Schema text from `--schema <file>` (#361). Validated at parse
     /// time via `SchemaParser` so a malformed schema is a usage error (exit 2),
     /// never a runtime failure. nil => unconstrained generation.
@@ -183,7 +188,7 @@ public struct CLIArguments: Sendable, Equatable {
         "--context-strategy", "--context-max-turns", "--context-output-reserve",
         "--context-status",
         "-f", "--file",
-        "--schema", "--messages", "--code",
+        "--schema", "--messages", "--code", "--require-complete",
     ]
 
     /// Derive the generation-schema root name from a `--schema` file path:
@@ -289,6 +294,24 @@ extension CLIArguments {
             // output contracts.
             if schemaJSON != nil {
                 throw CLIParseError("--code cannot be combined with --schema; pick one output contract")
+            }
+        }
+        if requireComplete {
+            // --require-complete is a one-shot exit-status contract (#484):
+            // it needs a single generation whose finish reason the engine
+            // reports. Chat has no single exit status per answer, the
+            // non-generating modes have nothing to check, schema-constrained
+            // decoding and the MCP tool follow-up turn do not report a
+            // finish reason, so accepting them would promise a check apfel
+            // cannot make.
+            if mode != .single && mode != .stream {
+                throw CLIParseError("--require-complete requires a one-shot prompt (single, --stream, --messages or --code); cannot combine with --\(mode.rawValue)")
+            }
+            if schemaJSON != nil {
+                throw CLIParseError("--require-complete cannot be combined with --schema; schema-constrained output does not report a finish reason")
+            }
+            if !mcpServerPaths.isEmpty {
+                throw CLIParseError("--require-complete cannot be combined with MCP tool calling (--mcp / APFEL_MCP); the tool follow-up turn does not report a finish reason")
             }
         }
         if messagesJSON != nil || messagesFromStdin {
@@ -646,6 +669,9 @@ extension CLIArguments {
 
             case "--code":
                 result.codeOnly = true
+
+            case "--require-complete":
+                result.requireComplete = true
 
             case "--model-info":
                 context.modeFlagsSeen.append("--model-info")

@@ -112,6 +112,7 @@ public enum ShellCompletions {
             CompletionFlag(["--schema"], .file, "Constrain output to a JSON Schema file"),
             CompletionFlag(["--messages"], .file, "One-shot multi-turn from OpenAI messages JSON"),
             CompletionFlag(["--code"], .none, "Print only the first fenced code block of the response"),
+            CompletionFlag(["--require-complete"], .none, "Exit 8 instead of printing a truncated response"),
         ]
     }
 
