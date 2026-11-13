@@ -156,13 +156,19 @@ func runSchemaFlagTests() {
         }
     }
 
-    test("--schema with --stream throws") {
+    test("--schema with --stream parses: streamed structured output (#532)") {
+        let args = try CLIArguments.parse(["--schema", "s.json", "--stream", "x"], readFile: { _ in validSchema })
+        try assertEqual(args.mode, .stream)
+        try assertEqual(args.schemaJSON, validSchema)
+        try assertEqual(args.schemaName, "s")
+    }
+
+    test("--stream --schema still rejects MCP tools") {
         do {
-            _ = try CLIArguments.parse(["--schema", "s.json", "--stream", "x"], readFile: { _ in validSchema })
+            _ = try CLIArguments.parse(["--stream", "--schema", "s.json", "--mcp", "m.py", "x"], readFile: { _ in validSchema })
             try assertTrue(false, "should have thrown")
         } catch let e as CLIParseError {
-            try assertTrue(e.message.contains("--schema"))
-            try assertTrue(e.message.contains("--stream"))
+            try assertTrue(e.message.contains("--schema cannot be combined with MCP"), e.message)
         }
     }
 

@@ -480,10 +480,20 @@ do {
                 await shutdownMCP()
                 exit(exitUsageError)
             }
-            let status = try await singlePrompt(prompt, systemPrompt: parsed.systemPrompt, stream: true, options: sessionOpts, mcpManager: mcpManager, requireComplete: parsed.requireComplete, images: promptImages, stopSequences: parsed.stopSequences)
-            if status != 0 {
-                await shutdownMCP()
-                exit(status)
+            if let schemaJSON = parsed.schemaJSON {
+                // --stream --schema (#532): the schema-valid JSON, printed as
+                // it is generated. MCP, --stop and --require-complete were
+                // rejected with --schema at parse time.
+                try await structuredSinglePrompt(
+                    prompt, systemPrompt: parsed.systemPrompt,
+                    schemaJSON: schemaJSON, schemaName: parsed.schemaName ?? "schema",
+                    stream: true, options: sessionOpts)
+            } else {
+                let status = try await singlePrompt(prompt, systemPrompt: parsed.systemPrompt, stream: true, options: sessionOpts, mcpManager: mcpManager, requireComplete: parsed.requireComplete, images: promptImages, stopSequences: parsed.stopSequences)
+                if status != 0 {
+                    await shutdownMCP()
+                    exit(status)
+                }
             }
         }
 

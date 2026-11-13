@@ -110,9 +110,12 @@ Constrain the response to the JSON Schema in
 The model output is guaranteed to be a single schema-valid JSON object,
 printed to stdout (ideal for piping into
 .BR jq ).
-Single-prompt mode only: cannot be combined with
-.BR \-\-chat ,
-.BR \-\-stream ,
+Keys are printed in alphabetical order, the order the model generates them. With
+.B \-\-stream
+the same JSON is printed as it is generated, append-only, byte-identical
+to the buffered output.
+Cannot be combined with
+.B \-\-chat
 or MCP tool calling, and the schema is always read from a file, never
 from stdin. A malformed or unsupported schema is a usage error (exit 2).
 Supported schema subset: object, string (with enum), integer, number,

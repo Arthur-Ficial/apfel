@@ -117,12 +117,14 @@ func handleResponses(_ request: Request, context: some RequestContext) async thr
 
     // json_schema -> native GenerationSchema, failing fast as a 400.
     var structuredSchema: GenerationSchema?
+    var structuredRenderer = StructuredJSONRenderer(schema: nil)
     if formatType == "json_schema",
        let format = responsesRequest.text?.format,
        let schemaJSON = format.schema?.value {
         do {
             structuredSchema = try SchemaConverter.generationSchema(
                 fromJSON: schemaJSON, name: format.name ?? "schema")
+            structuredRenderer = StructuredJSONRenderer(schemaJSON: schemaJSON, name: format.name ?? "schema")
         } catch {
             return openAIFailure(
                 status: .badRequest,
@@ -210,6 +212,7 @@ func handleResponses(_ request: Request, context: some RequestContext) async thr
 
     let result = try await responsesNonStreamingResponse(
         session: session, prompt: finalUserPrompt, schema: structuredSchema,
+        renderer: structuredRenderer,
         jsonMode: jsonMode, policy: toolPolicy, id: requestId, created: created, genOpts: genOpts,
         promptTokens: promptTokens, echo: echo,
         requestBody: requestBodyString, events: events)
@@ -222,6 +225,7 @@ private func responsesNonStreamingResponse(
     session: LanguageModelSession,
     prompt: Prompt,
     schema: GenerationSchema?,
+    renderer: StructuredJSONRenderer,
     jsonMode: Bool,
     policy: ToolPolicy,
     id: String,
@@ -244,7 +248,7 @@ private func responsesNonStreamingResponse(
         if let schema {
             let generated = try await withModelRetry(maxRetries: retryMax) { () -> (content: String, usage: TokenUsage?) in
                 let result = try await session.respond(to: prompt, schema: schema, options: genOpts)
-                return (content: result.content.jsonString, usage: reportedUsage(of: result))
+                return (content: renderer.finalJSON(result.content), usage: reportedUsage(of: result))
             }
             let content = generated.content
             if let roundUsage = generated.usage { usageRounds.append(roundUsage) }

@@ -29,6 +29,8 @@ func runBatch(
     stopSequences: [String]
 ) async -> Int32 {
     let schema: GenerationSchema?
+    // Same key order as --schema, --stream --schema and the server (#532).
+    let renderer = StructuredJSONRenderer(schemaJSON: schemaJSON ?? "", name: schemaName ?? "schema")
     if let schemaJSON {
         do {
             schema = try SchemaConverter.generationSchema(fromJSON: schemaJSON, name: schemaName ?? "schema")
@@ -66,7 +68,7 @@ func runBatch(
                     result = .invalidRecord(line: line, customID: customID, message: message)
                 case .record(let record):
                     result = await generateBatchRecord(
-                        record, systemPrompt: systemPrompt, schema: schema, options: options,
+                        record, systemPrompt: systemPrompt, schema: schema, renderer: renderer, options: options,
                         stopSequences: stopSequences, finishSignalExact: finishSignalExact)
                 }
             }
@@ -105,6 +107,7 @@ private func generateBatchRecord(
     _ record: BatchRecord,
     systemPrompt: String?,
     schema: GenerationSchema?,
+    renderer: StructuredJSONRenderer,
     options: SessionOptions,
     stopSequences: [String],
     finishSignalExact: Bool
@@ -146,9 +149,9 @@ private func generateBatchRecord(
         if let schema {
             let retryMax = options.retryEnabled ? options.retryCount : 0
             let content = try await withModelRetry(maxRetries: retryMax) {
-                try await session.respond(
+                renderer.finalJSON(try await session.respond(
                     to: makeUserPrompt(text: finalPrompt, pieces: pieces ?? [.text(finalPrompt)]),
-                    schema: schema, options: genOpts).content.jsonString
+                    schema: schema, options: genOpts).content)
             }
             // Schema-constrained decoding reports no finish reason.
             return .generated(line: record.line, customID: record.customID, content: content,

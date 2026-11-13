@@ -40,7 +40,7 @@ apfel came first. Its first commit and v0.1.0 landed on 2026-03-24, the first Gi
 | System prompt | `-s`, `--system-file`, `APFEL_SYSTEM_PROMPT` | `-i, --instructions` |
 | Streaming | `--stream` (off by default, so output is pipe-safe) | on by default, `--no-stream` to disable |
 | Machine-readable output | `-o json` (model, content, `finish_reason`, metadata) | no (plain text only) |
-| JSON Schema constrained output | `--schema file.json`: guaranteed schema-valid JSON, any local schema with `$ref`/`$defs`, bounds, enums | `--schema file`, schema authored with `fm schema object --name Person --string name --int age` |
+| JSON Schema constrained output | `--schema file.json`: guaranteed schema-valid JSON, any local schema with `$ref`/`$defs`, bounds, enums; `--stream --schema` prints the JSON as it is generated (append-only, same bytes as the buffered run) | `--schema file`, schema authored with `fm schema object --name Person --string name --int age`; the JSON arrives in one write at the end (`fm respond --schema`: a single 224-byte write after 2.6 s, probed 2026-11-13, macOS 27.0.1) |
 | Code-only answers | `--code`: prints the first fenced block, bare command for shell scripts | no |
 | Truncation as a script failure | `--require-complete`: exit 8 and no buffered stdout when generation ends with `finish_reason=length`; with an explicit `--max-tokens` cap it needs macOS 26.4+ and is refused (exit 2) below that | no (`fm respond` has no output-length cap and no completion status) |
 | Batch over a JSONL file | `--batch`: JSONL records on stdin, one JSON result line per record (`custom_id`, `status`, `content`, `finish_reason`, `error`), fresh session per record, one process for the whole file, exit 1 if any record failed | no (one `fm respond` process per prompt) |
@@ -74,7 +74,7 @@ Both tools start a local server. apfel: `apfel --serve` (port 11434). `fm`: `fm 
 | `usage` (prompt / completion tokens) | yes, also in streams with `stream_options.include_usage`; on macOS 27 straight from the runtime's `Response.usage` (same accounting `fm` uses), on macOS 26 counted with the tokenizer | yes in non-streaming responses; a `usage` chunk appears with `stream_options.include_usage` |
 | `finish_reason` | `stop`, `length`, `tool_calls` | `stop` |
 | Tool calling (`tools`, `tool_choice`) | yes: `finish_reason: tool_calls`, structured `tool_calls`, MCP auto-execution; on macOS 27 `tool_choice: auto` / `none` are passed to the runtime's tool-calling mode, `required` and named functions are enforced by apfel (the runtime's own required mode rejects out-of-band tools) | no: `tools` is accepted, the reply is plain `content` such as `<start_of_turn>model\n{a:2,b:3}` with `finish_reason: stop` |
-| `response_format: json_schema` | yes, schema-guaranteed, `$ref` and bounds supported, also streaming | yes (`{"fruit": "apple"}` for the test schema) |
+| `response_format: json_schema` | yes, schema-guaranteed, `$ref` and bounds supported; with `stream: true` the JSON arrives in many append-only deltas whose concatenation equals the non-streamed document | yes (`{"fruit": "apple"}` for the test schema) |
 | `response_format: json_object` | yes | not tested |
 | `POST /v1/responses` (Responses API) | yes, incl. streaming and `text.format` | no |
 | `POST /v1/responses/input_tokens` (token preflight) | yes: exact count with Apple's tokenizer, no generation, `x_apfel` budget report; 501 below macOS 26.4 | no (`404 not_found`, probed 2026-11-13) |

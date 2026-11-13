@@ -115,6 +115,7 @@ suite("StreamTaskBoxTests") { runStreamTaskBoxTests() }
 suite("ManPageTests") { runManPageTests() }
 suite("StreamCleanupTests") { runStreamCleanupTests() }
 suite("StreamPrintSinkTests") { runStreamPrintSinkTests() }
+suite("StructuredJSONStreamTests") { runStructuredJSONStreamTests() }
 suite("BrokenPipeTests") { runBrokenPipeTests() }
 suite("NestingDepthTests") { runNestingDepthTests() }
 suite("BufferedLineReaderConcurrencyTests") { runBufferedLineReaderConcurrencyTests() }

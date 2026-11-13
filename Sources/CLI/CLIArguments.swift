@@ -281,8 +281,9 @@ extension CLIArguments {
             // Guaranteed structured output is a single-prompt feature (#361):
             // one prompt in, one schema-valid JSON object out. --messages is
             // the one composition: schema-constrained reply to a conversation.
-            if mode != .single && mode != .batch {
-                throw CLIParseError("--schema requires a single one-shot prompt or --batch; cannot combine with --\(mode.rawValue)")
+            // --stream prints the same JSON as it is generated (#532).
+            if mode != .single && mode != .batch && mode != .stream {
+                throw CLIParseError("--schema requires a one-shot prompt (optionally --stream) or --batch; cannot combine with --\(mode.rawValue)")
             }
             if !mcpServerPaths.isEmpty {
                 throw CLIParseError("--schema cannot be combined with MCP tool calling (--mcp / APFEL_MCP)")
