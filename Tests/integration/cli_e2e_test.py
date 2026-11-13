@@ -1536,14 +1536,6 @@ def test_schema_with_chat_exits_2(tmp_path):
     assert "--schema" in result.stderr and "--chat" in result.stderr
 
 
-def test_schema_with_stream_exits_2(tmp_path):
-    schema = tmp_path / "s.json"
-    schema.write_text(VALID_PERSON_SCHEMA)
-    result = run_cli(["--schema", str(schema), "--stream", "extract"], timeout=30)
-    assert result.returncode == 2, f"expected exit 2, got {result.returncode}: {result.stderr}"
-    assert "--schema" in result.stderr and "--stream" in result.stderr
-
-
 def test_schema_stdin_dash_exits_2():
     result = run_cli(["--schema", "-", "extract"], timeout=30)
     assert result.returncode == 2, f"expected exit 2, got {result.returncode}: {result.stderr}"

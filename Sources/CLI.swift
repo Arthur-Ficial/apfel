@@ -197,23 +197,58 @@ func printLengthWarning(cause: TruncationCause?) {
 /// always a schema-valid JSON object - no fence stripping, no retry-on-invalid
 /// JSON. Plain output prints the raw JSON (newline-terminated, jq-ready);
 /// `-o json` wraps it as a string in the standard ApfelResponse envelope.
+/// With `stream` (`--stream --schema`, #532) plain output prints the same
+/// JSON as it is generated, append-only, byte-identical to the buffered one.
 func structuredSinglePrompt(
     _ prompt: String,
     systemPrompt: String?,
     schemaJSON: String,
     schemaName: String,
+    stream: Bool = false,
     options: SessionOptions = .defaults
 ) async throws {
-    let schema = try SchemaConverter.generationSchema(fromJSON: schemaJSON, name: schemaName)
     let session = makeSession(systemPrompt: systemPrompt, options: options)
-    let genOpts = makeGenerationOptions(options)
-    debugLog("schema", "prompt_length=\(prompt.count) schema_name=\(schemaName)")
+    debugLog("schema", "prompt_length=\(prompt.count) schema_name=\(schemaName) stream=\(stream)")
+    try await respondStructured(
+        session: session, prompt: Prompt(prompt), schemaJSON: schemaJSON, schemaName: schemaName,
+        stream: stream, options: options)
+}
 
+/// Schema-guided generation shared by `--schema` and `--messages --schema`.
+/// Output is rendered in schema property order (`StructuredJSONRenderer`), so
+/// the buffered and the streamed JSON are the same bytes. Streaming only
+/// applies to plain output; `-o json` prints the finished envelope.
+func respondStructured(
+    session: LanguageModelSession,
+    prompt: Prompt,
+    schemaJSON: String,
+    schemaName: String,
+    stream: Bool,
+    options: SessionOptions
+) async throws {
+    let schema = try SchemaConverter.generationSchema(fromJSON: schemaJSON, name: schemaName)
+    let renderer = StructuredJSONRenderer(schemaJSON: schemaJSON, name: schemaName)
+    let genOpts = makeGenerationOptions(options)
     let retryMax = options.retryEnabled ? options.retryCount : 0
-    let content = try await withModelRetry(maxRetries: retryMax) {
-        try await session.respond(to: prompt, schema: schema, options: genOpts).content.jsonString
+
+    if stream && outputFormat == .plain {
+        // One sink across retries: a re-run never reprints the sent prefix (#182).
+        let sink = StreamPrintSink()
+        try await withModelRetry(maxRetries: retryMax) {
+            var last: GeneratedContent?
+            for try await snapshot in session.streamResponse(to: prompt, schema: schema, options: genOpts) {
+                last = snapshot.content
+                await sink.feed(cumulative: renderer.stablePrefix(snapshot.content))
+            }
+            if let last { await sink.feed(cumulative: renderer.finalJSON(last)) }
+        }
+        print("")
+        return
     }
 
+    let content = try await withModelRetry(maxRetries: retryMax) {
+        renderer.finalJSON(try await session.respond(to: prompt, schema: schema, options: genOpts).content)
+    }
     switch outputFormat {
     case .plain:
         print(content)
@@ -260,22 +295,10 @@ func messagesPrompt(
     let genOpts = makeGenerationOptions(options)
 
     if let schemaJSON {
-        let schema = try SchemaConverter.generationSchema(fromJSON: schemaJSON, name: schemaName ?? "schema")
-        let retryMax = options.retryEnabled ? options.retryCount : 0
-        let content = try await withModelRetry(maxRetries: retryMax) {
-            try await session.respond(
-                to: makeUserPrompt(text: finalPrompt, pieces: finalPieces),
-                schema: schema, options: genOpts).content.jsonString
-        }
-        switch outputFormat {
-        case .plain:
-            print(content)
-        case .json:
-            let obj = ApfelResponse(
-                model: modelName, content: content,
-                metadata: .init(onDevice: true, version: version))
-            print(jsonString(obj))
-        }
+        try await respondStructured(
+            session: session, prompt: makeUserPrompt(text: finalPrompt, pieces: finalPieces),
+            schemaJSON: schemaJSON, schemaName: schemaName ?? "schema",
+            stream: stream, options: options)
         return 0
     }
 

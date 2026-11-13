@@ -10,7 +10,9 @@
 // ============================================================================
 
 import Foundation
+import FoundationModels
 import ApfelCore
+import ApfelEngine
 
 private func obj(_ members: [(String, PartialJSON)], complete: Bool) -> PartialJSON {
     .object(members.map { PartialJSON.Member(key: $0.0, value: $0.1) }, complete: complete)
@@ -148,5 +150,25 @@ func runStructuredJSONStreamTests() {
             try assertTrue(e.message.contains("append-only"), e.message)
         }
         try assertTrue(threw, "divergence must be loud, never a silently corrupt stream")
+    }
+
+    test("renderer: object keys follow the schema order, not the runtime's") {
+        let schemaJSON = #"{"type":"object","properties":{"title":{"type":"string"},"count":{"type":"integer"},"tags":{"type":"array","items":{"type":"object","properties":{"z":{"type":"boolean"},"a":{"type":"number"}}}}}}"#
+        let renderer = StructuredJSONRenderer(schemaJSON: schemaJSON, name: "doc")
+        let tag = GeneratedContent(properties: ["z": true, "a": 2.5])
+        let content = GeneratedContent(properties: [
+            "title": "T", "tags": GeneratedContent(elements: [tag]), "count": 4,
+        ])
+        // SchemaParser orders properties alphabetically; nested objects too.
+        try assertEqual(renderer.finalJSON(content),
+                        #"{"count": 4, "tags": [{"a": 2.5, "z": true}], "title": "T"}"#)
+        try assertEqual(renderer.stablePrefix(content), renderer.finalJSON(content),
+                        "a complete document is entirely stable")
+    }
+
+    test("renderer: keys the schema does not name follow, sorted; no schema means sorted") {
+        let renderer = StructuredJSONRenderer(schema: nil)
+        let content = GeneratedContent(properties: ["b": "x", "a": "y"])
+        try assertEqual(renderer.finalJSON(content), #"{"a": "y", "b": "x"}"#)
     }
 }

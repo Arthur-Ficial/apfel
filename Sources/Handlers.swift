@@ -1303,6 +1303,9 @@ private func structuredStreamingResponse(
                         await emitDelta(delta)
                         deltaCount += 1
                     }
+                    // What the client holds so far; the refusal and error
+                    // paths count completion tokens from it.
+                    prev = streamer.emitted
                 }
                 prev = lastContent.map(renderer.finalJSON) ?? ""
                 if let tail = try streamer.finish(with: prev) {
