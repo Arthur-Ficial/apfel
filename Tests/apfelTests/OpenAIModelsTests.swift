@@ -6,6 +6,11 @@ private func decode<T: Decodable>(_ type: T.Type, from json: String) throws -> T
 }
 
 func runOpenAIModelsTests() {
+
+    test("RawJSON re-encodes with sorted keys, so its value is deterministic (#560)") {
+        let raw = try JSONDecoder().decode(RawJSON.self, from: Data(#"{"b":1,"a":{"d":2,"c":3}}"#.utf8))
+        try assertEqual(raw.value, #"{"a":{"c":3,"d":2},"b":1}"#)
+    }
     test("OpenAIMessage textContent returns plain string") {
         let message = OpenAIMessage(role: "user", content: .text("hello"))
         try assertEqual(message.textContent, "hello")

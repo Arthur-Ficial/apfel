@@ -106,8 +106,12 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
     var structuredSchema: GenerationSchema?
     var structuredRenderer = StructuredJSONRenderer(schema: nil)
     if wantsJSONSchema {
+        // The schema as the client wrote it, so its declared property order
+        // survives (#560); RawJSON re-encodes and sorts the keys.
         guard let spec = chatRequest.response_format?.json_schema,
-              let schemaJSON = spec.schema?.value else {
+              let schemaJSON = SchemaParser.rawJSONValue(
+                  in: Data(buffer: body), at: ["response_format", "json_schema", "schema"])
+                  ?? spec.schema?.value else {
             return openAIFailure(
                 status: .badRequest,
                 message: "response_format.json_schema requires a 'schema' object",

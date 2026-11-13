@@ -462,6 +462,54 @@ func runSchemaParserTests() {
         try assertEqual(alphaProps.map { $0.name }, ["z", "a"])
     }
 
+    test("rawJSONValue returns a nested value's original text, key order intact (#560)") {
+        let body = #"{"model":"m","response_format":{"type":"json_schema","json_schema":{"name":"p","schema":{"type":"object","properties":{"title":{"type":"string"},"lines":{"type":"array","items":{"type":"string"}}}}}},"stream":true}"#
+        let raw = SchemaParser.rawJSONValue(in: Data(body.utf8), at: ["response_format", "json_schema", "schema"])
+        try assertEqual(raw, #"{"type":"object","properties":{"title":{"type":"string"},"lines":{"type":"array","items":{"type":"string"}}}}"#)
+        let ir = try SchemaParser.parse(json: raw ?? "", name: "p")
+        guard case .object(_, _, let props) = ir else { throw TestFailure("expected .object") }
+        try assertEqual(props.map { $0.name }, ["title", "lines"])
+    }
+
+    test("rawJSONValue: whitespace, escapes and a missing path") {
+        let body = "{ \"a\" : { \"k\\\"x\" : 1 , \"s\" : [ 1, {\"z\": \"}\"} ] } }"
+        try assertEqual(SchemaParser.rawJSONValue(in: Data(body.utf8), at: ["a", "s"]), #"[ 1, {"z": "}"} ]"#)
+        try assertEqual(SchemaParser.rawJSONValue(in: Data(body.utf8), at: ["a", "k\"x"]), "1")
+        try assertNil(SchemaParser.rawJSONValue(in: Data(body.utf8), at: ["a", "missing"]))
+        try assertNil(SchemaParser.rawJSONValue(in: Data("not json".utf8), at: ["a"]))
+    }
+
+    test("declared order survives a spaced schema with arrays, integers and booleans (#560)") {
+        // json.dumps() layout of the integration fixture POEM_SCHEMA.
+        let json = #"{"type": "object", "properties": {"title": {"type": "string"}, "lines": {"type": "array", "items": {"type": "string"}}, "rating": {"type": "number"}, "line_count": {"type": "integer"}, "rhymes": {"type": "boolean"}}, "required": ["title", "lines", "rating", "line_count", "rhymes"], "additionalProperties": false}"#
+        let ir = try SchemaParser.parse(json: json, name: "poem")
+        guard case .object(_, _, let props) = ir else { throw TestFailure("expected .object") }
+        try assertEqual(props.map { $0.name }, ["title", "lines", "rating", "line_count", "rhymes"])
+    }
+
+    test("declared order survives a pretty-printed schema with nested objects and arrays (#560)") {
+        let json = #"""
+        {
+          "type" : "object",
+          "properties" : {
+            "zeta" : { "type" : "object", "properties" : { "y" : { "type" : "string" } , "x" : { "type" : "string" } } },
+            "items" : {
+              "type" : "array",
+              "items" : { "type" : "object", "properties" : { "b" : { "type" : "integer" }, "a" : { "type" : "integer" } } }
+            },
+            "alpha" : { "type" : "boolean" }
+          }
+        }
+        """#
+        let ir = try SchemaParser.parse(json: json, name: "doc")
+        guard case .object(_, _, let props) = ir else { throw TestFailure("expected .object") }
+        try assertEqual(props.map { $0.name }, ["zeta", "items", "alpha"])
+        guard case .object(_, _, let zeta) = props[0].schema else { throw TestFailure("zeta") }
+        try assertEqual(zeta.map { $0.name }, ["y", "x"])
+        guard case .array(_, let item) = props[1].schema, case .object(_, _, let inner) = item else { throw TestFailure("items") }
+        try assertEqual(inner.map { $0.name }, ["b", "a"])
+    }
+
     test("a duplicate property key is listed once, not twice (#560)") {
         // JSONSerialization keeps one value per key; the byte scan sees both
         // occurrences. The scanned order must not duplicate the property.

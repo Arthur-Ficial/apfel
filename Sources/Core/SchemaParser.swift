@@ -673,6 +673,22 @@ extension SchemaParser {
         return scanner.allKeys()
     }
 
+    /// The original text of the JSON value reached by following `keys`
+    /// through nested objects of `data`, or nil when the path does not exist
+    /// or `data` is not well-formed there.
+    ///
+    /// The server uses it to hand `SchemaParser` a request's schema exactly as
+    /// the client wrote it (#560): decoding into `RawJSON` re-encodes the
+    /// object and loses the declared property order.
+    package static func rawJSONValue(in data: Data, at keys: [String]) -> String? {
+        guard (try? JSONSerialization.jsonObject(with: data)) != nil else { return nil }
+        var scanner = JSONByteScanner(Array(data))
+        for key in keys {
+            guard scanner.enterObject(), scanner.advancePastKey(key) else { return nil }
+        }
+        return scanner.rawValueText()
+    }
+
     private static func decodePointerSegments(_ pointer: String) -> [String] {
         let raw = pointer.hasPrefix("#") ? String(pointer.dropFirst()) : pointer
         guard raw.hasPrefix("/") else { return [] }
@@ -715,6 +731,15 @@ private struct JSONByteScanner {
             ws()
             if i < b.count, b[i] == UInt8(ascii: ",") { i += 1 }
         }
+    }
+
+    /// The text of the value at the current position, consumed.
+    mutating func rawValueText() -> String? {
+        ws()
+        let start = i
+        skipValue()
+        guard i > start, i <= b.count else { return nil }
+        return String(bytes: b[start..<i], encoding: .utf8)
     }
 
     mutating func allKeys() -> [String] {
@@ -810,7 +835,7 @@ private struct JSONByteScanner {
             i += 1; ws()
             if i < b.count, b[i] == UInt8(ascii: "}") { i += 1; return }
             while true {
-                _ = readString(); ws()
+                ws(); _ = readString(); ws()
                 if i < b.count, b[i] == UInt8(ascii: ":") { i += 1 }
                 skipValue(); ws()
                 if i < b.count, b[i] == UInt8(ascii: ",") { i += 1 } else { break }
