@@ -94,6 +94,10 @@ apfel --schema person.schema.json "Extract the person: Alice is 30." | jq .name
 # One-shot multi-turn: conversation JSON in, next assistant turn out
 jq '. += [{"role":"user","content":"and in German?"}]' conv.json | apfel --messages -
 
+# Batch: JSONL records in, one JSON result line per record out (fresh session each)
+jq -c '{custom_id:(.id|tostring),prompt:("Classify as billing, bug, or question: " + .text)}' tickets.jsonl \
+  | apfel --batch | jq -c 'select(.status=="ok") | {id:.custom_id,category:.content}'
+
 # Preflight token budget before a large prompt
 apfel --count-tokens -f README.md "Summarize this"
 
