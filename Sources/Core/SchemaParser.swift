@@ -72,7 +72,7 @@ public enum SchemaParser {
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw Error.invalidJSON
         }
-        return try Document(root: obj).parseRoot(name: name)
+        return try Document(root: obj, rawData: data).parseRoot(name: name)
     }
 }
 
@@ -116,11 +116,17 @@ extension SchemaParser {
     /// resolution, the unique-name registry and the node budget.
     private final class Document {
         private let root: JSONObject
+        private let rawData: Data
+        /// Declared key order of every object in the raw text, keyed by JSON
+        /// Pointer, read in one pass on first use (#560). Scanning once per
+        /// object node from the root cost ~1 GB of reading for a 4 MB schema.
+        private lazy var declaredKeyOrders: [String: [String]] = SchemaParser.declaredKeyOrders(in: rawData)
         private var names = NameRegistry()
         private var nodeCount = 0
 
-        init(root: JSONObject) {
+        init(root: JSONObject, rawData: Data) {
             self.root = root
+            self.rawData = rawData
         }
 
         func parseRoot(name: String) throws -> SchemaIR {
@@ -254,12 +260,17 @@ extension SchemaParser {
             let propsDict = node["properties"] as? JSONObject ?? [:]
             let required = try requiredNames(node, declared: Set(propsDict.keys), path: path)
 
-            // Sort keys alphabetically so the IR is deterministic regardless
-            // of JSON dictionary ordering.
-            let sortedKeys = propsDict.keys.sorted()
+            let declared = declaredKeyOrders[path + "/properties"]
+            // The scanned order is only trusted when it names exactly the parsed
+            // keys, each once: a duplicate key in the raw JSON (JSONSerialization
+            // keeps one value) or a scan that missed the object falls back to
+            // the sorted order, never to a duplicated property.
+            let orderedKeys = declared.flatMap {
+                $0.count == propsDict.count && Set($0) == Set(propsDict.keys) ? $0 : nil
+            } ?? propsDict.keys.sorted()
             var properties: [SchemaIR.Property] = []
-            properties.reserveCapacity(sortedKeys.count)
-            for key in sortedKeys {
+            properties.reserveCapacity(orderedKeys.count)
+            for key in orderedKeys {
                 guard let propSchema = propsDict[key] as? JSONObject else {
                     throw Error.invalidProperty(key)
                 }
@@ -632,7 +643,7 @@ extension SchemaParser {
     // MARK: - JSON helpers
 
     /// RFC 6901 escaping for one pointer segment.
-    private static func escapePointerSegment(_ segment: String) -> String {
+    fileprivate static func escapePointerSegment(_ segment: String) -> String {
         segment.replacingOccurrences(of: "~", with: "~0").replacingOccurrences(of: "/", with: "~1")
     }
 
@@ -647,5 +658,222 @@ extension SchemaParser {
     private static func jsonBool(_ value: Any?) -> Bool? {
         guard let number = value as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() else { return nil }
         return number.boolValue
+    }
+
+    // MARK: - Declared property order extraction
+
+    /// The declared key order of every object in `data`, keyed by its JSON
+    /// Pointer (`#`, `#/properties`, `#/$defs/Address/properties`, array
+    /// elements as `#/a/0`). One linear pass; well-formedness was already
+    /// checked by `JSONSerialization`.
+    static func declaredKeyOrders(in data: Data) -> [String: [String]] {
+        var scanner = JSONByteScanner(Array(data))
+        var orders: [String: [String]] = [:]
+        scanner.collectKeyOrders(pointer: "#", into: &orders)
+        return orders
+    }
+
+    /// The original text of the JSON value reached by following `keys`
+    /// through nested objects of `data`, or nil when the path does not exist
+    /// or `data` is not well-formed there.
+    ///
+    /// The server uses it to hand `SchemaParser` a request's schema exactly as
+    /// the client wrote it (#560): decoding into `RawJSON` re-encodes the
+    /// object and loses the declared property order.
+    package static func rawJSONValue(in data: Data, at keys: [String]) -> String? {
+        guard (try? JSONSerialization.jsonObject(with: data)) != nil else { return nil }
+        var scanner = JSONByteScanner(Array(data))
+        for key in keys {
+            guard scanner.enterObject(), scanner.advancePastKey(key) else { return nil }
+        }
+        return scanner.rawValueText()
+    }
+
+}
+
+/// Forward-only scanner over well-formed JSON bytes. Used exclusively to
+/// extract declaration-order keys; all structural validation has already
+/// been done by `JSONSerialization`.
+private struct JSONByteScanner {
+    private let b: [UInt8]
+    private var i: Int = 0
+
+    init(_ bytes: [UInt8]) { b = bytes }
+
+    mutating func enterObject() -> Bool {
+        ws()
+        guard i < b.count, b[i] == UInt8(ascii: "{") else { return false }
+        i += 1
+        return true
+    }
+
+    mutating func advancePastKey(_ key: String) -> Bool {
+        while true {
+            ws()
+            guard i < b.count, b[i] != UInt8(ascii: "}") else { return false }
+            guard let k = readString() else { return false }
+            ws()
+            guard i < b.count, b[i] == UInt8(ascii: ":") else { return false }
+            i += 1
+            if k == key { ws(); return true }
+            skipValue()
+            ws()
+            if i < b.count, b[i] == UInt8(ascii: ",") { i += 1 }
+        }
+    }
+
+    /// Records the key order of every object at or below the current
+    /// position, keyed by JSON Pointer, and consumes the value.
+    mutating func collectKeyOrders(pointer: String, into orders: inout [String: [String]]) {
+        ws()
+        guard i < b.count else { return }
+        switch b[i] {
+        case UInt8(ascii: "{"):
+            i += 1
+            var keys: [String] = []
+            while true {
+                ws()
+                if i < b.count, b[i] == UInt8(ascii: "}") { i += 1; break }
+                guard let key = readString() else { break }
+                keys.append(key)
+                ws()
+                guard i < b.count, b[i] == UInt8(ascii: ":") else { break }
+                i += 1
+                collectKeyOrders(pointer: pointer + "/" + SchemaParser.escapePointerSegment(key), into: &orders)
+                ws()
+                if i < b.count, b[i] == UInt8(ascii: ",") { i += 1 }
+            }
+            orders[pointer] = keys
+        case UInt8(ascii: "["):
+            i += 1
+            var index = 0
+            while true {
+                ws()
+                if i < b.count, b[i] == UInt8(ascii: "]") { i += 1; break }
+                guard i < b.count else { break }
+                let before = i
+                collectKeyOrders(pointer: pointer + "/\(index)", into: &orders)
+                // Inputs are validated by JSONSerialization first; still never spin.
+                guard i > before else { break }
+                index += 1
+                ws()
+                if i < b.count, b[i] == UInt8(ascii: ",") { i += 1 }
+            }
+        default:
+            skipValue()
+        }
+    }
+
+    /// The text of the value at the current position, consumed.
+    mutating func rawValueText() -> String? {
+        ws()
+        let start = i
+        skipValue()
+        guard i > start, i <= b.count else { return nil }
+        return String(bytes: b[start..<i], encoding: .utf8)
+    }
+
+    // MARK: - Primitives
+
+    private mutating func ws() {
+        while i < b.count {
+            switch b[i] {
+            case 0x20, 0x09, 0x0A, 0x0D: i += 1
+            default: return
+            }
+        }
+    }
+
+    private mutating func readString() -> String? {
+        guard i < b.count, b[i] == UInt8(ascii: "\"") else { return nil }
+        i += 1
+        var out: [UInt8] = []
+        while i < b.count {
+            let c = b[i]
+            if c == UInt8(ascii: "\"") { i += 1; return String(bytes: out, encoding: .utf8) }
+            if c == UInt8(ascii: "\\") {
+                i += 1
+                guard i < b.count else { return nil }
+                switch b[i] {
+                case UInt8(ascii: "\""): out.append(UInt8(ascii: "\"")); i += 1
+                case UInt8(ascii: "\\"): out.append(UInt8(ascii: "\\")); i += 1
+                case UInt8(ascii: "/"):  out.append(UInt8(ascii: "/"));  i += 1
+                case UInt8(ascii: "b"):  out.append(0x08); i += 1
+                case UInt8(ascii: "f"):  out.append(0x0C); i += 1
+                case UInt8(ascii: "n"):  out.append(0x0A); i += 1
+                case UInt8(ascii: "r"):  out.append(0x0D); i += 1
+                case UInt8(ascii: "t"):  out.append(0x09); i += 1
+                case UInt8(ascii: "u"):
+                    i += 1
+                    guard let hi = readHex4() else { return nil }
+                    if (0xD800...0xDBFF).contains(hi) {
+                        guard i + 2 <= b.count, b[i] == UInt8(ascii: "\\"), b[i+1] == UInt8(ascii: "u") else { return nil }
+                        i += 2
+                        guard let lo = readHex4(), (0xDC00...0xDFFF).contains(lo) else { return nil }
+                        guard let s = Unicode.Scalar(0x10000 + (Int(hi - 0xD800) << 10) + Int(lo - 0xDC00)) else { return nil }
+                        UTF8.encode(s) { out.append($0) }
+                    } else {
+                        guard let s = Unicode.Scalar(UInt32(hi)) else { return nil }
+                        UTF8.encode(s) { out.append($0) }
+                    }
+                default: out.append(b[i]); i += 1
+                }
+            } else {
+                out.append(c); i += 1
+            }
+        }
+        return nil
+    }
+
+    private mutating func readHex4() -> UInt16? {
+        guard i + 4 <= b.count else { return nil }
+        var v: UInt16 = 0
+        for _ in 0..<4 {
+            v <<= 4
+            switch b[i] {
+            case UInt8(ascii: "0")...UInt8(ascii: "9"): v |= UInt16(b[i] - UInt8(ascii: "0"))
+            case UInt8(ascii: "a")...UInt8(ascii: "f"): v |= UInt16(b[i] - UInt8(ascii: "a") + 10)
+            case UInt8(ascii: "A")...UInt8(ascii: "F"): v |= UInt16(b[i] - UInt8(ascii: "A") + 10)
+            default: return nil
+            }
+            i += 1
+        }
+        return v
+    }
+
+    private mutating func skipValue() {
+        ws()
+        guard i < b.count else { return }
+        switch b[i] {
+        case UInt8(ascii: "\""): _ = readString()
+        case UInt8(ascii: "{"):
+            i += 1; ws()
+            if i < b.count, b[i] == UInt8(ascii: "}") { i += 1; return }
+            while true {
+                ws(); _ = readString(); ws()
+                if i < b.count, b[i] == UInt8(ascii: ":") { i += 1 }
+                skipValue(); ws()
+                if i < b.count, b[i] == UInt8(ascii: ",") { i += 1 } else { break }
+            }
+            ws()
+            if i < b.count, b[i] == UInt8(ascii: "}") { i += 1 }
+        case UInt8(ascii: "["):
+            i += 1; ws()
+            if i < b.count, b[i] == UInt8(ascii: "]") { i += 1; return }
+            while true {
+                skipValue(); ws()
+                if i < b.count, b[i] == UInt8(ascii: ",") { i += 1 } else { break }
+            }
+            ws()
+            if i < b.count, b[i] == UInt8(ascii: "]") { i += 1 }
+        default:
+            while i < b.count {
+                switch b[i] {
+                case 0x20, 0x09, 0x0A, 0x0D,
+                     UInt8(ascii: ","), UInt8(ascii: "}"), UInt8(ascii: "]"): return
+                default: i += 1
+                }
+            }
+        }
     }
 }

@@ -110,7 +110,7 @@ Constrain the response to the JSON Schema in
 The model output is guaranteed to be a single schema-valid JSON object,
 printed to stdout (ideal for piping into
 .BR jq ).
-Keys are printed in alphabetical order, the order the model generates them. With
+Keys are printed in the order the schema declares them, which is the order the model generates them. With
 .B \-\-stream
 the same JSON is printed as it is generated, append-only, byte-identical
 to the buffered output.

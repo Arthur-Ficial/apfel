@@ -95,7 +95,7 @@ apfel --schema person.schema.json "Extract the person: Alice is 30 years old."
 apfel --schema invoice.schema.json -f invoice.txt "Extract the invoice data" | jq .total
 apfel --schema order.schema.json "Extract the order: ship two notebooks to 12 Main Street, Vienna."
 
-# --stream --schema - the same JSON, printed as it is generated (keys in alphabetical order;
+# --stream --schema - the same JSON, printed as it is generated (keys in declared schema order;
 # the streamed bytes equal the buffered output)
 apfel --stream --schema poem.schema.json "Write a four-line poem about the sea with a title."
 

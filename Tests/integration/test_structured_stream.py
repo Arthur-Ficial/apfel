@@ -266,3 +266,24 @@ def test_cli_messages_stream_schema_prints_the_same_json_as_the_buffered_run(tmp
     assert streamed.returncode == 0, streamed.stderr
     assert streamed.stdout == buffered.stdout, (streamed.stdout, buffered.stdout)
     json.loads(streamed.stdout)
+
+
+@pytest.mark.model
+def test_json_schema_keys_follow_the_declared_order(tmp_path):
+    """#560: properties come out in the order the schema declares them
+    (title, lines, rating, line_count, rhymes), not sorted, on the server
+    (streamed and not) and in the CLI."""
+    require_model()
+    declared = list(POEM_SCHEMA["properties"])
+    assert declared != sorted(declared), "the fixture must not be declared in sorted order"
+
+    def keys(text):
+        return [k for k, _ in json.loads(text, object_pairs_hook=lambda pairs: pairs)]
+
+    content = _non_streamed()["choices"][0]["message"]["content"]
+    assert keys(content) == declared, content
+    deltas, _, _, _ = _streamed()
+    assert keys("".join(deltas)) == declared
+    cli = _cli(["--seed", str(SEED), "--schema", str(_schema_file(tmp_path)), POEM_PROMPT])
+    assert cli.returncode == 0, cli.stderr
+    assert keys(cli.stdout) == declared, cli.stdout

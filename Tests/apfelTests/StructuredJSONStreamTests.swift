@@ -159,9 +159,9 @@ func runStructuredJSONStreamTests() {
         let content = GeneratedContent(properties: [
             "title": "T", "tags": GeneratedContent(elements: [tag]), "count": 4,
         ])
-        // SchemaParser orders properties alphabetically; nested objects too.
+        // Declared order (#560): title, count, tags; nested objects too (z, a).
         try assertEqual(renderer.finalJSON(content),
-                        #"{"count": 4, "tags": [{"a": 2.5, "z": true}], "title": "T"}"#)
+                        #"{"title": "T", "count": 4, "tags": [{"z": true, "a": 2.5}]}"#)
         try assertEqual(renderer.stablePrefix(content), renderer.finalJSON(content),
                         "a complete document is entirely stable")
     }

@@ -445,11 +445,14 @@ public struct RawJSON: Decodable, Sendable, Equatable, Hashable {
         self.value = rawValue
     }
 
-    /// Decodes arbitrary JSON and stores its canonical serialized form.
+    /// Decodes arbitrary JSON and stores its canonical serialized form, with
+    /// object keys sorted so the same input always gives the same text (#560).
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         let raw = try container.decode(AnyCodable.self)
-        let data = try JSONEncoder().encode(raw)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(raw)
         value = String(data: data, encoding: .utf8) ?? "{}"
     }
 }

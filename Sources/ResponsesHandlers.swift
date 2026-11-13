@@ -120,7 +120,9 @@ func handleResponses(_ request: Request, context: some RequestContext) async thr
     var structuredRenderer = StructuredJSONRenderer(schema: nil)
     if formatType == "json_schema",
        let format = responsesRequest.text?.format,
-       let schemaJSON = format.schema?.value {
+       // Declared property order as the client wrote it (#560).
+       let schemaJSON = SchemaParser.rawJSONValue(
+           in: Data(buffer: body), at: ["text", "format", "schema"]) ?? format.schema?.value {
         do {
             structuredSchema = try SchemaConverter.generationSchema(
                 fromJSON: schemaJSON, name: format.name ?? "schema")
