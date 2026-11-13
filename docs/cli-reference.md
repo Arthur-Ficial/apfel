@@ -95,10 +95,10 @@ apfel --schema order.schema.json "Extract the order: ship two notebooks to 12 Ma
 
 # --code - only the code, no prose, no fences (pipe-safe)
 apfel --code "a python function that deduplicates a list" > dedupe.py
-apfel --code "shell one-liner to find the 10 largest files here" 
+apfel --code "shell one-liner to find the 10 largest files here" | pbcopy
+
 # --require-complete - exit 8 instead of printing a truncated response
 apfel --require-complete --code --max-tokens 128 "Write a small Python CSV reader." > reader.py
-| pbcopy
 
 # --messages - one-shot multi-turn: conversation JSON in, next assistant turn out
 apfel --messages conversation.json
