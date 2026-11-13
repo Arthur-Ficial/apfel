@@ -245,6 +245,49 @@ func runRequireCompleteTests() {
     }
 
     // ========================================================================
+    // MARK: - Default mode: finish reason is unknown, not "stop" (macOS 26 run)
+    //
+    // Without --require-complete an approximate Mac with an explicit cap
+    // still generates, but its stop/length decision is an estimate in both
+    // directions. apfel must not report it as fact.
+    // ========================================================================
+
+    test("finish note: approximate count + explicit cap -> note naming the cap and macOS 26.4") {
+        guard let note = CompletionPolicy.unknownFinishNote(maxTokens: 4, tokenCountFallback: oldOS) else {
+            throw TestFailure("expected a note")
+        }
+        try assertTrue(note.contains("--max-tokens 4"), note)
+        try assertTrue(note.contains("macOS 26.4"), note)
+        try assertTrue(note.contains("26.1.0"), note)
+        try assertTrue(note.contains("finish_reason"), note)
+    }
+
+    test("finish note: exact count, or no explicit cap -> no note") {
+        try assertNil(CompletionPolicy.unknownFinishNote(maxTokens: 4, tokenCountFallback: nil))
+        try assertNil(CompletionPolicy.unknownFinishNote(maxTokens: nil, tokenCountFallback: oldOS))
+        try assertNil(CompletionPolicy.unknownFinishNote(maxTokens: 4, tokenCountFallback: .modelUnavailable))
+    }
+
+    test("reported finish: exact signal reports the engine's reason") {
+        try assertEqual(CompletionPolicy.reportedFinishReason(.stop, truncation: nil, finishSignalExact: true), .stop)
+        try assertEqual(CompletionPolicy.reportedFinishReason(.length, truncation: .tokenCap(4), finishSignalExact: true), .length)
+    }
+
+    test("reported finish: approximate signal makes an estimated stop or cap length unknown (nil)") {
+        try assertNil(CompletionPolicy.reportedFinishReason(.stop, truncation: nil, finishSignalExact: false))
+        try assertNil(CompletionPolicy.reportedFinishReason(.length, truncation: .tokenCap(4), finishSignalExact: false))
+    }
+
+    test("reported finish: a context-window cut-off is exact on every OS") {
+        try assertEqual(CompletionPolicy.reportedFinishReason(.length, truncation: .contextWindow, finishSignalExact: false), .length)
+    }
+
+    test("reported finish: tool calls and content filter are never estimates") {
+        try assertEqual(CompletionPolicy.reportedFinishReason(.toolCalls, truncation: nil, finishSignalExact: false), .toolCalls)
+        try assertEqual(CompletionPolicy.reportedFinishReason(.contentFilter, truncation: nil, finishSignalExact: false), .contentFilter)
+    }
+
+    // ========================================================================
     // MARK: - Truncation warning names the real cause (PR #551 review)
     // ========================================================================
 

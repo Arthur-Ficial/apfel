@@ -1939,7 +1939,7 @@ def test_code_shell_oneliner_is_compact():
 def test_code_json_envelope_has_content_and_language():
     require_model()
     result = run_cli(
-        ["--code", "-o", "json", "write a python function that returns 42"],
+        ["--code", "-o", "json", "Write a Python function that returns the number 42."],
         timeout=120,
     )
     assert result.returncode == 0, f"stderr: {result.stderr}"
@@ -2222,12 +2222,16 @@ def test_require_complete_quiet_cannot_suppress_the_failure_exit():
 @pytest.mark.model
 def test_default_capped_output_still_exits_0_with_partial_text():
     """#128/#130 default preserved: without the flag a capped run prints the
-    partial text and exits 0 (the stderr warning stays)."""
+    partial text and exits 0 (the stderr warning stays). Where the cap cannot
+    be detected (no tokenizer API) the warning says the finish is unknown."""
     require_model()
     result = run_cli(["--max-tokens", "4", CAPPED_PROMPT], timeout=120)
     assert result.returncode == 0, f"stderr: {result.stderr}"
     assert result.stdout.strip(), "partial output must still be printed by default"
-    assert "finish_reason=length" in result.stderr
+    if exact_finish_signal():
+        assert "finish_reason=length" in result.stderr
+    else:
+        assert "macOS 26.4" in result.stderr and "--max-tokens 4" in result.stderr, result.stderr
 
 
 @pytest.mark.model
@@ -2236,7 +2240,12 @@ def test_json_envelope_reports_finish_reason_length_when_capped():
     result = run_cli(["-o", "json", "--max-tokens", "4", CAPPED_PROMPT], timeout=120)
     assert result.returncode == 0, f"stderr: {result.stderr}"
     payload = json.loads(result.stdout)
-    assert payload["finish_reason"] == "length"
+    if exact_finish_signal():
+        assert payload["finish_reason"] == "length"
+    else:
+        # Unknown is omitted, never reported as a guessed stop/length.
+        assert "finish_reason" not in payload, payload
+        assert "macOS 26.4" in result.stderr, result.stderr
     assert isinstance(payload["content"], str) and payload["content"]
 
 
@@ -2254,7 +2263,7 @@ def test_require_complete_complete_json_reports_stop_and_exits_0():
 def test_require_complete_code_json_reports_stop():
     require_model()
     result = run_cli(
-        ["--require-complete", "--code", "-o", "json", "a python function that returns 42"],
+        ["--require-complete", "--code", "-o", "json", "Write a Python function that returns the number 42."],
         timeout=120,
     )
     assert result.returncode == 0, f"stderr: {result.stderr}"
