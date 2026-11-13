@@ -72,7 +72,7 @@ public enum SchemaParser {
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw Error.invalidJSON
         }
-        return try Document(root: obj).parseRoot(name: name)
+        return try Document(root: obj, rawData: data).parseRoot(name: name)
     }
 }
 
@@ -116,11 +116,13 @@ extension SchemaParser {
     /// resolution, the unique-name registry and the node budget.
     private final class Document {
         private let root: JSONObject
+        private let rawData: Data
         private var names = NameRegistry()
         private var nodeCount = 0
 
-        init(root: JSONObject) {
+        init(root: JSONObject, rawData: Data) {
             self.root = root
+            self.rawData = rawData
         }
 
         func parseRoot(name: String) throws -> SchemaIR {
@@ -254,12 +256,15 @@ extension SchemaParser {
             let propsDict = node["properties"] as? JSONObject ?? [:]
             let required = try requiredNames(node, declared: Set(propsDict.keys), path: path)
 
-            // Sort keys alphabetically so the IR is deterministic regardless
-            // of JSON dictionary ordering.
-            let sortedKeys = propsDict.keys.sorted()
+            let declared = SchemaParser.extractKeyOrder(
+                from: rawData, at: path + "/properties"
+            )
+            let orderedKeys = declared.flatMap {
+                Set($0) == Set(propsDict.keys) ? $0 : nil
+            } ?? propsDict.keys.sorted()
             var properties: [SchemaIR.Property] = []
-            properties.reserveCapacity(sortedKeys.count)
-            for key in sortedKeys {
+            properties.reserveCapacity(orderedKeys.count)
+            for key in orderedKeys {
                 guard let propSchema = propsDict[key] as? JSONObject else {
                     throw Error.invalidProperty(key)
                 }
@@ -647,5 +652,184 @@ extension SchemaParser {
     private static func jsonBool(_ value: Any?) -> Bool? {
         guard let number = value as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() else { return nil }
         return number.boolValue
+    }
+
+    // MARK: - Declared property order extraction
+
+    /// Navigates raw JSON bytes to the object at `pointer` (a `#/a/b`
+    /// JSON Pointer) and returns its top-level keys in declaration order.
+    /// Returns `nil` when navigation fails; the caller falls back to sorted keys.
+    static func extractKeyOrder(from data: Data, at pointer: String) -> [String]? {
+        let segments = decodePointerSegments(pointer)
+        var scanner = JSONByteScanner(Array(data))
+        for segment in segments {
+            guard scanner.enterObject(), scanner.advancePastKey(segment) else { return nil }
+        }
+        guard scanner.enterObject() else { return nil }
+        return scanner.allKeys()
+    }
+
+    private static func decodePointerSegments(_ pointer: String) -> [String] {
+        let raw = pointer.hasPrefix("#") ? String(pointer.dropFirst()) : pointer
+        guard raw.hasPrefix("/") else { return [] }
+        return raw.dropFirst()
+            .split(separator: "/", omittingEmptySubsequences: false)
+            .map {
+                String($0)
+                    .replacingOccurrences(of: "~1", with: "/")
+                    .replacingOccurrences(of: "~0", with: "~")
+            }
+    }
+}
+
+/// Forward-only scanner over well-formed JSON bytes. Used exclusively to
+/// extract declaration-order keys; all structural validation has already
+/// been done by `JSONSerialization`.
+private struct JSONByteScanner {
+    private let b: [UInt8]
+    private var i: Int = 0
+
+    init(_ bytes: [UInt8]) { b = bytes }
+
+    mutating func enterObject() -> Bool {
+        ws()
+        guard i < b.count, b[i] == UInt8(ascii: "{") else { return false }
+        i += 1
+        return true
+    }
+
+    mutating func advancePastKey(_ key: String) -> Bool {
+        while true {
+            ws()
+            guard i < b.count, b[i] != UInt8(ascii: "}") else { return false }
+            guard let k = readString() else { return false }
+            ws()
+            guard i < b.count, b[i] == UInt8(ascii: ":") else { return false }
+            i += 1
+            if k == key { ws(); return true }
+            skipValue()
+            ws()
+            if i < b.count, b[i] == UInt8(ascii: ",") { i += 1 }
+        }
+    }
+
+    mutating func allKeys() -> [String] {
+        var keys: [String] = []
+        while true {
+            ws()
+            guard i < b.count, b[i] != UInt8(ascii: "}") else { return keys }
+            guard let k = readString() else { return keys }
+            keys.append(k)
+            ws()
+            guard i < b.count, b[i] == UInt8(ascii: ":") else { return keys }
+            i += 1
+            skipValue()
+            ws()
+            if i < b.count, b[i] == UInt8(ascii: ",") { i += 1 }
+        }
+    }
+
+    // MARK: - Primitives
+
+    private mutating func ws() {
+        while i < b.count {
+            switch b[i] {
+            case 0x20, 0x09, 0x0A, 0x0D: i += 1
+            default: return
+            }
+        }
+    }
+
+    private mutating func readString() -> String? {
+        guard i < b.count, b[i] == UInt8(ascii: "\"") else { return nil }
+        i += 1
+        var out: [UInt8] = []
+        while i < b.count {
+            let c = b[i]
+            if c == UInt8(ascii: "\"") { i += 1; return String(bytes: out, encoding: .utf8) }
+            if c == UInt8(ascii: "\\") {
+                i += 1
+                guard i < b.count else { return nil }
+                switch b[i] {
+                case UInt8(ascii: "\""): out.append(UInt8(ascii: "\"")); i += 1
+                case UInt8(ascii: "\\"): out.append(UInt8(ascii: "\\")); i += 1
+                case UInt8(ascii: "/"):  out.append(UInt8(ascii: "/"));  i += 1
+                case UInt8(ascii: "b"):  out.append(0x08); i += 1
+                case UInt8(ascii: "f"):  out.append(0x0C); i += 1
+                case UInt8(ascii: "n"):  out.append(0x0A); i += 1
+                case UInt8(ascii: "r"):  out.append(0x0D); i += 1
+                case UInt8(ascii: "t"):  out.append(0x09); i += 1
+                case UInt8(ascii: "u"):
+                    i += 1
+                    guard let hi = readHex4() else { return nil }
+                    if (0xD800...0xDBFF).contains(hi) {
+                        guard i + 2 <= b.count, b[i] == UInt8(ascii: "\\"), b[i+1] == UInt8(ascii: "u") else { return nil }
+                        i += 2
+                        guard let lo = readHex4(), (0xDC00...0xDFFF).contains(lo) else { return nil }
+                        guard let s = Unicode.Scalar(0x10000 + (Int(hi - 0xD800) << 10) + Int(lo - 0xDC00)) else { return nil }
+                        UTF8.encode(s) { out.append($0) }
+                    } else {
+                        guard let s = Unicode.Scalar(UInt32(hi)) else { return nil }
+                        UTF8.encode(s) { out.append($0) }
+                    }
+                default: out.append(b[i]); i += 1
+                }
+            } else {
+                out.append(c); i += 1
+            }
+        }
+        return nil
+    }
+
+    private mutating func readHex4() -> UInt16? {
+        guard i + 4 <= b.count else { return nil }
+        var v: UInt16 = 0
+        for _ in 0..<4 {
+            v <<= 4
+            switch b[i] {
+            case UInt8(ascii: "0")...UInt8(ascii: "9"): v |= UInt16(b[i] - UInt8(ascii: "0"))
+            case UInt8(ascii: "a")...UInt8(ascii: "f"): v |= UInt16(b[i] - UInt8(ascii: "a") + 10)
+            case UInt8(ascii: "A")...UInt8(ascii: "F"): v |= UInt16(b[i] - UInt8(ascii: "A") + 10)
+            default: return nil
+            }
+            i += 1
+        }
+        return v
+    }
+
+    private mutating func skipValue() {
+        ws()
+        guard i < b.count else { return }
+        switch b[i] {
+        case UInt8(ascii: "\""): _ = readString()
+        case UInt8(ascii: "{"):
+            i += 1; ws()
+            if i < b.count, b[i] == UInt8(ascii: "}") { i += 1; return }
+            while true {
+                _ = readString(); ws()
+                if i < b.count, b[i] == UInt8(ascii: ":") { i += 1 }
+                skipValue(); ws()
+                if i < b.count, b[i] == UInt8(ascii: ",") { i += 1 } else { break }
+            }
+            ws()
+            if i < b.count, b[i] == UInt8(ascii: "}") { i += 1 }
+        case UInt8(ascii: "["):
+            i += 1; ws()
+            if i < b.count, b[i] == UInt8(ascii: "]") { i += 1; return }
+            while true {
+                skipValue(); ws()
+                if i < b.count, b[i] == UInt8(ascii: ",") { i += 1 } else { break }
+            }
+            ws()
+            if i < b.count, b[i] == UInt8(ascii: "]") { i += 1 }
+        default:
+            while i < b.count {
+                switch b[i] {
+                case 0x20, 0x09, 0x0A, 0x0D,
+                     UInt8(ascii: ","), UInt8(ascii: "}"), UInt8(ascii: "]"): return
+                default: i += 1
+                }
+            }
+        }
     }
 }

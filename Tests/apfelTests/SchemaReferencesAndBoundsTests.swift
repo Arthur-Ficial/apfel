@@ -46,7 +46,7 @@ func runSchemaReferencesAndBoundsTests() {
             throw TestFailure("billing must resolve to an object, got \(billing.schema)")
         }
         try assertEqual(name, "Address", "a referenced definition is named after its $defs key")
-        try assertEqual(props.map { $0.name }, ["city", "street"])
+        try assertEqual(props.map { $0.name }, ["street", "city"])
     }
 
     test("shared $ref used twice yields identical IR under one name") {
@@ -370,11 +370,11 @@ func runSchemaReferencesAndBoundsTests() {
         guard case .string(let mn, _, let mv) = massUnit, case .string(let tn, _, let tv) = tempUnit else {
             throw TestFailure("expected string enums")
         }
-        // Properties are visited alphabetically: mass first, temp second.
-        try assertEqual(mn, "unit")
-        try assertEqual(mv ?? [], ["kg", "lb"])
-        try assertEqual(tn, "unit_2")
+        // Properties follow declared order: temp first, mass second.
+        try assertEqual(tn, "unit")
         try assertEqual(tv ?? [], ["c", "f"])
+        try assertEqual(mn, "unit_2")
+        try assertEqual(mv ?? [], ["kg", "lb"])
     }
 
     test("a nested object that wants the root's name is renamed; the root keeps its name") {
@@ -855,5 +855,38 @@ func runSchemaReferencesAndBoundsTests() {
         let a = try SchemaParser.parse(json: json, name: "t")
         let b = try SchemaParser.parse(json: json, name: "t")
         try assertEqual(a, b)
+    }
+
+    // MARK: - Declared property order through $ref (#560)
+
+    test("$ref target properties follow the definition's declared order (#560)") {
+        let json = ##"""
+        {"type":"object",
+         "$defs":{"Person":{"type":"object","properties":{"name":{"type":"string"},"age":{"type":"integer"},"email":{"type":"string"}},"required":["name","age","email"]}},
+         "properties":{"author":{"$ref":"#/$defs/Person"}}}
+        """##
+        let ir = try SchemaParser.parse(json: json, name: "root")
+        let author = try property(ir, "author").schema
+        guard case .object(_, _, let props) = author else { throw TestFailure("expected object") }
+        try assertEqual(props.map { $0.name }, ["name", "age", "email"])
+    }
+
+    test("nested $ref target preserves declared order at every level (#560)") {
+        let json = ##"""
+        {"type":"object",
+         "$defs":{
+           "Coord":{"type":"object","properties":{"lng":{"type":"number"},"lat":{"type":"number"}}},
+           "Place":{"type":"object","properties":{"coord":{"$ref":"#/$defs/Coord"},"label":{"type":"string"}}}},
+         "properties":{"destination":{"$ref":"#/$defs/Place"},"origin":{"$ref":"#/$defs/Place"}}}
+        """##
+        let ir = try SchemaParser.parse(json: json, name: "root")
+        guard case .object(_, _, let outerProps) = ir else { throw TestFailure("expected root object") }
+        try assertEqual(outerProps.map { $0.name }, ["destination", "origin"])
+        let place = try property(ir, "destination").schema
+        guard case .object(_, _, let placeProps) = place else { throw TestFailure("expected Place object") }
+        try assertEqual(placeProps.map { $0.name }, ["coord", "label"])
+        let coord = try property(place, "coord").schema
+        guard case .object(_, _, let coordProps) = coord else { throw TestFailure("expected Coord object") }
+        try assertEqual(coordProps.map { $0.name }, ["lng", "lat"])
     }
 }
