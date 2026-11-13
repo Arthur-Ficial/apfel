@@ -1938,10 +1938,12 @@ def test_code_shell_oneliner_is_compact():
 @pytest.mark.model
 def test_code_json_envelope_has_content_and_language():
     require_model()
-    result = run_cli(
-        ["--code", "-o", "json", "Write a Python function that returns the number 42."],
-        timeout=120,
-    )
+    from conftest import run_cli_rotating_seeds
+    # Seed-rotated: macOS 26.1's guardrail blocks this prompt intermittently;
+    # the property under test is the envelope, not one seed's guardrail luck.
+    result = run_cli_rotating_seeds(
+        run_cli, ["--code", "-o", "json", "Write a Python function that returns the number 42."],
+        timeout=120)
     assert result.returncode == 0, f"stderr: {result.stderr}"
     payload = json.loads(result.stdout)
     assert payload["model"] == "apple-foundationmodel"
@@ -2262,10 +2264,12 @@ def test_require_complete_complete_json_reports_stop_and_exits_0():
 @pytest.mark.model
 def test_require_complete_code_json_reports_stop():
     require_model()
-    result = run_cli(
-        ["--require-complete", "--code", "-o", "json", "Write a Python function that returns the number 42."],
-        timeout=120,
-    )
+    from conftest import run_cli_rotating_seeds
+    # Seed-rotated: macOS 26.1's guardrail blocks this prompt intermittently;
+    # the property under test is the envelope, not one seed's guardrail luck.
+    result = run_cli_rotating_seeds(
+        run_cli, ["--require-complete", "--code", "-o", "json", "Write a Python function that returns the number 42."],
+        timeout=120)
     assert result.returncode == 0, f"stderr: {result.stderr}"
     payload = json.loads(result.stdout)
     assert payload["finish_reason"] == "stop"
