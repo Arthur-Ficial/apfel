@@ -91,7 +91,8 @@ func singlePrompt(_ prompt: String, systemPrompt: String?, stream: Bool, options
         codeOnly: codeOnly, requireComplete: requireComplete,
         unknownFinishNote: CompletionPolicy.unknownFinishNote(
             maxTokens: options.maxTokens,
-            tokenCountFallback: await TokenCounter.shared.tokenCountFallback))
+            tokenCountFallback: await TokenCounter.shared.tokenCountFallback,
+            jsonEnvelope: outputFormat == .json))
 }
 
 /// Write a finished one-shot generation (single prompt or `--messages`) to
@@ -312,7 +313,8 @@ func messagesPrompt(
         codeOnly: codeOnly, requireComplete: requireComplete,
         unknownFinishNote: CompletionPolicy.unknownFinishNote(
             maxTokens: options.maxTokens,
-            tokenCountFallback: await TokenCounter.shared.tokenCountFallback))
+            tokenCountFallback: await TokenCounter.shared.tokenCountFallback,
+            jsonEnvelope: outputFormat == .json))
 }
 
 // MARK: - Token Budget Preflight
