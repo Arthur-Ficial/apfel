@@ -31,6 +31,7 @@ public enum UsageText {
           \(appName) --serve                  Start OpenAI-compatible HTTP server
           \(appName) --benchmark              Run internal performance benchmarks
           \(appName) --count-tokens <prompt>  Preflight token count (no inference)
+          \(appName) --batch < records.jsonl Process JSONL records, one JSON result line each
           \(appName) completions <shell>      Print shell completions (bash, zsh, fish)
 
         \(style("OPTIONS:"))
@@ -43,6 +44,9 @@ public enum UsageText {
                                     response when unfenced. Exit 7 on an empty response
               --require-complete    Exit 8 if truncated (finish_reason=length);
                                     no stdout unless streaming
+              --batch               JSONL in on stdin ({"custom_id","prompt"|"messages"}),
+                                    one JSON result line per record out; fresh session
+                                    per record; exit 1 if any record failed
               --temperature <n>     Sampling temperature (e.g., 0.7); 0 = deterministic
               --top-p <n>           Nucleus sampling threshold in (0, 1] (e.g., 0.9)
               --seed <n>            Random seed for reproducible output
@@ -142,6 +146,7 @@ public enum UsageText {
           \(appName) -o json "Translate to German: hello" | jq .content
           \(appName) --count-tokens -f README.md "Summarize this"
           \(appName) --count-tokens -o json "hello" | jq .
+          jq -c '{custom_id:(.id|tostring),prompt:.text}' in.jsonl | \(appName) --batch | jq -c 'select(.status=="ok")'
           APFEL_SYSTEM_PROMPT="Be brief" \(appName) "Explain TCP"
           \(appName) --serve --port 3000 --host 0.0.0.0 --cors
         """

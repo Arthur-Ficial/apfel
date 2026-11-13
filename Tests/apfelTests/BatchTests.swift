@@ -22,7 +22,7 @@ private func lines(_ frames: [BatchFrame]) -> [String] {
 
 private func expectBatchParseError(_ args: [String], contains needle: String) throws {
     do {
-        _ = try CLIArguments.parse(args, readFile: { _ in #"{"type":"object","properties":{"a":{"type":"string"}}}"# })
+        _ = try CLIArguments.parse(args, readFile: { _ in #"{"type":"object","properties":{"a":{"type":"string"}}}"# }, extractFile: { _ in "file text" })
         throw TestFailure("expected CLIParseError containing '\(needle)' for \(args)")
     } catch let e as CLIParseError {
         try assertTrue(e.message.contains(needle), "message was: \(e.message)")

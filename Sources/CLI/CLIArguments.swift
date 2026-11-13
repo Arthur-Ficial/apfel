@@ -35,6 +35,9 @@ public struct CLIArguments: Sendable, Equatable {
         case update
         case demos
         case countTokens = "count-tokens"
+        /// `--batch` (#481): JSONL records on stdin, one result line each.
+        /// The batch runner owns stdin, so it does not accept a stdin prompt.
+        case batch
         case completions
         case help
         case version
@@ -180,7 +183,7 @@ public struct CLIArguments: Sendable, Equatable {
         "-h", "--help", "-v", "--version", "--release",
         "-s", "--system", "--system-file", "-o", "--output",
         "-q", "--quiet", "--no-color",
-        "--chat", "--stream", "--serve", "--benchmark", "--count-tokens",
+        "--chat", "--stream", "--serve", "--benchmark", "--count-tokens", "--batch",
         "--strict", "--model-info", "--update", "--demos",
         "--port", "--host", "--cors", "--max-concurrent", "--debug",
         "--allowed-origins", "--no-origin-check", "--token", "--token-auto",
@@ -278,8 +281,8 @@ extension CLIArguments {
             // Guaranteed structured output is a single-prompt feature (#361):
             // one prompt in, one schema-valid JSON object out. --messages is
             // the one composition: schema-constrained reply to a conversation.
-            if mode != .single {
-                throw CLIParseError("--schema requires a single one-shot prompt; cannot combine with --\(mode.rawValue)")
+            if mode != .single && mode != .batch {
+                throw CLIParseError("--schema requires a single one-shot prompt or --batch; cannot combine with --\(mode.rawValue)")
             }
             if !mcpServerPaths.isEmpty {
                 throw CLIParseError("--schema cannot be combined with MCP tool calling (--mcp / APFEL_MCP)")
@@ -289,7 +292,7 @@ extension CLIArguments {
             // Stop sequences cut plain-text generation (#483): one-shot
             // prompts only (single, --stream, --messages), never a cut tool
             // call or a cut schema-constrained JSON document.
-            if mode != .single && mode != .stream {
+            if mode != .single && mode != .stream && mode != .batch {
                 throw CLIParseError("--stop requires a one-shot prompt; cannot combine with --\(mode.rawValue)")
             }
             if schemaJSON != nil {
@@ -315,6 +318,9 @@ extension CLIArguments {
             if schemaJSON != nil {
                 throw CLIParseError("--code cannot be combined with --schema; pick one output contract")
             }
+        }
+        if mode == .batch {
+            try validateBatch()
         }
         if requireComplete {
             // --require-complete is a one-shot exit-status contract (#484):
@@ -684,6 +690,10 @@ extension CLIArguments {
                 context.modeFlagsSeen.append("--count-tokens")
                 result.mode = .countTokens
 
+            case "--batch":
+                context.modeFlagsSeen.append("--batch")
+                result.mode = .batch
+
             case "--strict":
                 result.strictCount = true
 
@@ -977,6 +987,31 @@ extension CLIArguments {
     }
 
     // MARK: - Helpers
+
+    /// `--batch` rules (#481). Records arrive on stdin and every result is a
+    /// JSONL line, so prompt sources, output formats and per-run contracts
+    /// that the record contract already covers are rejected loudly instead
+    /// of being silently ignored.
+    func validateBatch() throws {
+        if !prompt.isEmpty {
+            throw CLIParseError("--batch reads records from stdin; drop the positional prompt and put it in each record's prompt field")
+        }
+        if !fileContents.isEmpty || !fileAttachments.isEmpty {
+            throw CLIParseError("--batch cannot be combined with -f/--file; inline file content into each record")
+        }
+        if messagesJSON != nil || messagesFromStdin {
+            throw CLIParseError("--messages cannot be combined with --batch; put a messages array in each record instead")
+        }
+        if outputFormat != nil {
+            throw CLIParseError("--batch always writes JSONL (one JSON object per record); drop -o/--output")
+        }
+        if requireComplete {
+            throw CLIParseError("--batch already treats a truncated record as a failure (status \"incomplete\", exit 1); drop --require-complete")
+        }
+        if !mcpServerPaths.isEmpty {
+            throw CLIParseError("--batch cannot be combined with MCP tool calling (--mcp / APFEL_MCP)")
+        }
+    }
 
     /// Parse a colon- or comma-separated list of MCP server paths/URLs.
     ///

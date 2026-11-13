@@ -47,7 +47,7 @@ public enum CompletionPolicy {
 
     /// Plain-language name of the truncation cause. Nil (unknown) keeps the
     /// neutral wording that names both possibilities.
-    private static func causePhrase(_ cause: TruncationCause?) -> String {
+    static func causePhrase(_ cause: TruncationCause?) -> String {
         switch cause {
         case .tokenCap(let n): return "the --max-tokens \(n) cap was reached"
         case .contextWindow: return "the context window ran out"

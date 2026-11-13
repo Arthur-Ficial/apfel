@@ -15,6 +15,7 @@ public enum PrewarmDecision {
     ///
     /// - single/stream: the prewarm overlaps the piped-stdin read.
     /// - chat: the prewarm overlaps the user typing the first message.
+    /// - batch: the prewarm overlaps reading the first record (#481).
     /// - serve: excluded - `startServer` owns its own prewarm (#169).
     /// - countTokens: excluded - token counting never calls the model.
     /// - benchmark: excluded - benchmarks manage their own sessions and a
@@ -22,7 +23,7 @@ public enum PrewarmDecision {
     /// - everything else never generates.
     public static func shouldPrewarm(mode: CLIArguments.Mode) -> Bool {
         switch mode {
-        case .single, .stream, .chat:
+        case .single, .stream, .chat, .batch:
             return true
         case .serve, .benchmark, .countTokens, .modelInfo, .update,
              .demos, .completions, .help, .version, .release:

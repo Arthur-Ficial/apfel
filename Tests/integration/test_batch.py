@@ -288,10 +288,12 @@ def test_batch_stdout_backpressure_suspends_stdin_intake():
                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=_env(), bufsize=0)
     written = [0]
 
+    data = record * n
+
     def writer():
         try:
             for i in range(0, total, 4096):
-                chunk = (record * (4096 // len(record) + 1))[: min(4096, total - i)]
+                chunk = data[i:i + 4096]
                 proc.stdin.write(chunk)
                 written[0] += len(chunk)
             proc.stdin.close()
@@ -372,16 +374,14 @@ def test_batch_no_color_and_clean_stdout():
 
     def run_with_tty_stderr(**env):
         master, slave = pty.openpty()
+        proc = subprocess.Popen([str(BINARY), "--batch"], stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE, stderr=slave, env=_env(**env))
+        os.close(slave)  # the child holds its own copy
         try:
-            r = subprocess.run([str(BINARY), "--batch"], input=b'{"custom_id":"bad"}\n',
-                               stdout=subprocess.PIPE, stderr=slave, timeout=60, env=_env(**env))
-            os.close(slave)
-            slave_closed = True
+            proc.stdin.write(b'{"custom_id":"bad"}\n')
+            proc.stdin.close()
             err = b""
-            while True:
-                ready, _, _ = select.select([master], [], [], 0.5)
-                if not ready:
-                    break
+            while True:  # read while the child runs; EIO once it exits
                 try:
                     chunk = os.read(master, 4096)
                 except OSError:
@@ -389,15 +389,17 @@ def test_batch_no_color_and_clean_stdout():
                 if not chunk:
                     break
                 err += chunk
-            return r, err
+            out = proc.stdout.read()
+            proc.wait(timeout=60)
+            return out, err
         finally:
-            if not locals().get("slave_closed"):
-                os.close(slave)
+            if proc.poll() is None:
+                proc.kill()
             os.close(master)
 
     colored, colored_err = run_with_tty_stderr()
     plain, plain_err = run_with_tty_stderr(NO_COLOR="1")
-    assert b"\x1b[" not in colored.stdout and b"\x1b[" not in plain.stdout
+    assert b"\x1b[" not in colored and b"\x1b[" not in plain
     assert b"batch: 1 record" in colored_err and b"batch: 1 record" in plain_err
     assert b"\x1b[" in colored_err
     assert b"\x1b[" not in plain_err
