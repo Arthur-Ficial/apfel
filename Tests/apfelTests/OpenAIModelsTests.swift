@@ -550,12 +550,12 @@ func runChatRequestValidatorTests() {
         try assertEqual(UnsupportedChatParameter.detect(in: request), .n)
     }
 
-    test("unsupported parameter detection prefers stop over penalties") {
+    test("unsupported parameter detection skips stop, which is supported since #483") {
         let request = try decode(
             ChatCompletionRequest.self,
             from: #"{"model":"\#(M)","messages":[{"role":"user","content":"hi"}],"stop":"done","presence_penalty":1,"frequency_penalty":1}"#
         )
-        try assertEqual(UnsupportedChatParameter.detect(in: request), .stop)
+        try assertEqual(UnsupportedChatParameter.detect(in: request), .presencePenalty)
     }
 
     test("unsupported parameter detection prefers presence penalty over frequency penalty") {

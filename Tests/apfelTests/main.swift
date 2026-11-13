@@ -150,6 +150,8 @@ suite("EngineTranscriptTests") { runEngineTranscriptTests() }
 suite("OnDeviceEngineTests") { runOnDeviceEngineTests() }
 suite("EngineOptionsPlumbingTests") { runEngineOptionsPlumbingTests() }
 suite("EngineOptionsTests") { runEngineOptionsTests() }
+suite("StopSequenceTests") { runStopSequenceTests() }
+suite("StopFlagTests") { runStopFlagTests() }
 
 // MARK: - Summary
 
