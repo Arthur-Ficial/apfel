@@ -39,9 +39,10 @@ apfel came first. Its first commit and v0.1.0 landed on 2026-03-24, the first Gi
 | Read prompt from stdin | yes, auto-detected (`echo text \| apfel`) | yes (`echo text \| fm respond`) |
 | System prompt | `-s`, `--system-file`, `APFEL_SYSTEM_PROMPT` | `-i, --instructions` |
 | Streaming | `--stream` (off by default, so output is pipe-safe) | on by default, `--no-stream` to disable |
-| Machine-readable output | `-o json` (content, model, metadata incl. finish reason) | no (plain text only) |
+| Machine-readable output | `-o json` (model, content, `finish_reason`, metadata) | no (plain text only) |
 | JSON Schema constrained output | `--schema file.json`: guaranteed schema-valid JSON, any local schema with `$ref`/`$defs`, bounds, enums | `--schema file`, schema authored with `fm schema object --name Person --string name --int age` |
 | Code-only answers | `--code`: prints the first fenced block, bare command for shell scripts | no |
+| Truncation as a script failure | `--require-complete`: exit 8 and no buffered stdout when generation ends with `finish_reason=length` | no (`fm respond` has no output-length cap and no completion status) |
 | Multi-turn in one shot | `--messages file.json` (OpenAI messages array) | `--resume transcript.json` + `--save-transcript` |
 | Interactive chat | `apfel --chat`, or a bare `apfel` at a terminal, with context trimming strategies | `fm chat` with named sessions (`--resume name`, `--continue`) |
 | Attach files | `-f` text, PDF, images (Vision OCR + image understanding), repeatable | `--image` (image input to the model), `--text` segments |
@@ -54,7 +55,7 @@ apfel came first. Its first commit and v0.1.0 landed on 2026-03-24, the first Gi
 | Token counting | `apfel --count-tokens` (prompt, system, files, tool schemas, budget, `--strict` exit 4) | `fm count-tokens` (prompt, instructions, images, transcript) |
 | Model availability | `apfel --model-info` (context window, languages, framework) | `fm available` |
 | Retry on transient errors | `--retry [n]`, exponential backoff | no |
-| Exit codes | 0 ok, 1 runtime, 2 usage, 3 guardrail, 4 context overflow, 5 model unavailable, 6 rate limited, 7 empty code answer, 141 closed pipe | 0 ok, 1 for everything else (a guardrail hit exits 1 like any error) |
+| Exit codes | 0 ok, 1 runtime, 2 usage, 3 guardrail, 4 context overflow, 5 model unavailable, 6 rate limited, 7 empty code answer, 8 truncated response under `--require-complete`, 141 closed pipe | 0 ok, 1 for everything else (a guardrail hit exits 1 like any error) |
 | Shell completions, man page | bash, zsh, fish; `man apfel` | no |
 | Benchmark | `apfel --benchmark` | no |
 | Debug logging | `--debug` on every mode | `-v` |

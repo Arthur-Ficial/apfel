@@ -7,6 +7,15 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `--require-complete`: scripts can now tell a finished response from a truncated one. When generation ends with `finish_reason=length` (the `--max-tokens` cap or the context window running out mid-generation), apfel writes nothing to stdout for buffered output (plain, `-o json`, `--code`, `--messages`) and exits with the new exit code 8; with `--stream` the already printed tokens stay and the exit code is the contract. `--quiet` does not change it. Combining it with `--chat`, `--serve`, `--count-tokens`, `--schema` or MCP tools is a usage error (exit 2), because those paths report no finish reason apfel could check. Default behavior is unchanged: without the flag a truncated response is printed with a stderr warning and exit 0. Completion means the engine stopped on its own, not that the answer is correct (#484).
+- The CLI `-o json` envelope now carries `finish_reason` (`"stop"` or `"length"`) for single prompts, `--stream`, `--messages` and `--code`; `content` is unchanged and `--schema` output omits the key (#484).
+
+### Fixed
+
+- The man page described the `-o json` envelope as having `usage` and `finish_reason` keys; it now lists the real keys (`model`, `content`, `finish_reason`, `metadata`) (#484).
+
 ## [1.17.1] - 2026-11-11
 
 ### Changed

@@ -27,6 +27,7 @@ OUTPUT
   -q, --quiet                             Suppress non-essential output
   --no-color                              Disable ANSI colors
   --code                                  Print only the code: first fenced block, or the bare response (exit 7 if empty)
+  --require-complete                      Exit 8 if the response was truncated (finish_reason=length); no stdout unless streaming
   --schema <path>                         Constrain output to a JSON Schema file (guaranteed valid JSON)
 
 MODEL
@@ -94,7 +95,10 @@ apfel --schema order.schema.json "Extract the order: ship two notebooks to 12 Ma
 
 # --code - only the code, no prose, no fences (pipe-safe)
 apfel --code "a python function that deduplicates a list" > dedupe.py
-apfel --code "shell one-liner to find the 10 largest files here" | pbcopy
+apfel --code "shell one-liner to find the 10 largest files here" 
+# --require-complete - exit 8 instead of printing a truncated response
+apfel --require-complete --code --max-tokens 128 "Write a small Python CSV reader." > reader.py
+| pbcopy
 
 # --messages - one-shot multi-turn: conversation JSON in, next assistant turn out
 apfel --messages conversation.json
@@ -232,7 +236,32 @@ apfel completions fish > ~/.config/fish/completions/apfel.fish
 | 4 | Context overflow |
 | 5 | Model unavailable |
 | 6 | Rate limited |
+| 7 | No code in response (`--code` got an empty response) |
+| 8 | Incomplete response (`--require-complete` saw `finish_reason=length`) |
 | 130 | Interrupted (Ctrl-C at chat prompt) |
+
+### Requiring a complete response (`--require-complete`)
+
+By default a response that hits the token cap or the context window is still printed and apfel exits 0 with a stderr warning. Scripts that need the whole artifact (generated config, migrations, code) can opt in to a failure instead:
+
+```bash
+if result=$(apfel --require-complete --code --max-tokens 128 'Write a small Python CSV reader.'); then
+  printf '%s\n' "$result"
+fi
+```
+
+- Works with a single prompt, `--stream`, `--messages` and `--code`. Combining it with `--chat`, `--serve`, `--count-tokens`, `--schema` or MCP tools (`--mcp` / `APFEL_MCP`) is a usage error (exit 2): those paths do not report a finish reason apfel could check.
+- Non-streaming (including `-o json` and `--code`): a length finish writes nothing to stdout and exits 8. `--quiet` does not change the exit code.
+- `--stream`: tokens already printed cannot be taken back; the exit code 8 is the contract.
+- `-o json` always carries `finish_reason` (`"stop"` or `"length"`) next to `content`, with or without the flag. `--schema` output omits it.
+- Completion only means the engine stopped on its own. It is not a correctness check: a naturally finished answer can still be wrong or syntactically incomplete.
+
+When apfel runs inside a pipeline, the shell reports the exit status of the last command, so turn on `pipefail` to see exit 8:
+
+```bash
+set -o pipefail
+apfel --require-complete 'List ten Unix commands.' | tee commands.txt
+```
 
 ## Environment Variables
 
