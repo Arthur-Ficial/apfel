@@ -63,7 +63,9 @@ func handleInputTokens(_ request: Request, context: some RequestContext) async t
     var responseSchema: GenerationSchema?
     if formatType == "json_schema",
        let format = countRequest.text?.format,
-       let schemaJSON = format.schema?.value {
+       // The same schema text /v1/responses generates with (#560).
+       let schemaJSON = SchemaParser.rawJSONValue(
+           in: Data(buffer: body), at: ["text", "format", "schema"]) ?? format.schema?.value {
         do {
             responseSchema = try SchemaConverter.generationSchema(
                 fromJSON: schemaJSON, name: format.name ?? "schema")
