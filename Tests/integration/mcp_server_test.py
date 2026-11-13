@@ -1049,37 +1049,50 @@ def test_tool_result_not_logged_without_debug():
 
 
 def test_tool_result_logged_truncated_with_debug():
-    """With --debug, tool args and results appear but large results are truncated (#464)."""
+    """With --debug, tool args and results appear but large results are truncated (#464).
+
+    The subject is the log format, not the model: a seed whose tool call the
+    model botches (seed 42 on macOS 27.0.1 since #555 wrote a second call to a
+    tool that does not exist; 23/24 seeds call fetch_document cleanly) has no
+    large result to truncate, so the next seed is tried. A tool result that ran
+    and is NOT truncated still fails at once."""
     with _running_mcp_server_with_log(
         FIXTURES / "huge_output_mcp_server.py", debug=True
     ) as (api_url, read_log):
-        post_chat_rotating_seeds(f"{api_url}/chat/completions", {
-            "model": MODEL,
-            "messages": [
-                {"role": "user",
-                 "content": "Call the fetch_document tool, then summarize the document in one sentence."}
-            ],
-            "max_tokens": 200,
-        }, TIMEOUT)
-        time.sleep(0.5)
-        log = read_log()
-        lines = log.splitlines()
-        idxs = [i for i, l in enumerate(lines) if "mcp tool:" in l]
-        assert idxs, "Expected at least one 'mcp tool:' event in debug log"
-        assert any("(" in lines[i] for i in idxs), \
-            f"Debug log should show tool args in parens: {[lines[i] for i in idxs]}"
+        windows = []
+        for seed in GUARDRAIL_SEEDS:
+            seen = len(read_log().splitlines())
+            post_chat_rotating_seeds(f"{api_url}/chat/completions", {
+                "model": MODEL,
+                "messages": [
+                    {"role": "user",
+                     "content": "Call the fetch_document tool, then summarize the document in one sentence."}
+                ],
+                "max_tokens": 200,
+            }, TIMEOUT, seeds=(seed,))
+            time.sleep(0.5)
+            lines = read_log().splitlines()[seen:]
+            idxs = [i for i, l in enumerate(lines) if "mcp tool:" in l]
+            assert idxs, "Expected at least one 'mcp tool:' event in debug log"
+            assert any("(" in lines[i] for i in idxs), \
+                f"Debug log should show tool args in parens: {[lines[i] for i in idxs]}"
 
-        # truncateForLog appends "\n...[truncated]", so the marker lands on the
-        # line AFTER the event, not inside it. Assert on the event's own line
-        # plus the one following it -- scanning the whole log would pass on a
-        # marker left by --debug request/response body capture, which is a
-        # different code path and not what this test is about.
-        i = idxs[-1]
-        window = "\n".join(lines[i:i + 2])
-        assert "...[truncated]" in window, (
-            "Large tool result should be truncated in the debug log; event line "
-            f"and its successor were: {window!r}"
-        )
+            # truncateForLog appends "\n...[truncated]", so the marker lands on the
+            # line AFTER the event, not inside it. Assert on the event's own line
+            # plus the one following it -- scanning the whole log would pass on a
+            # marker left by --debug request/response body capture, which is a
+            # different code path and not what this test is about.
+            i = idxs[-1]
+            window = "\n".join(lines[i:i + 2])
+            if ") = error:" in lines[i]:
+                windows.append(f"seed {seed}: {window!r}")
+                continue
+            assert "...[truncated]" in window, (
+                "Large tool result should be truncated in the debug log; event line "
+                f"and its successor were: {window!r}"
+            )
+            return
+        pytest.fail("the model botched the tool call on every seed: " + "; ".join(windows))
 
 
 # ============================================================================
