@@ -25,7 +25,8 @@ func processPrompt(
     stream: Bool,
     printDelta: Bool,
     mcpManager: MCPManager?,
-    hasMCPTools: Bool
+    hasMCPTools: Bool,
+    stopSequences: [String] = []
 ) async throws -> ProcessPromptResult {
     let retryMax = options.retryEnabled ? options.retryCount : 0
     // Image-bearing turns attach natively (macOS 27, #510); text-only turns
@@ -44,13 +45,14 @@ func processPrompt(
     let shouldPrint = stream && printDelta && !hasMCPTools
     let printSink = shouldPrint ? StreamPrintSink() : nil
     let outcome = try await withModelRetry(maxRetries: retryMax) {
-        try await collectStream(session, prompt: promptValue, sink: printSink, options: genOpts)
+        try await collectStream(session, prompt: promptValue, sink: printSink, options: genOpts, stopSequences: stopSequences)
     }
     content = outcome.content
     finishReason = outcome.finishReason
     var truncation = outcome.truncation
+    var matchedStop = outcome.matchedStop
 
-    debugLog("response", "length=\(content.count) finish=\(finishReason)")
+    debugLog("response", "length=\(content.count) finish=\(finishReason)\(outcome.matchedStop.map { " stop_matched=\($0.debugDescription)" } ?? "")")
 
     var toolLog: [ToolLogEntry] = []
     if let result = try await executeMCPToolCallsForCLI(
@@ -63,9 +65,12 @@ func processPrompt(
         // After tool re-prompt the model produced a fresh natural reply.
         finishReason = .stop
         truncation = nil
+        matchedStop = nil
     }
 
-    return ProcessPromptResult(content: content, toolLog: toolLog, finishReason: finishReason, truncation: truncation)
+    return ProcessPromptResult(
+        content: content, toolLog: toolLog, finishReason: finishReason,
+        truncation: truncation, matchedStop: matchedStop)
 }
 
 /// Print tool execution log entries to stderr.

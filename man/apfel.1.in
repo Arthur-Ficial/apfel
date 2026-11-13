@@ -280,6 +280,26 @@ MCP server timeout in seconds. Default
 Use permissive content guardrails for the session. The default
 guardrail profile enforces Apple's standard safety policies.
 .TP
+.BI \-\-stop " text"
+End the output before
+.IR text .
+Repeatable, at most 4 sequences and 256 Unicode scalars in total.
+The first sequence to be completely generated wins; it and everything
+after it are not printed, and generation stops early. Matching is on
+exact Unicode scalars. For one-shot prompts only (single,
+.BR \-\-stream ,
+.BR \-\-messages );
+combining it with
+.BR \-\-chat ,
+.B \-\-schema
+or
+.B \-\-mcp
+is a usage error (exit 2). Use shell quoting such as
+.B $'\(rsnObservation'
+for a newline. A match is finish_reason=stop, so it counts as complete
+under
+.BR \-\-require\-complete .
+.TP
 .BR \-\-retry " [" \fIn\fR ]
 Enable retry with exponential backoff on transient errors. Defaults
 to

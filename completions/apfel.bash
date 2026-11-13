@@ -18,12 +18,12 @@ _apfel() {
             COMPREPLY=( $(compgen -f -- "$cur") ); return 0 ;;
         --demos)
             COMPREPLY=( $(compgen -d -- "$cur") ); return 0 ;;
-        -s|--system|--port|--host|--max-concurrent|--allowed-origins|--token|--mcp-timeout|--mcp-token|--temperature|--top-p|--seed|--max-tokens|--context-max-turns|--context-output-reserve)
+        -s|--system|--port|--host|--max-concurrent|--allowed-origins|--token|--mcp-timeout|--mcp-token|--temperature|--top-p|--seed|--max-tokens|--stop|--context-max-turns|--context-output-reserve)
             return 0 ;;
     esac
 
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=( $(compgen -W "--allowed-origins --benchmark --chat --code --context-max-turns --context-output-reserve --context-status --context-strategy --cors --count-tokens --debug --demos --file --footgun --help --host --max-concurrent --max-tokens --mcp --mcp-timeout --mcp-token --messages --model-info --no-color --no-origin-check --output --permissive --port --public-health --quiet --release --require-complete --retry --schema --seed --serve --stream --strict --system --system-file --temperature --token --token-auto --top-p --update --version -f -h -o -q -s -v completions" -- "$cur") ); return 0
+        COMPREPLY=( $(compgen -W "--allowed-origins --benchmark --chat --code --context-max-turns --context-output-reserve --context-status --context-strategy --cors --count-tokens --debug --demos --file --footgun --help --host --max-concurrent --max-tokens --mcp --mcp-timeout --mcp-token --messages --model-info --no-color --no-origin-check --output --permissive --port --public-health --quiet --release --require-complete --retry --schema --seed --serve --stop --stream --strict --system --system-file --temperature --token --token-auto --top-p --update --version -f -h -o -q -s -v completions" -- "$cur") ); return 0
     fi
     COMPREPLY=( $(compgen -f -- "$cur") ); return 0
 }

@@ -133,8 +133,8 @@ func startServer(config: ServerConfig, mcpManager: MCPManager? = nil) async thro
                 context_window_measured: contextWindow.isMeasured,
                 capabilities: capabilities.names,
                 capabilities_reported: capabilities.reported,
-                supported_parameters: ["temperature", "max_tokens", "max_completion_tokens", "seed", "stream", "tools", "tool_choice", "parallel_tool_calls", "response_format", "x_context_strategy", "x_context_max_turns", "x_context_output_reserve"],
-                unsupported_parameters: ["logprobs", "n", "stop", "presence_penalty", "frequency_penalty"],
+                supported_parameters: ["temperature", "max_tokens", "max_completion_tokens", "seed", "stop", "stream", "tools", "tool_choice", "parallel_tool_calls", "response_format", "x_context_strategy", "x_context_max_turns", "x_context_output_reserve"],
+                unsupported_parameters: ["logprobs", "n", "presence_penalty", "frequency_penalty"],
                 notes: "Apple on-device model via FoundationModels framework. Unsupported parameters are rejected with 400 when present (except n=1 and logprobs=false). Supported languages: \(cachedLangs.joined(separator: ", "))"
             )]
         )))

@@ -90,11 +90,15 @@ public enum CompletionPolicy {
     /// The finish reason apfel may report as fact, or nil when it is unknown.
     /// With an approximate signal an estimated `stop`, or a `length` from the
     /// estimated cap comparison, is unknown; a context-window cut-off (a
-    /// thrown error) and non-length outcomes are exact on every OS.
+    /// thrown error) and non-length outcomes are exact on every OS. So is a
+    /// matched `--stop` sequence (#483): the delimiter was observed, no token
+    /// count is involved, so its `stop` is reported as fact.
     package static func reportedFinishReason(
-        _ reason: FinishReason, truncation: TruncationCause?, finishSignalExact: Bool
+        _ reason: FinishReason, truncation: TruncationCause?, finishSignalExact: Bool,
+        stopMatched: Bool = false
     ) -> FinishReason? {
         if finishSignalExact { return reason }
+        if stopMatched && reason == .stop { return reason }
         switch reason {
         case .toolCalls, .contentFilter: return reason
         case .length where truncation == .contextWindow: return reason

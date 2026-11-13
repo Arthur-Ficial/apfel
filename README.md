@@ -239,7 +239,8 @@ alias apfel=apfel-run                 # optional, every apfel flag still works
 | CORS | Supported | Enable with `--cors` |
 | `POST /v1/completions` | 501 | Legacy text completions not supported |
 | `POST /v1/embeddings` | 501 | Embeddings not available on-device |
-| `logprobs=true`, `n>1`, `stop`, `presence_penalty`, `frequency_penalty` | 400 | Rejected explicitly. `n=1` and `logprobs=false` are accepted as no-ops |
+| `stop` | Supported | String or up to 4 strings; plain text only (400 with tools in scope or `json_object`/`json_schema`). Applied on the output side, identical streaming and non-streaming. See [docs/openai-api-compatibility.md](docs/openai-api-compatibility.md#stop-sequences) |
+| `logprobs=true`, `n>1`, `presence_penalty`, `frequency_penalty` | 400 | Rejected explicitly. `n=1` and `logprobs=false` are accepted as no-ops |
 | Multi-modal (images) | Supported on macOS 27 | `image_url` parts as base64 data URLs go to the on-device model natively (20 MB base64 cap, longest side downscaled to 4096 px). Remote `http(s)` URLs and file paths are always 400 - apfel never fetches images and never reads files for an HTTP client. On macOS 26: 400 with a clear error. See [docs/openai-api-compatibility.md](docs/openai-api-compatibility.md) |
 | `Authorization` header | Supported | Required when `--token` is set. See [docs/server-security.md](docs/server-security.md) |
 

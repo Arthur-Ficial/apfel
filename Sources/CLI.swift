@@ -37,8 +37,9 @@ func printHeader() {
 /// - **json**: Buffer the complete response, then emit a single JSON object.
 /// Returns the process exit code: 0, `ApfelExitCodes.noCode` when
 /// `codeOnly` found no fenced block, or `ApfelExitCodes.incomplete` when
-/// `requireComplete` saw a length finish (#484).
-func singlePrompt(_ prompt: String, systemPrompt: String?, stream: Bool, options: SessionOptions = .defaults, mcpManager: MCPManager? = nil, codeOnly: Bool = false, requireComplete: Bool = false, images: [PromptImage] = []) async throws -> Int32 {
+/// `requireComplete` saw a length finish (#484). A matched `--stop`
+/// delimiter is a `stop` finish, so it is complete (#483).
+func singlePrompt(_ prompt: String, systemPrompt: String?, stream: Bool, options: SessionOptions = .defaults, mcpManager: MCPManager? = nil, codeOnly: Bool = false, requireComplete: Bool = false, images: [PromptImage] = [], stopSequences: [String] = []) async throws -> Int32 {
     let mcpTools = await mcpManager?.allTools() ?? []
     let hasMCPTools = !mcpTools.isEmpty
 
@@ -83,7 +84,8 @@ func singlePrompt(_ prompt: String, systemPrompt: String?, stream: Bool, options
     let result = try await processPrompt(
         prompt: finalPrompt, pieces: pieces, systemPrompt: systemPrompt, session: session,
         options: options, genOpts: genOpts, stream: stream,
-        printDelta: outputFormat == .plain && !codeOnly, mcpManager: mcpManager, hasMCPTools: hasMCPTools)
+        printDelta: outputFormat == .plain && !codeOnly, mcpManager: mcpManager, hasMCPTools: hasMCPTools,
+        stopSequences: stopSequences)
     return emitOneShotResult(
         result, stream: stream, hasMCPTools: hasMCPTools,
         codeOnly: codeOnly, requireComplete: requireComplete,
@@ -114,7 +116,8 @@ func emitOneShotResult(
     // estimate: report it as unknown rather than as fact (PR #551 review).
     let reported = CompletionPolicy.reportedFinishReason(
         result.finishReason, truncation: result.truncation,
-        finishSignalExact: unknownFinishNote == nil)
+        finishSignalExact: unknownFinishNote == nil,
+        stopMatched: result.matchedStop != nil)
     let decision = reported.map {
         CompletionPolicy.decide(finishReason: $0, requireComplete: requireComplete)
     } ?? .complete
@@ -241,7 +244,8 @@ func messagesPrompt(
     options: SessionOptions = .defaults,
     mcpManager: MCPManager? = nil,
     codeOnly: Bool = false,
-    requireComplete: Bool = false
+    requireComplete: Bool = false,
+    stopSequences: [String] = []
 ) async throws -> Int32 {
     var messages = try MessagesInput.decode(messagesJSON)
     if let sys = systemPrompt {
@@ -278,7 +282,8 @@ func messagesPrompt(
     let result = try await processPrompt(
         prompt: finalPrompt, pieces: finalPieces, systemPrompt: systemPrompt, session: session,
         options: options, genOpts: genOpts, stream: stream,
-        printDelta: outputFormat == .plain && !codeOnly, mcpManager: mcpManager, hasMCPTools: hasMCPTools)
+        printDelta: outputFormat == .plain && !codeOnly, mcpManager: mcpManager, hasMCPTools: hasMCPTools,
+        stopSequences: stopSequences)
     return emitOneShotResult(
         result, stream: stream, hasMCPTools: hasMCPTools,
         codeOnly: codeOnly, requireComplete: requireComplete,

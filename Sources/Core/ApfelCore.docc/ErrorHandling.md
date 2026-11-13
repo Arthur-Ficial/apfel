@@ -11,5 +11,6 @@ For MCP and request validation, use:
 - ``MCPError``
 - ``ChatRequestValidationFailure``
 - ``UnsupportedChatParameter``
+- ``StopSequenceFailure``
 
 These types are designed to give downstream callers stable messages without forcing them to parse localized or framework-specific strings.

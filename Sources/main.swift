@@ -451,7 +451,7 @@ do {
                 messagesJSON: messagesJSON, systemPrompt: parsed.systemPrompt,
                 stream: true, schemaJSON: parsed.schemaJSON, schemaName: parsed.schemaName,
                 options: sessionOpts, mcpManager: mcpManager,
-                requireComplete: parsed.requireComplete)
+                requireComplete: parsed.requireComplete, stopSequences: parsed.stopSequences)
             if status != 0 {
                 await shutdownMCP()
                 exit(status)
@@ -462,7 +462,7 @@ do {
                 await shutdownMCP()
                 exit(exitUsageError)
             }
-            let status = try await singlePrompt(prompt, systemPrompt: parsed.systemPrompt, stream: true, options: sessionOpts, mcpManager: mcpManager, requireComplete: parsed.requireComplete, images: promptImages)
+            let status = try await singlePrompt(prompt, systemPrompt: parsed.systemPrompt, stream: true, options: sessionOpts, mcpManager: mcpManager, requireComplete: parsed.requireComplete, images: promptImages, stopSequences: parsed.stopSequences)
             if status != 0 {
                 await shutdownMCP()
                 exit(status)
@@ -482,7 +482,7 @@ do {
                 messagesJSON: messagesJSON, systemPrompt: effectiveSystemPrompt,
                 stream: false, schemaJSON: parsed.schemaJSON, schemaName: parsed.schemaName,
                 options: sessionOpts, mcpManager: mcpManager, codeOnly: parsed.codeOnly,
-                requireComplete: parsed.requireComplete)
+                requireComplete: parsed.requireComplete, stopSequences: parsed.stopSequences)
             if status != 0 {
                 await shutdownMCP()
                 exit(status)
@@ -501,7 +501,7 @@ do {
         } else {
             // The bare-pipe case (`echo hi | apfel`) streams to preserve its
             // historical output behavior; an explicit prompt does not (#222).
-            let status = try await singlePrompt(prompt, systemPrompt: effectiveSystemPrompt, stream: noArgsPipe, options: sessionOpts, mcpManager: mcpManager, codeOnly: parsed.codeOnly, requireComplete: parsed.requireComplete, images: promptImages)
+            let status = try await singlePrompt(prompt, systemPrompt: effectiveSystemPrompt, stream: noArgsPipe, options: sessionOpts, mcpManager: mcpManager, codeOnly: parsed.codeOnly, requireComplete: parsed.requireComplete, images: promptImages, stopSequences: parsed.stopSequences)
             if status != 0 {
                 await shutdownMCP()
                 exit(status)

@@ -519,9 +519,9 @@ def test_error_unsupported_logprobs_schema():
     assert_invalid_request(status, data, "'logprobs'")
 
 
-def test_error_unsupported_stop_schema():
-    """stop is rejected explicitly."""
-    status, data = chat([{"role": "user", "content": "Hello."}], stop=["END"])
+def test_error_invalid_stop_schema():
+    """stop is supported since #483; an invalid value is still an explicit 400."""
+    status, data = chat([{"role": "user", "content": "Hello."}], stop=[""])
     assert_invalid_request(status, data, "'stop'")
 
 
