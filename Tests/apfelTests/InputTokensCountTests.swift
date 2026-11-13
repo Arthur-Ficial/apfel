@@ -316,14 +316,20 @@ func runInputTokensCountTests() {
         try assertNil(q.responseFormat)
     }
 
-    testAsync("prepared input: function tools become native tool definitions in instructions") {
+    testAsync("prepared input: function tools are rendered as instruction text, not native definitions (#555)") {
         let tool = OpenAITool(type: "function", function: OpenAIFunction(
             name: "add", description: "Add numbers",
             parameters: RawJSON(rawValue: #"{"type":"object","properties":{"a":{"type":"number"}}}"#)))
         let prepared = try await ContextManager.prepareEntries(
             messages: [user("add 1 and 2")], tools: [tool], options: .defaults)
         guard case .instructions(let i)? = prepared.base.first else { throw TestFailure("no instructions") }
-        try assertEqual(i.toolDefinitions.map(\.name), ["add"])
+        // The macOS 27 runtime ignores transcript-only ToolDefinitions (#555),
+        // so the count must price the schema text the model actually reads.
+        try assertTrue(i.toolDefinitions.isEmpty, "no native definitions")
+        let text = i.segments.compactMap { seg -> String? in
+            if case .text(let t) = seg { return t.content } else { return nil }
+        }.joined()
+        try assertTrue(text.contains("Add numbers") && text.contains(#""a""#), "schema rendered as text: \(text)")
     }
 
     test("runtime input entries: a transcript without instructions gets the runtime's default slot") {

@@ -120,7 +120,7 @@ public enum ToolCallHandler {
         guard !tools.isEmpty else { return "" }
         return """
         Available function schemas:
-        \(serializedToolSchemas(tools))
+        \(serializedToolSchemas(tools, compact: true))
         """
     }
 
@@ -362,11 +362,14 @@ public enum ToolCallHandler {
         return String(data: out, encoding: .utf8)
     }
 
-    private static func serializedToolSchemas(_ tools: [ToolDef]) -> String {
+    /// - Parameter compact: one line without indentation. The schema prompt
+    ///   that every server request carries uses it (#555): indentation is pure
+    ///   token cost in a small context window.
+    private static func serializedToolSchemas(_ tools: [ToolDef], compact: Bool = false) -> String {
         let schemaObjects = tools.map { toolSchemaObject(for: $0) }
         guard let data = try? JSONSerialization.data(
             withJSONObject: schemaObjects,
-            options: [.prettyPrinted, .sortedKeys]
+            options: compact ? [.sortedKeys, .withoutEscapingSlashes] : [.prettyPrinted, .sortedKeys]
         ),
         let string = String(data: data, encoding: .utf8) else {
             return "[]"

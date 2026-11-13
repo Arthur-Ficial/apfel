@@ -634,6 +634,15 @@ func runToolCallHandlerTests() {
         try assertNotNil(first["parameters"])
     }
 
+    test("buildToolSchemaPrompt renders compact JSON: no indentation spent in the window") {
+        let tools = [ToolDef(name: "add", description: "Add numbers",
+                             parametersJSON: #"{"type":"object","properties":{"a":{"type":"integer"}}}"#)]
+        let prompt = ToolCallHandler.buildToolSchemaPrompt(tools: tools)
+        let lines = prompt.split(separator: "\n")
+        try assertEqual(lines.count, 2, "header line + one compact JSON line: \(prompt)")
+        try assertTrue(!prompt.contains("  "), "no indentation: \(prompt)")
+    }
+
     // MARK: - ToolLogEntry
 
     test("ToolLogEntry stores tool execution result") {
