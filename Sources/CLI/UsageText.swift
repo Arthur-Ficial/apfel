@@ -41,6 +41,8 @@ public enum UsageText {
               --messages <path|->   One-shot multi-turn: OpenAI messages JSON from file or stdin
               --code                Print only the code: first fenced block, or the bare
                                     response when unfenced. Exit 7 on an empty response
+              --require-complete    Exit 8 if truncated (finish_reason=length);
+                                    no stdout unless streaming
               --temperature <n>     Sampling temperature (e.g., 0.7); 0 = deterministic
               --top-p <n>           Nucleus sampling threshold in (0, 1] (e.g., 0.9)
               --seed <n>            Random seed for reproducible output

@@ -7,6 +7,17 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `--require-complete`: scripts can now tell a finished response from a truncated one. When generation ends with `finish_reason=length` (the `--max-tokens` cap or the context window running out mid-generation), apfel writes nothing to stdout for buffered output (plain, `-o json`, `--code`, `--messages`) and exits with the new exit code 8; with `--stream` the already printed tokens stay and the exit code is the contract. `--quiet` does not change it. Combining it with `--chat`, `--serve`, `--count-tokens`, `--schema` or MCP tools is a usage error (exit 2), because those paths report no finish reason apfel could check. Default behavior is unchanged: without the flag a truncated response is printed with a stderr warning and exit 0. On macOS older than 26.4 an explicit output cap (`--max-tokens` / `APFEL_MAX_TOKENS`) cannot be detected exactly (no on-device tokenizer API, token counts are estimated), so `--require-complete` with such a cap is refused before generating (exit 2, the message names the macOS version and the way out: drop `--max-tokens` or update macOS); without an explicit cap it works on every macOS 26 and 27, because a context-window cut-off is an exact signal. Completion means the engine stopped on its own, not that the answer is correct (#484).
+- The CLI `-o json` envelope now carries `finish_reason` (`"stop"` or `"length"`) for single prompts, `--stream`, `--messages` and `--code`; `content` is unchanged and `--schema` output omits the key. With an explicit `--max-tokens` cap on macOS older than 26.4 the key is also omitted, with a stderr note: there the stop/length decision is only a chars/4 estimate (a cut-off answer read as `stop` on macOS 26.1), and apfel reports unknown instead of a guess; a context-window cut-off is still reported as `length` (#484).
+
+### Fixed
+
+- The man page described the `-o json` envelope as having `usage` and `finish_reason` keys; it now lists the real keys (`model`, `content`, `finish_reason`, `metadata`) (#484).
+- `--code` no longer exits 0 with empty stdout when the extracted code block is empty. A capped run (`--code --max-tokens 4`) often produced only the opening fence, and the empty block was printed as success (`"content": ""` with `-o json`). Empty extracted code now exits 7 (no code) like an empty response, with a stderr message (#484).
+- The truncation warning named the context window even when an explicit `--max-tokens` cap was hit and told the user to pass `--max-tokens`. It now says the `--max-tokens N` cap was reached, and mentions the context window only when the context window was the cause; the `--require-complete` error names the cause the same way (#484).
+
 ## [1.17.1] - 2026-11-11
 
 ### Changed

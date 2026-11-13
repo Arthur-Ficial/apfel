@@ -29,6 +29,7 @@ let exitGuardrail: Int32 = ApfelExitCodes.guardrail
 let exitContextOverflow: Int32 = ApfelExitCodes.contextOverflow
 let exitModelUnavailable: Int32 = ApfelExitCodes.modelUnavailable
 let exitRateLimited: Int32 = ApfelExitCodes.rateLimited
+let exitIncomplete: Int32 = ApfelExitCodes.incomplete
 
 /// Map an ApfelError to the appropriate exit code.
 /// Thin wrapper around ApfelExitCodes.code(for:) (see Sources/CLI/ExitCodes.swift)
@@ -360,6 +361,20 @@ default:
     }
 }
 
+// --require-complete with an explicit output cap needs an exact finish
+// signal; refuse before generating where this Mac only estimates tokens
+// (PR #551 review). Capability via the #315 TokenCountFallback plumbing.
+if parsed.requireComplete {
+    if let refusal = CompletionPolicy.preflightRefusal(
+        requireComplete: true,
+        maxTokens: parsed.maxTokens,
+        tokenCountFallback: await TokenCounter.shared.tokenCountFallback
+    ) {
+        printError(refusal)
+        exit(CompletionPolicy.preflightExitCode)
+    }
+}
+
 // Initialize MCP servers if any.
 var mcpManager: MCPManager?
 if !parsed.mcpServerPaths.isEmpty {
@@ -432,17 +447,26 @@ do {
     case .stream:
         if let messagesJSON {
             // --messages --stream: stream the next assistant turn (#363).
-            try await messagesPrompt(
+            let status = try await messagesPrompt(
                 messagesJSON: messagesJSON, systemPrompt: parsed.systemPrompt,
                 stream: true, schemaJSON: parsed.schemaJSON, schemaName: parsed.schemaName,
-                options: sessionOpts, mcpManager: mcpManager)
+                options: sessionOpts, mcpManager: mcpManager,
+                requireComplete: parsed.requireComplete)
+            if status != 0 {
+                await shutdownMCP()
+                exit(status)
+            }
         } else {
             guard !prompt.isEmpty else {
                 printError("no prompt provided")
                 await shutdownMCP()
                 exit(exitUsageError)
             }
-            try await singlePrompt(prompt, systemPrompt: parsed.systemPrompt, stream: true, options: sessionOpts, mcpManager: mcpManager, images: promptImages)
+            let status = try await singlePrompt(prompt, systemPrompt: parsed.systemPrompt, stream: true, options: sessionOpts, mcpManager: mcpManager, requireComplete: parsed.requireComplete, images: promptImages)
+            if status != 0 {
+                await shutdownMCP()
+                exit(status)
+            }
         }
 
     case .single:
@@ -457,7 +481,8 @@ do {
             let status = try await messagesPrompt(
                 messagesJSON: messagesJSON, systemPrompt: effectiveSystemPrompt,
                 stream: false, schemaJSON: parsed.schemaJSON, schemaName: parsed.schemaName,
-                options: sessionOpts, mcpManager: mcpManager, codeOnly: parsed.codeOnly)
+                options: sessionOpts, mcpManager: mcpManager, codeOnly: parsed.codeOnly,
+                requireComplete: parsed.requireComplete)
             if status != 0 {
                 await shutdownMCP()
                 exit(status)
@@ -476,7 +501,7 @@ do {
         } else {
             // The bare-pipe case (`echo hi | apfel`) streams to preserve its
             // historical output behavior; an explicit prompt does not (#222).
-            let status = try await singlePrompt(prompt, systemPrompt: effectiveSystemPrompt, stream: noArgsPipe, options: sessionOpts, mcpManager: mcpManager, codeOnly: parsed.codeOnly, images: promptImages)
+            let status = try await singlePrompt(prompt, systemPrompt: effectiveSystemPrompt, stream: noArgsPipe, options: sessionOpts, mcpManager: mcpManager, codeOnly: parsed.codeOnly, requireComplete: parsed.requireComplete, images: promptImages)
             if status != 0 {
                 await shutdownMCP()
                 exit(status)

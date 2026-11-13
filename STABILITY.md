@@ -18,6 +18,25 @@ These are covered by semantic versioning. Breaking changes require a major versi
 
 `ApfelEngine` is a **preview** product: it follows apfel's version numbers, but its API may change in a MINOR release until it has a shipped consumer. Pin an exact version if you depend on it. Changes are always called out in [CHANGELOG.md](CHANGELOG.md).
 
+### CLI exit-code catalogue
+
+Each code keeps its meaning for the life of the major version and is never reused for something else. New codes take the next free number. Source of truth: `Sources/CLI/ExitCodes.swift`; documented in `man apfel` (EXIT STATUS) and [docs/cli-reference.md](docs/cli-reference.md).
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | Runtime error |
+| 2 | Usage error (also: `--require-complete` with an explicit output cap on a Mac that cannot detect that cap, macOS < 26.4) |
+| 3 | Guardrail blocked / refusal |
+| 4 | Context overflow |
+| 5 | Model unavailable |
+| 6 | Rate limited / busy |
+| 7 | `--code`: no code in the response (empty response or empty code block) |
+| 8 | `--require-complete`: response ended with `finish_reason=length` |
+| 130 | Interrupted (Ctrl-C at the chat prompt) |
+
+The `finish_reason` key in the CLI `-o json` envelope is additive and stable: `"stop"` or `"length"`, omitted for `--schema` output and when apfel cannot know it: with an explicit `--max-tokens` cap on macOS older than 26.4 (no on-device tokenizer API) the stop/length decision would only be an estimate, so the key is left out and stderr says why. A missing key means "unknown", never a guess. Exit 8 reports how generation ended, not whether the answer is correct.
+
 ## What is NOT stable (may change without version bump)
 
 - **Model output quality and content.** Apple controls the on-device model. macOS updates may change generation behavior, guardrail sensitivity, supported languages, and context window size. apfel cannot control this.

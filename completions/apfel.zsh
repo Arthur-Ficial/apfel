@@ -57,6 +57,7 @@ _apfel() {
     '--schema[Constrain output to a JSON Schema file]:file:_files' \
     '--messages[One-shot multi-turn from OpenAI messages JSON]:file:_files' \
     '--code[Print only the first fenced code block of the response]' \
+    '--require-complete[Exit 8 instead of printing a truncated response]' \
     '1:command:(completions)' \
     '*:file:_files'
 }

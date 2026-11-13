@@ -27,6 +27,7 @@ OUTPUT
   -q, --quiet                             Suppress non-essential output
   --no-color                              Disable ANSI colors
   --code                                  Print only the code: first fenced block, or the bare response (exit 7 if empty)
+  --require-complete                      Exit 8 if the response was truncated (finish_reason=length); no stdout unless streaming
   --schema <path>                         Constrain output to a JSON Schema file (guaranteed valid JSON)
 
 MODEL
@@ -95,6 +96,9 @@ apfel --schema order.schema.json "Extract the order: ship two notebooks to 12 Ma
 # --code - only the code, no prose, no fences (pipe-safe)
 apfel --code "a python function that deduplicates a list" > dedupe.py
 apfel --code "shell one-liner to find the 10 largest files here" | pbcopy
+
+# --require-complete - exit 8 instead of printing a truncated response
+apfel --require-complete --code --max-tokens 128 "Write a small Python CSV reader." > reader.py
 
 # --messages - one-shot multi-turn: conversation JSON in, next assistant turn out
 apfel --messages conversation.json
@@ -227,12 +231,38 @@ apfel completions fish > ~/.config/fish/completions/apfel.fish
 |------|---------|
 | 0 | Success |
 | 1 | Runtime error |
-| 2 | Usage error (bad flags) |
+| 2 | Usage error (bad flags; also `--require-complete` with `--max-tokens` below macOS 26.4) |
 | 3 | Guardrail blocked |
 | 4 | Context overflow |
 | 5 | Model unavailable |
 | 6 | Rate limited |
+| 7 | No code in response (`--code` got an empty response or an empty code block) |
+| 8 | Incomplete response (`--require-complete` saw `finish_reason=length`) |
 | 130 | Interrupted (Ctrl-C at chat prompt) |
+
+### Requiring a complete response (`--require-complete`)
+
+By default a response that hits the token cap or the context window is still printed and apfel exits 0 with a stderr warning. Scripts that need the whole artifact (generated config, migrations, code) can opt in to a failure instead:
+
+```bash
+if result=$(apfel --require-complete --code --max-tokens 128 'Write a small Python CSV reader.'); then
+  printf '%s\n' "$result"
+fi
+```
+
+- Works with a single prompt, `--stream`, `--messages` and `--code`. Combining it with `--chat`, `--serve`, `--count-tokens`, `--schema` or MCP tools (`--mcp` / `APFEL_MCP`) is a usage error (exit 2): those paths do not report a finish reason apfel could check.
+- An explicit output cap (`--max-tokens` or `APFEL_MAX_TOKENS`) needs the on-device tokenizer API (macOS 26.4+) to be detected exactly. Below 26.4 token counts are only estimated, so `--require-complete --max-tokens N` is refused before generating (exit 2) with a message naming the macOS version. Drop `--max-tokens` or update macOS. Without an explicit cap the flag works on every macOS 26 and 27, because a context-window cut-off is reported exactly.
+- Non-streaming (including `-o json` and `--code`): a length finish writes nothing to stdout and exits 8. `--quiet` does not change the exit code.
+- `--stream`: tokens already printed cannot be taken back; the exit code 8 is the contract.
+- `-o json` always carries `finish_reason` (`"stop"` or `"length"`) next to `content`, with or without the flag. `--schema` output omits it, and so does a run with an explicit `--max-tokens` cap on macOS older than 26.4, where apfel can only estimate whether the cap cut the response (stderr says so). A missing key means unknown, never a guess.
+- Completion only means the engine stopped on its own. It is not a correctness check: a naturally finished answer can still be wrong or syntactically incomplete.
+
+When apfel runs inside a pipeline, the shell reports the exit status of the last command, so turn on `pipefail` to see exit 8:
+
+```bash
+set -o pipefail
+apfel --require-complete 'List ten Unix commands.' | tee commands.txt
+```
 
 ## Environment Variables
 

@@ -403,13 +403,15 @@ package func collectStream(
             completionTokens: completionTokens,
             maxTokens: options.maximumResponseTokens
         )
-        return GenerationOutcome(content: prev, finishReason: reason, usage: reported)
+        return GenerationOutcome(
+            content: prev, finishReason: reason, usage: reported,
+            truncation: TruncationCause.resolve(finishReason: reason, maxTokens: options.maximumResponseTokens))
     } catch {
         let classified = classifyModelError(error)
         switch StreamErrorResolver.resolve(prev: prev, error: classified) {
         case .truncated(let content):
             // The last snapshot's reported usage prices the truncated content.
-            return GenerationOutcome(content: content, finishReason: .length, usage: reported)
+            return GenerationOutcome(content: content, finishReason: .length, usage: reported, truncation: .contextWindow)
         case .fatal(let err):
             throw err
         }
@@ -422,10 +424,13 @@ package struct GenerationOutcome: Sendable {
     public let content: String
     public let finishReason: FinishReason
     public let usage: TokenUsage?
+    /// Why a `.length` finish happened; nil for every other finish.
+    public let truncation: TruncationCause?
 
-    public init(content: String, finishReason: FinishReason, usage: TokenUsage?) {
+    public init(content: String, finishReason: FinishReason, usage: TokenUsage?, truncation: TruncationCause? = nil) {
         self.content = content
         self.finishReason = finishReason
         self.usage = usage
+        self.truncation = truncation
     }
 }

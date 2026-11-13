@@ -249,7 +249,7 @@ Full API spec: [openai/openai-openapi](https://github.com/openai/openai-openapi)
 
 When `max_tokens` is omitted, **CLI and OpenAI-compatible server behave identically**: the value flows through as `nil` and the model uses whatever room is left in the context window. This is drop-in OpenAI semantics - no arbitrary fallback constant.
 
-The on-device context window holds input *and* output combined: **4096 tokens on macOS 26 and on M1/M2 Macs, 8192 tokens on macOS 27 with an M3 or newer chip and 12 GB+**. apfel reads the real size at runtime via `SystemLanguageModel.contextSize` - check yours with `apfel --model-info`. If generation runs into the ceiling, the response ends cleanly with `finish_reason: "length"` and the partial content is returned (server: HTTP 200; CLI: exit 0 with a stderr warning). Pass `max_tokens` explicitly when you want a tighter latency budget or a known cap for your client.
+The on-device context window holds input *and* output combined: **4096 tokens on macOS 26 and on M1/M2 Macs, 8192 tokens on macOS 27 with an M3 or newer chip and 12 GB+**. apfel reads the real size at runtime via `SystemLanguageModel.contextSize` - check yours with `apfel --model-info`. If generation runs into the ceiling, the response ends cleanly with `finish_reason: "length"` and the partial content is returned (server: HTTP 200; CLI: exit 0 with a stderr warning, or exit 8 with `--require-complete` - see [docs/cli-reference.md](docs/cli-reference.md)). Pass `max_tokens` explicitly when you want a tighter latency budget or a known cap for your client.
 
 ### Examples
 

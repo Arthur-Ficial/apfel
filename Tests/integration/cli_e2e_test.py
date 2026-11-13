@@ -1938,10 +1938,12 @@ def test_code_shell_oneliner_is_compact():
 @pytest.mark.model
 def test_code_json_envelope_has_content_and_language():
     require_model()
-    result = run_cli(
-        ["--code", "-o", "json", "write a python function that returns 42"],
-        timeout=120,
-    )
+    from conftest import run_cli_rotating_seeds
+    # Seed-rotated: macOS 26.1's guardrail blocks this prompt intermittently;
+    # the property under test is the envelope, not one seed's guardrail luck.
+    result = run_cli_rotating_seeds(
+        run_cli, ["--code", "-o", "json", "Write a Python function that returns the number 42."],
+        timeout=120)
     assert result.returncode == 0, f"stderr: {result.stderr}"
     payload = json.loads(result.stdout)
     assert payload["model"] == "apple-foundationmodel"
@@ -2082,3 +2084,241 @@ def test_context_overflow_exits_4_and_names_the_counts_on_macos_27():
         )
     else:
         assert "Input exceeds the model's context window." in result.stderr, result.stderr
+
+
+# ============================================================================
+# --require-complete + finish_reason in the JSON envelope (#484)
+#
+# The deterministic decision table (stop / explicit cap / context exhaustion)
+# is locked by RequireCompleteTests on injected outcomes; these prove the
+# wiring end to end with a deliberately capped live request. A 4-token cap on
+# a counting prompt always ends with finish_reason=length; assertions are on
+# exit codes, stdout emptiness and the finish_reason field, never on phrasing.
+# ============================================================================
+
+CAPPED_PROMPT = "Count from 1 to 200, separated by commas."
+SHORT_PROMPT = "Reply with exactly one word: ok"
+INCOMPLETE_EXIT = 8
+USAGE_EXIT = 2
+
+_EXACT_FINISH_SIGNAL = None
+
+
+def exact_finish_signal():
+    """Whether this Mac can tell an explicit --max-tokens cap from a natural
+    stop (PR #551 review). Read from the binary's own #315 capability report:
+    below macOS 26.4 there is no on-device tokenizer API, token counts are the
+    chars/4 estimate, and `--count-tokens` says so naming macOS 26.4. Not an
+    OS-version guess in the test: the same plumbing the CLI decides with."""
+    global _EXACT_FINISH_SIGNAL
+    if _EXACT_FINISH_SIGNAL is None:
+        r = run_cli(["--count-tokens", "-o", "json", "hello"], timeout=30)
+        assert r.returncode == 0, r.stderr
+        _EXACT_FINISH_SIGNAL = "macOS 26.4" not in r.stderr
+    return _EXACT_FINISH_SIGNAL
+
+
+def assert_capped_require_complete(result, stream=False):
+    """Capped --require-complete run: exit 8 where the cap is detectable,
+    a fail-fast refusal (exit 2, nothing generated) where it is not."""
+    if exact_finish_signal():
+        assert result.returncode == INCOMPLETE_EXIT, f"stderr: {result.stderr}"
+        assert "finish_reason=length" in result.stderr, result.stderr
+        if not stream:
+            assert result.stdout == "", f"incomplete output must not reach stdout: {result.stdout!r}"
+    else:
+        assert result.returncode == USAGE_EXIT, f"stderr: {result.stderr}"
+        assert result.stdout == "", f"the refusal must happen before generating: {result.stdout!r}"
+        assert "--require-complete" in result.stderr, result.stderr
+        assert "--max-tokens" in result.stderr, result.stderr
+        assert "macOS 26.4" in result.stderr, result.stderr
+
+
+def test_require_complete_chat_conflict_rejected():
+    result = run_cli(["--require-complete", "--chat"], timeout=30)
+    assert result.returncode == 2
+    assert "--require-complete" in result.stderr
+
+
+def test_require_complete_serve_conflict_rejected():
+    result = run_cli(["--require-complete", "--serve"], timeout=30)
+    assert result.returncode == 2
+    assert "--require-complete" in result.stderr
+
+
+def test_require_complete_schema_conflict_rejected(tmp_path):
+    schema = tmp_path / "s.json"
+    schema.write_text('{"type":"object","properties":{"a":{"type":"string"}}}')
+    result = run_cli(["--require-complete", "--schema", str(schema), "hi"], timeout=30)
+    assert result.returncode == 2
+    assert "--require-complete" in result.stderr
+    assert "--schema" in result.stderr
+
+
+def test_require_complete_mcp_conflict_rejected():
+    result = run_cli(["--require-complete", "--mcp", "mcp/calculator/server.py", "hi"], timeout=30)
+    assert result.returncode == 2
+    assert "--require-complete" in result.stderr
+    assert "MCP" in result.stderr
+
+
+def test_require_complete_in_help_and_completions():
+    result = run_cli(["--help"], timeout=30)
+    assert result.returncode == 0
+    assert "--require-complete" in result.stdout
+    for shell, token in (("bash", "--require-complete"), ("zsh", "--require-complete"),
+                         ("fish", "-l require-complete")):
+        comp = run_cli(["completions", shell], timeout=30)
+        assert comp.returncode == 0
+        assert token in comp.stdout, f"{shell} completions missing --require-complete"
+
+
+@pytest.mark.model
+def test_require_complete_capped_single_prints_nothing_and_exits_8():
+    require_model()
+    result = run_cli(["--require-complete", "--max-tokens", "4", CAPPED_PROMPT], timeout=120)
+    assert_capped_require_complete(result)
+
+
+@pytest.mark.model
+def test_require_complete_capped_stream_exits_8():
+    """Streaming cannot retract emitted bytes; the nonzero exit is the contract."""
+    require_model()
+    result = run_cli(["--stream", "--require-complete", "--max-tokens", "4", CAPPED_PROMPT], timeout=120)
+    assert_capped_require_complete(result, stream=True)
+
+
+@pytest.mark.model
+def test_require_complete_capped_json_prints_nothing_and_exits_8():
+    require_model()
+    result = run_cli(["--require-complete", "-o", "json", "--max-tokens", "4", CAPPED_PROMPT], timeout=120)
+    assert_capped_require_complete(result)
+
+
+@pytest.mark.model
+def test_require_complete_capped_code_prints_nothing_and_exits_8():
+    require_model()
+    result = run_cli(
+        ["--require-complete", "--code", "--max-tokens", "4", "Write a small Python CSV reader."],
+        timeout=120,
+    )
+    assert_capped_require_complete(result)
+
+
+@pytest.mark.model
+def test_require_complete_capped_messages_exits_8(tmp_path):
+    require_model()
+    conv = tmp_path / "conv.json"
+    conv.write_text(json.dumps([{"role": "user", "content": CAPPED_PROMPT}]))
+    result = run_cli(["--require-complete", "--messages", str(conv), "--max-tokens", "4"], timeout=120)
+    assert_capped_require_complete(result)
+
+
+@pytest.mark.model
+def test_require_complete_quiet_cannot_suppress_the_failure_exit():
+    require_model()
+    result = run_cli(["-q", "--require-complete", "--max-tokens", "4", CAPPED_PROMPT], timeout=120)
+    assert_capped_require_complete(result)
+
+
+@pytest.mark.model
+def test_default_capped_output_still_exits_0_with_partial_text():
+    """#128/#130 default preserved: without the flag a capped run prints the
+    partial text and exits 0 (the stderr warning stays). Where the cap cannot
+    be detected (no tokenizer API) the warning says the finish is unknown."""
+    require_model()
+    result = run_cli(["--max-tokens", "4", CAPPED_PROMPT], timeout=120)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    assert result.stdout.strip(), "partial output must still be printed by default"
+    if exact_finish_signal():
+        assert "finish_reason=length" in result.stderr
+    else:
+        assert "macOS 26.4" in result.stderr and "--max-tokens 4" in result.stderr, result.stderr
+
+
+@pytest.mark.model
+def test_json_envelope_reports_finish_reason_length_when_capped():
+    require_model()
+    result = run_cli(["-o", "json", "--max-tokens", "4", CAPPED_PROMPT], timeout=120)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    payload = json.loads(result.stdout)
+    if exact_finish_signal():
+        assert payload["finish_reason"] == "length"
+    else:
+        # Unknown is omitted, never reported as a guessed stop/length.
+        assert "finish_reason" not in payload, payload
+        assert "macOS 26.4" in result.stderr, result.stderr
+    assert isinstance(payload["content"], str) and payload["content"]
+
+
+@pytest.mark.model
+def test_require_complete_complete_json_reports_stop_and_exits_0():
+    require_model()
+    result = run_cli(["--require-complete", "-o", "json", SHORT_PROMPT], timeout=120)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    payload = json.loads(result.stdout)
+    assert payload["finish_reason"] == "stop"
+    assert payload["content"].strip()
+
+
+@pytest.mark.model
+def test_require_complete_code_json_reports_stop():
+    require_model()
+    from conftest import run_cli_rotating_seeds
+    # Seed-rotated: macOS 26.1's guardrail blocks this prompt intermittently;
+    # the property under test is the envelope, not one seed's guardrail luck.
+    result = run_cli_rotating_seeds(
+        run_cli, ["--require-complete", "--code", "-o", "json", "Write a Python function that returns the number 42."],
+        timeout=120)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    payload = json.loads(result.stdout)
+    assert payload["finish_reason"] == "stop"
+
+
+@pytest.mark.model
+def test_require_complete_max_tokens_env_is_an_explicit_cap_too():
+    """APFEL_MAX_TOKENS is the same explicit cap as --max-tokens."""
+    require_model()
+    result = run_cli(["--require-complete", CAPPED_PROMPT],
+                     env={"APFEL_MAX_TOKENS": "4"}, timeout=120)
+    assert_capped_require_complete(result)
+
+
+@pytest.mark.model
+def test_require_complete_without_max_tokens_works_on_every_mac():
+    """Context-window truncation is an exact signal on every OS, so the flag
+    without an explicit cap is never refused (PR #551 review)."""
+    require_model()
+    result = run_cli(["--require-complete", SHORT_PROMPT], timeout=120)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    assert result.stdout.strip()
+    assert "macOS 26.4" not in result.stderr
+
+
+@pytest.mark.model
+def test_capped_warning_names_the_max_tokens_cap_not_the_context_window():
+    """With an explicit --max-tokens the default truncation warning says the
+    cap was hit; the context window is mentioned only when it was the cause."""
+    require_model()
+    result = run_cli(["--max-tokens", "4", CAPPED_PROMPT], timeout=120)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    assert "context window" not in result.stderr, result.stderr
+    if exact_finish_signal():
+        assert "--max-tokens 4" in result.stderr, result.stderr
+
+
+@pytest.mark.model
+@pytest.mark.parametrize("cap", ["1", "2", "3", "4"])
+def test_code_never_exits_0_with_empty_code(cap):
+    """A capped --code run (often only the opening fence) must never be a
+    silent empty success: empty extracted code is exit 7 (noCode)."""
+    require_model()
+    result = run_cli(["-o", "json", "--code", "--max-tokens", cap,
+                      "Write a small Python CSV reader."], timeout=120)
+    if result.returncode == 0:
+        payload = json.loads(result.stdout)
+        assert payload["content"].strip(), f"exit 0 with empty code: {result.stdout!r}"
+    else:
+        assert result.returncode == 7, f"stderr: {result.stderr}"
+        assert result.stdout == ""
+        assert "no code" in result.stderr, result.stderr

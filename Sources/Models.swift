@@ -13,7 +13,15 @@ struct ApfelResponse: Encodable {
     /// `--code` only (#373): first word of the fence info string, lowercased.
     /// Model-reported and advisory; omitted from JSON when nil.
     var language: String? = nil
+    /// OpenAI-style finish reason ("stop", "length", ...) of the generation
+    /// (#484). Additive; omitted when no engine outcome is available
+    /// (`--schema`). Never changes the meaning or encoding of `content`.
+    var finishReason: String? = nil
     let metadata: Metadata
+    enum CodingKeys: String, CodingKey {
+        case model, content, language, metadata
+        case finishReason = "finish_reason"
+    }
     struct Metadata: Encodable {
         let onDevice: Bool
         let version: String

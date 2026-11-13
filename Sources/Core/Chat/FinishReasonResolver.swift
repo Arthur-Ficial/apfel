@@ -45,3 +45,22 @@ public enum FinishReasonResolver {
         return .stop
     }
 }
+
+/// Why a response ended with `.length` (PR #551 review): the explicit output
+/// cap or the context window. Lets the CLI name the real cause instead of
+/// always blaming the context window. Package-internal: the OpenAI wire value
+/// stays `length` either way.
+package enum TruncationCause: Sendable, Equatable {
+    /// The explicit `maximumResponseTokens` cap (`--max-tokens N`) was reached.
+    case tokenCap(Int)
+    /// The context window ran out while generating.
+    case contextWindow
+
+    /// Cause for a stream that ended without an error: only the explicit cap
+    /// can produce `.length` there (context exhaustion arrives as a thrown
+    /// error and is reported as `.contextWindow` by the caller).
+    package static func resolve(finishReason: FinishReason, maxTokens: Int?) -> TruncationCause? {
+        guard finishReason == .length, let maxTokens else { return nil }
+        return .tokenCap(maxTokens)
+    }
+}

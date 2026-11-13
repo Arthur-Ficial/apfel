@@ -168,6 +168,45 @@ or
 .BR \-\-schema .
 The crop shapes the format, not the correctness, of the answer.
 .TP
+.B \-\-require\-complete
+Treat a truncated response (finish_reason=length: the
+.B \-\-max\-tokens
+cap or the context window ran out mid-generation) as a failure and
+exit
+.BR 8 .
+For buffered output (plain, JSON envelope,
+.BR \-\-code )
+nothing is written to stdout; with
+.B \-\-stream
+the tokens already printed stay, and the exit code is the contract.
+Without the flag a truncated response is printed and apfel exits 0
+with a stderr warning.
+.B \-\-quiet
+does not change the exit code. Works with a single prompt,
+.BR \-\-stream ,
+.BR \-\-messages ,
+and
+.BR \-\-code ;
+cannot be combined with
+.BR \-\-chat ,
+.BR \-\-serve ,
+.BR \-\-count\-tokens ,
+.BR \-\-schema ,
+or MCP tools. With an explicit
+.B \-\-max\-tokens
+(or
+.BR APFEL_MAX_TOKENS )
+it needs the on-device tokenizer API (macOS 26.4+) to detect the cap
+exactly; on older macOS that combination is refused before generating
+with exit
+.BR 2 .
+Drop
+.B \-\-max\-tokens
+or update macOS. Inside a pipeline use
+.B set \-o pipefail
+to see the status. This reports how generation ended, not whether the
+answer is correct.
+.TP
 .BR \-o ", " \-\-output " " \fIformat\fR
 Output format.
 .I format
@@ -178,11 +217,23 @@ is
 In
 .B json
 mode, a single JSON object with
+.BR model ,
 .BR content ,
-.BR usage ,
+.BR finish_reason ,
 and
-.B finish_reason
+.B metadata
 keys is written to stdout.
+.B finish_reason
+is
+.B stop
+or
+.BR length ;
+it is omitted for
+.B \-\-schema
+output, and with an explicit
+.B \-\-max\-tokens
+cap on macOS older than 26.4, where whether the cap cut the response
+can only be estimated (stderr says so). A missing key means unknown.
 .TP
 .BR \-q ", " \-\-quiet
 Suppress non-essential output such as banners and chat headers.
@@ -466,6 +517,10 @@ failures.
 .TP
 .B 2
 Usage error. Invalid flags, conflicting modes, or malformed values.
+Also
+.B \-\-require\-complete
+with an explicit output cap on macOS older than 26.4, where the cap
+cannot be detected.
 .TP
 .B 3
 Guardrail blocked. The input or output violated the active content
@@ -488,7 +543,15 @@ or a concurrent session lock is held.
 .B 7
 No code in response. With
 .BR \-\-code ,
-the model returned an empty response, so there is no code to print.
+the model returned an empty response or an empty code block (for
+example only the opening fence of a capped run), so there is no code
+to print.
+.TP
+.B 8
+Incomplete response. With
+.BR \-\-require\-complete ,
+generation ended with finish_reason=length (token cap or context
+window).
 .TP
 .B 130
 Interrupted. The user pressed Ctrl-C (SIGINT) at the interactive chat

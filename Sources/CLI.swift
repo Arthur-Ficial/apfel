@@ -35,11 +35,10 @@ func printHeader() {
 /// Behavior depends on output format:
 /// - **plain**: Print response directly. If streaming, print tokens as they arrive.
 /// - **json**: Buffer the complete response, then emit a single JSON object.
-/// Returns the process exit code: 0, or `ApfelExitCodes.noCode` when
-/// `codeOnly` found no fenced block. Discardable because the `--stream` call
-/// sites cannot set `codeOnly` (rejected at parse time) and always get 0.
-@discardableResult
-func singlePrompt(_ prompt: String, systemPrompt: String?, stream: Bool, options: SessionOptions = .defaults, mcpManager: MCPManager? = nil, codeOnly: Bool = false, images: [PromptImage] = []) async throws -> Int32 {
+/// Returns the process exit code: 0, `ApfelExitCodes.noCode` when
+/// `codeOnly` found no fenced block, or `ApfelExitCodes.incomplete` when
+/// `requireComplete` saw a length finish (#484).
+func singlePrompt(_ prompt: String, systemPrompt: String?, stream: Bool, options: SessionOptions = .defaults, mcpManager: MCPManager? = nil, codeOnly: Bool = false, requireComplete: Bool = false, images: [PromptImage] = []) async throws -> Int32 {
     let mcpTools = await mcpManager?.allTools() ?? []
     let hasMCPTools = !mcpTools.isEmpty
 
@@ -85,37 +84,86 @@ func singlePrompt(_ prompt: String, systemPrompt: String?, stream: Bool, options
         prompt: finalPrompt, pieces: pieces, systemPrompt: systemPrompt, session: session,
         options: options, genOpts: genOpts, stream: stream,
         printDelta: outputFormat == .plain && !codeOnly, mcpManager: mcpManager, hasMCPTools: hasMCPTools)
+    return emitOneShotResult(
+        result, stream: stream, hasMCPTools: hasMCPTools,
+        codeOnly: codeOnly, requireComplete: requireComplete,
+        unknownFinishNote: CompletionPolicy.unknownFinishNote(
+            maxTokens: options.maxTokens,
+            tokenCountFallback: await TokenCounter.shared.tokenCountFallback))
+}
+
+/// Write a finished one-shot generation (single prompt or `--messages`) to
+/// stdout and return the process exit code. Shared so plain output, the JSON
+/// envelope and `--code` agree on status (#484).
+///
+/// `--require-complete` is checked before any buffered stdout write: a length
+/// finish writes nothing more and returns `ApfelExitCodes.incomplete` (8).
+/// Live-streamed deltas are already on stdout and cannot be retracted; the
+/// nonzero exit is the contract there.
+func emitOneShotResult(
+    _ result: ProcessPromptResult,
+    stream: Bool,
+    hasMCPTools: Bool,
+    codeOnly: Bool,
+    requireComplete: Bool,
+    unknownFinishNote: String? = nil
+) -> Int32 {
     printToolLog(result.toolLog)
+    let streamedLive = stream && outputFormat == .plain && !codeOnly && !hasMCPTools
+    // Below macOS 26.4 with an explicit cap the stop/length decision is an
+    // estimate: report it as unknown rather than as fact (PR #551 review).
+    let reported = CompletionPolicy.reportedFinishReason(
+        result.finishReason, truncation: result.truncation,
+        finishSignalExact: unknownFinishNote == nil)
+    let decision = reported.map {
+        CompletionPolicy.decide(finishReason: $0, requireComplete: requireComplete)
+    } ?? .complete
+    if let forced = decision.exitCode {
+        if streamedLive {
+            print()          // terminate the partial streamed line
+            fflush(stdout)   // ...before the stderr error, so they don't interleave
+        }
+        printError(CompletionPolicy.incompleteMessage(cause: result.truncation))
+        return forced
+    }
+    let finishReason = reported?.openAIValue
+    if reported == nil, let unknownFinishNote, !quietMode {
+        printStderr("\(styledErr("apfel:", .yellow)) \(unknownFinishNote)")
+    }
 
     if codeOnly {
-        let exitCode = printCroppedResponse(result.content)
-        printLengthWarningIfNeeded(result.finishReason)
+        let exitCode = printCroppedResponse(result.content, finishReason: finishReason)
+        if decision.warnsTruncation { printLengthWarning(cause: result.truncation) }
         return exitCode
     }
 
     switch outputFormat {
     case .plain:
-        if hasMCPTools || !stream { print(result.content) } else { print() }
+        if streamedLive { print() } else { print(result.content) }
     case .json:
         let obj = ApfelResponse(
-            model: modelName, content: result.content,
+            model: modelName, content: result.content, finishReason: finishReason,
             metadata: .init(onDevice: true, version: version))
         print(jsonString(obj))
     }
 
-    printLengthWarningIfNeeded(result.finishReason)
+    if decision.warnsTruncation { printLengthWarning(cause: result.truncation) }
     return 0
 }
 
 /// Print the `--code` output contract (#373): the first fenced block's
 /// content (or, with no fence anywhere, the bare response — a fully steered
 /// model omits the fence and the response IS the code) to stdout, nothing
-/// else. An empty response exits `noCode` (7) so scripts can branch on
-/// "no code" vs "run failed".
-func printCroppedResponse(_ content: String) -> Int32 {
-    guard let crop = CodeCropper.crop(from: content) else {
-        printStderr("\(styledErr("apfel:", .yellow)) empty model response, no code to print")
-        return ApfelExitCodes.noCode
+/// else. Empty extracted code (empty response, empty block, or a capped run
+/// that produced only the opening fence) exits `noCode` (7) so scripts can
+/// branch on "no code" vs "run failed"; it is never a silent exit 0.
+func printCroppedResponse(_ content: String, finishReason: String? = nil) -> Int32 {
+    let resolution = CodeOutputPolicy.resolve(response: content)
+    guard case .code(let crop) = resolution else {
+        if case .noCode(let message) = resolution {
+            printStderr("\(styledErr("apfel:", .yellow)) \(message)")
+        }
+        return resolution.exitCode
     }
     switch outputFormat {
     case .plain:
@@ -125,17 +173,17 @@ func printCroppedResponse(_ content: String) -> Int32 {
     case .json:
         let obj = ApfelResponse(
             model: modelName, content: crop.code, language: crop.language,
+            finishReason: finishReason,
             metadata: .init(onDevice: true, version: version))
         print(jsonString(obj))
     }
     return 0
 }
 
-/// Shared stderr warning for responses truncated at the context window.
-func printLengthWarningIfNeeded(_ finishReason: FinishReason?) {
-    if finishReason == .length {
-        printStderr("\(styledErr("apfel:", .yellow)) response truncated at the context window (finish_reason=length). Pass --max-tokens to control the cap explicitly.")
-    }
+/// Default stderr warning for a response truncated with finish_reason=length
+/// (no `--require-complete`; output was still printed), naming the real cause.
+func printLengthWarning(cause: TruncationCause?) {
+    printStderr("\(styledErr("apfel:", .yellow)) \(CompletionPolicy.lengthWarning(cause: cause))")
 }
 
 // MARK: - Structured Single Prompt (#361)
@@ -182,8 +230,8 @@ func structuredSinglePrompt(
 /// cannot drift. Composes with `--stream` (delta printing) and `--schema`
 /// (schema-guaranteed reply to the conversation).
 /// Returns the process exit code: 0, or `ApfelExitCodes.noCode` when
-/// `codeOnly` found no fenced block (same contract as `singlePrompt`).
-@discardableResult
+/// `codeOnly` found no fenced block, or `ApfelExitCodes.incomplete` (same
+/// contract as `singlePrompt`).
 func messagesPrompt(
     messagesJSON: String,
     systemPrompt: String?,
@@ -192,7 +240,8 @@ func messagesPrompt(
     schemaName: String?,
     options: SessionOptions = .defaults,
     mcpManager: MCPManager? = nil,
-    codeOnly: Bool = false
+    codeOnly: Bool = false,
+    requireComplete: Bool = false
 ) async throws -> Int32 {
     var messages = try MessagesInput.decode(messagesJSON)
     if let sys = systemPrompt {
@@ -230,26 +279,12 @@ func messagesPrompt(
         prompt: finalPrompt, pieces: finalPieces, systemPrompt: systemPrompt, session: session,
         options: options, genOpts: genOpts, stream: stream,
         printDelta: outputFormat == .plain && !codeOnly, mcpManager: mcpManager, hasMCPTools: hasMCPTools)
-    printToolLog(result.toolLog)
-
-    if codeOnly {
-        let exitCode = printCroppedResponse(result.content)
-        printLengthWarningIfNeeded(result.finishReason)
-        return exitCode
-    }
-
-    switch outputFormat {
-    case .plain:
-        if hasMCPTools || !stream { print(result.content) } else { print() }
-    case .json:
-        let obj = ApfelResponse(
-            model: modelName, content: result.content,
-            metadata: .init(onDevice: true, version: version))
-        print(jsonString(obj))
-    }
-
-    printLengthWarningIfNeeded(result.finishReason)
-    return 0
+    return emitOneShotResult(
+        result, stream: stream, hasMCPTools: hasMCPTools,
+        codeOnly: codeOnly, requireComplete: requireComplete,
+        unknownFinishNote: CompletionPolicy.unknownFinishNote(
+            maxTokens: options.maxTokens,
+            tokenCountFallback: await TokenCounter.shared.tokenCountFallback))
 }
 
 // MARK: - Token Budget Preflight
