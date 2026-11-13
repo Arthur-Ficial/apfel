@@ -59,10 +59,6 @@ package enum ContextManager {
         }
 
         let session = makeTranscriptSession(model: makeModel(permissive: options.permissive), entries: entries)
-        // Return the entries we actually built (with native tool definitions
-        // intact) so callers can count prompt tokens accurately. Reading them
-        // back from `session.transcript` drops `Instructions.toolDefinitions`,
-        // which would undercount prompt tokens for tool-augmented requests (#176).
         return (session, prepared.finalPrompt, entries, prepared.finalPieces)
     }
 
@@ -137,20 +133,27 @@ package enum ContextManager {
             history = Array(conversation.dropLast())
         }
 
-        // Convert tools: native ToolDefinitions + text fallback for failures
-        var nativeToolDefs: [Transcript.ToolDefinition] = []
-        var fallbackTools: [ToolDef] = []
+        // All tool schemas are rendered as instruction text (#555): on macOS 27
+        // transcript-only ToolDefinitions are silently ignored when the session
+        // has no registered tools, so descriptions and parameter schemas never
+        // reach the model. Text rendering matches the CLI chat-mode pattern
+        // (#144) and keeps the token budget aligned with what the runtime sees.
+        var textToolDefs: [ToolDef] = []
         if let tools = effectiveTools, !tools.isEmpty {
-            let converted = await SchemaConverter.convert(tools: tools)
-            nativeToolDefs = converted.native
-            fallbackTools = converted.fallback
+            textToolDefs = tools.map {
+                ToolDef(
+                    name: $0.function.name,
+                    description: $0.function.description,
+                    parametersJSON: $0.function.parameters?.value
+                )
+            }
         }
 
         // Build instruction text
         let instrText = buildInstructions(
             messages: messages,
             tools: effectiveTools,
-            fallbackTools: fallbackTools,
+            textToolDefs: textToolDefs,
             jsonMode: jsonMode,
             toolChoice: toolChoice
         )
@@ -158,12 +161,12 @@ package enum ContextManager {
         // Build transcript entries
         var baseEntries: [Transcript.Entry] = []
 
-        // Instructions with native tool definitions
-        if !instrText.isEmpty || !nativeToolDefs.isEmpty {
-            let segments: [Transcript.Segment] = instrText.isEmpty ? [] : [
+        // Instructions with tool schemas as text (#555)
+        if !instrText.isEmpty {
+            let segments: [Transcript.Segment] = [
                 .text(Transcript.TextSegment(content: instrText))
             ]
-            let instr = Transcript.Instructions(segments: segments, toolDefinitions: nativeToolDefs)
+            let instr = Transcript.Instructions(segments: segments, toolDefinitions: [])
             baseEntries.append(.instructions(instr))
         }
 
@@ -191,7 +194,7 @@ package enum ContextManager {
     private static func buildInstructions(
         messages: [OpenAIMessage],
         tools: [OpenAITool]?,
-        fallbackTools: [ToolDef],
+        textToolDefs: [ToolDef],
         jsonMode: Bool,
         toolChoice: ToolChoice?
     ) -> String {
@@ -211,6 +214,14 @@ package enum ContextManager {
             parts.append("Do not call any tools. Respond with plain text only.")
         }
 
+        // Every tool as a plain-language list so the model sees descriptions
+        // and arguments (#555): the runtime ignores transcript-only
+        // ToolDefinitions. The list goes before the call format; measured on
+        // macOS 26.1, schema text after it tripped the guardrail.
+        if !textToolDefs.isEmpty {
+            parts.append(ToolCallHandler.buildToolSchemaPrompt(tools: textToolDefs))
+        }
+
         // Tool output format instructions (always needed when tools are present)
         if let tools = tools, !tools.isEmpty {
             let names = tools.map(\.function.name)
@@ -223,11 +234,6 @@ package enum ContextManager {
             default:
                 break
             }
-        }
-
-        // Text fallback for tools that failed native conversion
-        if !fallbackTools.isEmpty {
-            parts.append(ToolCallHandler.buildFallbackPrompt(tools: fallbackTools))
         }
 
         return parts.joined(separator: "\n\n")

@@ -153,10 +153,9 @@ package func transcriptEntries(_ transcript: Transcript) -> [Transcript.Entry] {
 }
 
 /// Assemble the full prompt-token accounting input from the entries
-/// ContextManager actually built (which retain native tool definitions) plus
-/// the final prompt sent via respond(). Reading the entries back from
-/// `session.transcript` instead drops `Instructions.toolDefinitions`, which
-/// undercounts prompt tokens for tool-augmented requests (#176).
+/// ContextManager actually built plus the final prompt sent via respond().
+/// Tool schemas live in instruction text segments (#555), not native
+/// ToolDefinitions, so the entries price exactly what the runtime sees.
 package func sessionInputEntries(
     builtEntries: [Transcript.Entry],
     finalPrompt: String,

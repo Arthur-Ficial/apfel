@@ -352,11 +352,12 @@ def test_tool_definitions_are_counted_not_executed():
     assert without is not None
     assert body["input_tokens"] > without["input_tokens"]
     assert set(body) == {"object", "input_tokens", "x_apfel"}
-    # The count prices the native tool definitions apfel budgets with. The
-    # macOS 27 runtime does not render transcript-only tool definitions, so
-    # for tools the count is an upper bound of the reported input, never less.
+    # Tool schemas are rendered into the instruction text the model reads
+    # (#555), so the count equals the runtime-reported input, like text does.
+    # Before #555 the count priced transcript-only definitions the macOS 27
+    # runtime ignored (count 374, reported 173).
     payload = {"model": MODEL, "input": "Add 2 and 3.", "tools": [ADD_TOOL]}
-    assert body["input_tokens"] >= _generated_input_tokens(payload)
+    assert body["input_tokens"] == _generated_input_tokens(payload)
 
 
 def _long_history(turns_needed_tokens):

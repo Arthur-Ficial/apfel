@@ -112,6 +112,72 @@ public enum ToolCallHandler {
         """
     }
 
+    /// Describe every tool to the model as a plain-language list (#555).
+    ///
+    /// The macOS 26 and 27 runtimes ignore transcript-only `ToolDefinition`s
+    /// when no tool is registered with the session, so apfel writes the tool
+    /// descriptions and argument schemas into the instructions instead. One
+    /// line per tool: `- name: description Arguments: a (number, required):
+    /// help; b (string) one of "x", "y"`. Argument schemas that are not a
+    /// plain scalar (arrays, objects, unions) are appended as compact JSON so
+    /// nothing is lost. Measured on both OSes, this list beats JSON schema
+    /// text: same argument accuracy, fewer tokens, and on macOS 26.1 it does
+    /// not trip the guardrail that JSON schema text did.
+    public static func buildToolSchemaPrompt(tools: [ToolDef]) -> String {
+        guard !tools.isEmpty else { return "" }
+        return (["Available functions:"] + tools.map(toolLine)).joined(separator: "\n")
+    }
+
+    private static func toolLine(_ tool: ToolDef) -> String {
+        var line = "- " + tool.name
+        if let description = tool.description?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !description.isEmpty {
+            line += ": " + description
+        }
+        guard let raw = tool.parametersJSON, !raw.isEmpty else { return line }
+        guard let data = raw.data(using: .utf8),
+              let schema = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return line + " Arguments schema: " + raw
+        }
+        let properties = schema["properties"] as? [String: Any] ?? [:]
+        guard !properties.isEmpty else { return line }
+        let required = Set(schema["required"] as? [String] ?? [])
+        let arguments = properties.keys.sorted().map { name in
+            argumentText(name: name, schema: properties[name] as? [String: Any] ?? [:],
+                         required: required.contains(name))
+        }
+        return line + " Arguments: " + arguments.joined(separator: "; ")
+    }
+
+    private static func argumentText(name: String, schema: [String: Any], required: Bool) -> String {
+        var labels: [String] = []
+        if let type = schema["type"] as? String { labels.append(type) }
+        if required { labels.append("required") }
+        var text = labels.isEmpty ? name : "\(name) (\(labels.joined(separator: ", ")))"
+        if let values = schema["enum"] as? [Any] {
+            text += " one of " + values.map(compactJSONFragment).joined(separator: ", ")
+        }
+        if let description = schema["description"] as? String, !description.isEmpty {
+            text += ": " + description
+        }
+        let plainKeys: Set<String> = ["type", "description", "enum"]
+        if !Set(schema.keys).isSubset(of: plainKeys) {
+            var rest = schema
+            rest.removeValue(forKey: "description")
+            text += "; schema " + compactJSONFragment(rest)
+        }
+        return text
+    }
+
+    private static func compactJSONFragment(_ value: Any) -> String {
+        guard let data = try? JSONSerialization.data(
+                withJSONObject: value, options: [.sortedKeys, .withoutEscapingSlashes, .fragmentsAllowed]),
+              let string = String(data: data, encoding: .utf8) else {
+            return String(describing: value)
+        }
+        return string
+    }
+
     // MARK: - Tool Call Detection
 
     /// Detect and parse tool calls from model output.

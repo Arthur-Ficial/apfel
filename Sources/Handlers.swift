@@ -241,9 +241,8 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
 
     let genOpts = makeGenerationOptions(sessionOpts, toolCalling: toolDirective)
     // Prompt tokens: counted up front on macOS 26; deferred on macOS 27, where
-    // the response itself reports input tokens (#510, #504). Counting uses the
-    // entries we actually built (native tool definitions intact), not the
-    // session's transcript, which drops Instructions.toolDefinitions (#176).
+    // the response itself reports input tokens (#510, #504). Tool schemas live
+    // in instruction text (#555), so the entries price what the runtime sees.
     let promptTokens = await PromptTokens.make(
         entries: sessionInputEntries(builtEntries: inputEntries, finalPrompt: finalPrompt, options: sessionOpts, finalPieces: finalPieces)
     )

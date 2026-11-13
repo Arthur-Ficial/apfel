@@ -14,7 +14,7 @@
 | `GET /v1/models` | Supported | Returns `apple-foundationmodel` |
 | `GET /health` | Supported | Model availability, context window, languages |
 | `GET /v1/logs`, `/v1/logs/stats` | Debug only | Requires `--debug` |
-| Tool calling | Supported | Native `ToolDefinition` + JSON detection. See [tool-calling-guide.md](tool-calling-guide.md) |
+| Tool calling | Supported | Tools described in the instructions as a plain-language list, calls detected as JSON in the output and executed out-of-band. See [tool-calling-guide.md](tool-calling-guide.md) |
 | `tool_choice`, `parallel_tool_calls` | Enforced | `none`, `auto`, `required`, `{"type":"function",...}`; `parallel_tool_calls: false` returns at most one call. Enforced at the response boundary, not just steered. On macOS 27 `auto`/`none` are additionally mapped to the runtime's `ToolCallingMode` (`.allowed`/`.disallowed`); `required` and named functions stay prompt-steered plus enforced on both OSes (the SDK's `.required` mode rejects out-of-band tool definitions, and there is no per-tool mode). See [tool-calling-guide.md](tool-calling-guide.md#tool_choice-and-parallel_tool_calls-are-enforced) |
 | `response_format: json_object` | Supported | System-prompt injection; markdown fences stripped from output |
 | `response_format: json_schema` | Supported | Guaranteed schema-conforming output via FoundationModels `DynamicGenerationSchema`; works with `stream: true`, which delivers the JSON incrementally in append-only deltas whose concatenation equals the non-streamed document. Keys are in alphabetical order. Local `$ref`/`$defs`, numeric and array bounds; unsupported keywords are a 400. See [JSON Schema support](#json-schema-support) |
@@ -147,7 +147,7 @@ Auth, origin checks, CORS, the body-size limit and `--max-concurrent` apply as o
 What the number means, measured on macOS 27.0.1:
 
 - **Text, instructions, multi-turn, `json_schema`, auto-truncated input:** the count equals the `usage.input_tokens` the runtime reports when the same request is generated. It includes the default instructions the runtime adds when there is no system message, and the schema's prompt overhead.
-- **Function tools:** the count includes the full tool definitions (name, description, parameter schema), which is what apfel's own budget check uses. The macOS 27 runtime currently reports fewer input tokens for the same request (one `add` tool: count 373, reported 172), so for tools the count is an upper bound: a request that fits the count fits the runtime.
+- **Function tools:** the count includes the full tool definitions (name, description, parameter schema), described in the instructions as a plain-language list, which is the text the model reads (#555) and what apfel's own budget check uses. On macOS 27 it equals the runtime-reported `usage.input_tokens` (one `add` tool: 198 counted, 198 reported).
 - **`context_size`** is read from the runtime per request, never hardcoded: 4096 on macOS 26 and on M1/M2 Macs, 8192 on macOS 27 with an M3 or newer chip and 12 GB+. `context_size_measured: false` means the runtime has not reported its window yet (cold start) and the assumed floor was used.
 - **A count does not predict the response.** It prices the input only. How long the answer or a later summary will be, and what it will say, is decided at generation time; keep `output_reserve` (512 tokens) free for it.
 - Counting does not generate, but it does use the model's tokenizer: the first count after boot can pay the model's start-up cost.

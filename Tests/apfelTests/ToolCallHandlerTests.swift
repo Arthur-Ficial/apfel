@@ -589,6 +589,66 @@ func runToolCallHandlerTests() {
         try assertTrue(instr.contains("search"), "must list tool names")
     }
 
+    // MARK: - buildToolSchemaPrompt (#555)
+    //
+    // Plain-language list, one line per tool. Measured 2026-11-13: argument
+    // names right 10/10 on macOS 26.1 and 27.0.1 (transcript-only definitions:
+    // 0/10 on both); JSON schema text after the format block made the macOS
+    // 26.1 guardrail block "What is 2+2? Reply with just the number." 4/5,
+    // the list placed before it 0/5; and the list is the cheapest rendering.
+
+    test("buildToolSchemaPrompt returns empty for no tools") {
+        let result = ToolCallHandler.buildToolSchemaPrompt(tools: [])
+        try assertEqual(result, "")
+    }
+
+    test("buildToolSchemaPrompt: one line per tool with description and typed arguments") {
+        let tools = [
+            ToolDef(name: "add", description: "Add two numbers.",
+                    parametersJSON: #"{"type":"object","properties":{"b":{"type":"number"},"a":{"type":"number","description":"first operand"}},"required":["a","b"]}"#),
+            ToolDef(name: "now", description: "Current time.", parametersJSON: nil),
+        ]
+        try assertEqual(ToolCallHandler.buildToolSchemaPrompt(tools: tools), """
+        Available functions:
+        - add: Add two numbers. Arguments: a (number, required): first operand; b (number, required)
+        - now: Current time.
+        """)
+    }
+
+    test("buildToolSchemaPrompt: optional arguments, enums and a missing description") {
+        let tools = [ToolDef(name: "lookup_weather", description: nil,
+                             parametersJSON: #"{"type":"object","properties":{"loc_code":{"type":"string"},"unit_sys":{"type":"string","enum":["metric","imperial"]}},"required":["loc_code"]}"#)]
+        try assertEqual(ToolCallHandler.buildToolSchemaPrompt(tools: tools), """
+        Available functions:
+        - lookup_weather Arguments: loc_code (string, required); unit_sys (string) one of "metric", "imperial"
+        """)
+    }
+
+    test("buildToolSchemaPrompt: nested argument schemas are kept as compact JSON") {
+        let tools = [ToolDef(name: "tag", description: "Tag a file.",
+                             parametersJSON: #"{"type":"object","properties":{"tags":{"type":"array","items":{"type":"string"},"description":"labels"}},"required":["tags"]}"#)]
+        try assertEqual(ToolCallHandler.buildToolSchemaPrompt(tools: tools), """
+        Available functions:
+        - tag: Tag a file. Arguments: tags (array, required): labels; schema {"items":{"type":"string"},"type":"array"}
+        """)
+    }
+
+    test("buildToolSchemaPrompt: an unparseable parameter schema is passed through, not dropped") {
+        let tools = [ToolDef(name: "odd", description: "Odd.", parametersJSON: "not json")]
+        try assertEqual(ToolCallHandler.buildToolSchemaPrompt(tools: tools), """
+        Available functions:
+        - odd: Odd. Arguments schema: not json
+        """)
+    }
+
+    test("buildToolSchemaPrompt: an object schema without properties lists no arguments") {
+        let tools = [ToolDef(name: "ping", description: "Ping.", parametersJSON: #"{"type":"object","properties":{}}"#)]
+        try assertEqual(ToolCallHandler.buildToolSchemaPrompt(tools: tools), """
+        Available functions:
+        - ping: Ping.
+        """)
+    }
+
     // MARK: - ToolLogEntry
 
     test("ToolLogEntry stores tool execution result") {
