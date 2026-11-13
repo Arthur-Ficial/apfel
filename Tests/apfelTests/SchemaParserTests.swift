@@ -510,6 +510,22 @@ func runSchemaParserTests() {
         try assertEqual(inner.map { $0.name }, ["b", "a"])
     }
 
+    test("declared order is read in one pass: a large schema with many objects parses fast (#560)") {
+        // 250 object properties after a 4 MB description. Scanning from the
+        // root once per object (the first #560 version) reads ~1 GB here;
+        // one pass over the text reads 4 MB. The bound is generous on purpose.
+        let padding = String(repeating: "x", count: 4_000_000)
+        let props = (0..<250).map { #""p\#($0)": {"type": "object", "properties": {"v": {"type": "string"}}}"# }
+        let json = #"{"description": ""# + padding + #"", "type": "object", "properties": {"# + props.joined(separator: ", ") + "}}"
+        let start = Date()
+        let ir = try SchemaParser.parse(json: json, name: "big")
+        let elapsed = Date().timeIntervalSince(start)
+        guard case .object(_, _, let parsed) = ir else { throw TestFailure("expected .object") }
+        try assertEqual(parsed.first?.name, "p0")
+        try assertEqual(parsed.last?.name, "p249")
+        try assertTrue(elapsed < 3, "parse took \(elapsed) s")
+    }
+
     test("a duplicate property key is listed once, not twice (#560)") {
         // JSONSerialization keeps one value per key; the byte scan sees both
         // occurrences. The scanned order must not duplicate the property.
