@@ -12,6 +12,7 @@ MODES
   apfel --serve                           Start OpenAI-compatible server
   apfel --benchmark                       Run internal performance benchmarks
   apfel --count-tokens <prompt>           Preflight token count (no inference)
+  apfel --batch < records.jsonl           JSONL records in, one JSON result line per record out
 
 INPUT
   apfel -f, --file <path> <prompt>        Attach file content (repeatable)
@@ -100,6 +101,10 @@ apfel --code "shell one-liner to find the 10 largest files here" | pbcopy
 
 # --require-complete - exit 8 instead of printing a truncated response
 apfel --require-complete --code --max-tokens 128 "Write a small Python CSV reader." > reader.py
+
+# --batch - one JSON result line per JSONL record, fresh session per record
+jq -c '{custom_id:(.id|tostring),prompt:("Classify this ticket as billing, bug, or question: " + .text)}' tickets.jsonl \
+  | apfel --batch | jq -c 'select(.status=="ok") | {id:.custom_id,category:.content}'
 
 # --messages - one-shot multi-turn: conversation JSON in, next assistant turn out
 apfel --messages conversation.json
@@ -235,15 +240,16 @@ apfel completions fish > ~/.config/fish/completions/apfel.fish
 | Code | Meaning |
 |------|---------|
 | 0 | Success |
-| 1 | Runtime error |
-| 2 | Usage error (bad flags; also `--require-complete` with `--max-tokens` below macOS 26.4) |
+| 1 | Runtime error (`--batch`: at least one record failed) |
+| 2 | Usage error (bad flags; also `--require-complete` or `--batch` with `--max-tokens` below macOS 26.4) |
 | 3 | Guardrail blocked |
 | 4 | Context overflow |
 | 5 | Model unavailable |
 | 6 | Rate limited |
 | 7 | No code in response (`--code` got an empty response or an empty code block) |
 | 8 | Incomplete response (`--require-complete` saw `finish_reason=length`) |
-| 130 | Interrupted (Ctrl-C at chat prompt) |
+| 130 | Interrupted (Ctrl-C at chat prompt or during `--batch`) |
+| 141 | stdout was closed by its reader (`... \| head -1`) |
 
 ### Requiring a complete response (`--require-complete`)
 
@@ -269,6 +275,51 @@ When apfel runs inside a pipeline, the shell reports the exit status of the last
 set -o pipefail
 apfel --require-complete 'List ten Unix commands.' | tee commands.txt
 ```
+
+### Processing JSONL records (`--batch`)
+
+`--batch` turns apfel into a record processor for local datasets: JSONL in on stdin, one compact JSON result line per record out on stdout. Records are processed serially, in input order, and each result is written as soon as its record is done, before the rest of the input arrives. One process and one loaded model serve the whole run; every record gets a fresh session, so nothing from one record (its prompt, its answer) reaches another; only the flags you pass, such as `-s`, are shared.
+
+Input: one JSON object per line.
+
+```json
+{"custom_id": "101", "prompt": "Classify this ticket as billing, bug, or question: I was charged twice."}
+{"custom_id": "102", "messages": [{"role": "system", "content": "Answer in one word."}, {"role": "user", "content": "What color is a ripe banana?"}]}
+```
+
+- `custom_id` (string, required, non-empty) is echoed back. It need not be unique: `line` tells repeated ids apart. With `jq`, turn a numeric id into a string with `(.id|tostring)`.
+- Exactly one of `prompt` (non-empty string) or `messages` (an OpenAI messages array, same rules as `--messages`). Any other field is an `invalid_record` error, not silently ignored; use `-s` for a system prompt.
+- UTF-8, one record per line, LF or CRLF. Newlines inside a prompt are JSON-escaped (`\n`). Blank lines are skipped. A final line without a newline is still a record. A record line may be at most 1048576 bytes.
+- `-s`/`--system`/`--system-file`, `--schema`, `--stop`, `--temperature`, `--top-p`, `--seed`, `--max-tokens`, `--permissive`, `--retry` and the context flags apply to every record.
+
+Output: one line per non-blank input line, always with all seven keys in this order.
+
+```json
+{"line":1,"custom_id":"101","status":"ok","content":"billing","finish_reason":"stop","partial_content":null,"error":null}
+{"line":2,"custom_id":null,"status":"error","content":null,"finish_reason":null,"partial_content":null,"error":{"type":"invalid_record","message":"record is not valid JSON","exit_code":2}}
+{"line":3,"custom_id":"103","status":"incomplete","content":null,"finish_reason":"length","partial_content":"### The Multi","error":{"type":"incomplete","message":"incomplete response (finish_reason=length): the --max-tokens 5 cap was reached; the partial text is in partial_content","exit_code":8}}
+```
+
+| Key | Meaning |
+|-----|---------|
+| `line` | 1-based input line number (blank lines count) |
+| `custom_id` | echoed id, `null` when the line had no readable `custom_id` |
+| `status` | `ok`, `error`, or `incomplete` (`finish_reason=length`) |
+| `content` | the answer; `null` unless `status` is `ok`. With `--schema` it is the JSON document as a string (`.content \| fromjson`) |
+| `finish_reason` | `stop` or `length`; `null` for `--schema` records (schema-constrained output reports none) |
+| `partial_content` | the cut-off text of an `incomplete` record, else `null` |
+| `error` | `null`, or `{"type", "message", "exit_code"}`; `type` is `invalid_record`, `incomplete`, or the OpenAI error type of a model error (`content_policy_violation`, `context_length_exceeded`, ...), and `exit_code` is what the same failure exits with as a one-shot run |
+
+A failed record never stops the batch. apfel exits 0 when every record is `ok` (or there were none) and 1 when any record failed (`error` or `incomplete`); a one-line summary goes to stderr unless `--quiet`. Invocation errors exit 2 before anything is read: a positional prompt, `-f`, `--messages`, `-o`, `--code`, `--require-complete`, MCP tools (`--mcp` / `APFEL_MCP`), another mode, or a terminal on stdin. An explicit output cap (`--max-tokens` or `APFEL_MAX_TOKENS`) on macOS older than 26.4 is also refused with exit 2: without the on-device tokenizer API the cap cannot be detected, so a cut-off record would read as `ok`. Without an explicit cap `--batch` works on every macOS 26 and 27, because a context-window cut-off is reported exactly. With Apple Intelligence unavailable apfel exits 5 before reading. Ctrl-C exits 130 and a closed stdout exits 141; every line already written is a complete record.
+
+Memory does not grow with the number of records: apfel holds at most one record plus one 64 KiB read chunk, and writes each result before reading more input, so a slow consumer pauses intake instead of filling memory. Use `pipefail` to keep the batch exit status through a downstream `jq`:
+
+```bash
+set -o pipefail
+apfel --batch < records.jsonl | jq -c 'select(.status=="ok")' > ok.jsonl
+```
+
+Records are independent questions. One document larger than the context window is not split across records; that is the job of file ingestion, not `--batch`. Concurrency is not implemented: records run one at a time.
 
 ## Environment Variables
 

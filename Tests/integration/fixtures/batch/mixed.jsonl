@@ -1,0 +1,8 @@
+{"custom_id":"capital","prompt":"What is the capital of Austria? Answer with one word."}
+{"custom_id":"broken","prompt":"unterminated
+{"custom_id":"no-input"}
+
+{"custom_id":"both","prompt":"x","messages":[{"role":"user","content":"y"}]}
+{"custom_id":"chat","messages":[{"role":"system","content":"Answer with one word."},{"role":"user","content":"What color is a ripe banana?"}]}
+{"prompt":"missing id"}
+{"custom_id":"capital","prompt":"What is the capital of France? Answer with one word."}

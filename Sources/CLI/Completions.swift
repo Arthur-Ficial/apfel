@@ -114,6 +114,7 @@ public enum ShellCompletions {
             CompletionFlag(["--messages"], .file, "One-shot multi-turn from OpenAI messages JSON"),
             CompletionFlag(["--code"], .none, "Print only the first fenced code block of the response"),
             CompletionFlag(["--require-complete"], .none, "Exit 8 instead of printing a truncated response"),
+            CompletionFlag(["--batch"], .none, "Process JSONL records from stdin, one result line each"),
         ]
     }
 

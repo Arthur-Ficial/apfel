@@ -343,6 +343,14 @@ if (parsed.mode == .single || parsed.mode == .stream) && prompt.isEmpty && messa
     exit(exitUsageError)
 }
 
+// --batch reads JSONL records from piped stdin (#481). A terminal on stdin
+// would wait forever for records nobody is typing as JSON: usage error, and
+// before the availability gate so it never depends on the model.
+if parsed.mode == .batch && isatty(STDIN_FILENO) != 0 {
+    printError("--batch reads JSONL records from piped stdin, e.g. jq -c ... records.json | apfel --batch")
+    exit(exitUsageError)
+}
+
 // Check model availability for modes that need it. If unavailable, surface
 // the specific reason (appleIntelligenceNotEnabled / deviceNotEligible /
 // modelNotReady) so users know exactly what to fix. See #59.
@@ -373,6 +381,16 @@ if parsed.requireComplete {
         printError(refusal)
         exit(CompletionPolicy.preflightExitCode)
     }
+}
+
+// --batch reports a truncated record as incomplete, never ok (#481): an
+// explicit cap this Mac cannot detect is refused before reading records.
+if parsed.mode == .batch,
+   let refusal = CompletionPolicy.batchPreflightRefusal(
+       maxTokens: parsed.maxTokens,
+       tokenCountFallback: await TokenCounter.shared.tokenCountFallback) {
+    printError(refusal)
+    exit(CompletionPolicy.preflightExitCode)
 }
 
 // Initialize MCP servers if any.
@@ -527,6 +545,18 @@ do {
         if parsed.strictCount && !report.fits {
             await shutdownMCP()
             exit(exitContextOverflow)
+        }
+
+    case .batch:
+        // JSONL records in, one result line per record out (#481). Every
+        // model error is record-local; the aggregate exit is 0 or 1.
+        let status = await runBatch(
+            systemPrompt: parsed.systemPrompt, schemaJSON: parsed.schemaJSON,
+            schemaName: parsed.schemaName, options: sessionOpts,
+            stopSequences: parsed.stopSequences)
+        if status != 0 {
+            await shutdownMCP()
+            exit(status)
         }
 
     case .help, .version, .release, .demos, .completions:

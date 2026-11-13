@@ -59,6 +59,7 @@ _apfel() {
     '--messages[One-shot multi-turn from OpenAI messages JSON]:file:_files' \
     '--code[Print only the first fenced code block of the response]' \
     '--require-complete[Exit 8 instead of printing a truncated response]' \
+    '--batch[Process JSONL records from stdin, one result line each]' \
     '1:command:(completions)' \
     '*:file:_files'
 }

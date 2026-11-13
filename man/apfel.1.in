@@ -39,6 +39,12 @@ apfel \- Apple Intelligence from the command line
 .I prompt
 .br
 .B apfel
+.B \-\-batch
+.RI [ options ]
+.B <
+.I records.jsonl
+.br
+.B apfel
 .B \-\-model-info
 .br
 .B apfel
@@ -206,6 +212,68 @@ or update macOS. Inside a pipeline use
 .B set \-o pipefail
 to see the status. This reports how generation ended, not whether the
 answer is correct.
+.TP
+.B \-\-batch
+Process independent JSONL records from standard input, serially, and
+write one compact JSON result line per record to standard output, in
+input order, as soon as each record is done (before end of input).
+Each input line is an object with a string
+.B custom_id
+and exactly one of
+.B prompt
+(a string) or
+.B messages
+(an OpenAI messages array, same rules as
+.BR \-\-messages ).
+Other fields are rejected. Blank lines are skipped; a record line may be
+at most 1048576 bytes. Every record gets a fresh session: nothing from
+one record reaches another. The process and the loaded model are reused.
+.B \-s ,
+.BR \-\-schema ,
+.BR \-\-stop ,
+and the generation and context flags apply to every record.
+Each result line has the keys
+.BR line ,
+.BR custom_id ,
+.BR status
+.RB ( ok ,
+.BR error ,
+or
+.BR incomplete ),
+.BR content ,
+.BR finish_reason ,
+.BR partial_content ,
+and
+.B error
+.RB ( type ,
+.BR message ,
+.BR exit_code ),
+always all present. A truncated answer (finish_reason=length) has
+status
+.BR incomplete ,
+its text in
+.B partial_content
+and
+.B content
+null. A failed record does not stop the batch. Exit status is 0 when
+every record was ok (or there were none) and 1 when any record failed;
+a summary goes to stderr unless
+.BR \-\-quiet .
+Cannot be combined with a positional prompt,
+.BR \-f ,
+.BR \-\-messages ,
+.BR \-o ,
+.BR \-\-code ,
+.BR \-\-require\-complete ,
+MCP tools, or another mode. Standard input must be a pipe or file.
+An explicit
+.B \-\-max\-tokens
+(or
+.BR APFEL_MAX_TOKENS )
+on macOS older than 26.4 is refused with exit
+.BR 2 ,
+because the cap cannot be detected there and a cut-off record would
+read as ok.
 .TP
 .BR \-o ", " \-\-output " " \fIformat\fR
 Output format.
@@ -533,12 +601,16 @@ Success.
 .TP
 .B 1
 Runtime error, including tool execution errors and unexpected
-failures.
+failures. With
+.BR \-\-batch ,
+at least one record failed.
 .TP
 .B 2
 Usage error. Invalid flags, conflicting modes, or malformed values.
 Also
 .B \-\-require\-complete
+or
+.B \-\-batch
 with an explicit output cap on macOS older than 26.4, where the cap
 cannot be detected.
 .TP
@@ -575,7 +647,13 @@ window).
 .TP
 .B 130
 Interrupted. The user pressed Ctrl-C (SIGINT) at the interactive chat
-prompt. The terminal is restored to its normal mode before exit.
+prompt, or during
+.BR \-\-batch .
+The terminal is restored to its normal mode before exit.
+.TP
+.B 141
+Standard output was closed by its reader (for example
+.BR "| head \-1" ).
 .SH FILES
 .TP
 .I /usr/local/bin/apfel
@@ -639,6 +717,15 @@ Start the OpenAI-compatible server on port 3000 with CORS:
 .RS 4
 .nf
 apfel --serve --port 3000 --host 0.0.0.0 --cors
+.fi
+.RE
+.PP
+Classify a JSONL file record by record, keeping only the answers:
+.PP
+.RS 4
+.nf
+jq -c '{custom_id:(.id|tostring),prompt:("Classify: " + .text)}' tickets.jsonl \\
+  | apfel --batch | jq -c 'select(.status=="ok")'
 .fi
 .RE
 .PP
