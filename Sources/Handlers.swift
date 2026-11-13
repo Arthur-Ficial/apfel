@@ -104,6 +104,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
     // Build the native GenerationSchema up front so a malformed/unsupported
     // caller schema fails fast as a 400 before we touch the model.
     var structuredSchema: GenerationSchema?
+    var structuredRenderer = StructuredJSONRenderer(schema: nil)
     if wantsJSONSchema {
         guard let spec = chatRequest.response_format?.json_schema,
               let schemaJSON = spec.schema?.value else {
@@ -119,6 +120,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
         }
         do {
             structuredSchema = try SchemaConverter.generationSchema(fromJSON: schemaJSON, name: spec.name)
+            structuredRenderer = StructuredJSONRenderer(schemaJSON: schemaJSON, name: spec.name)
         } catch {
             return openAIFailure(
                 status: .badRequest,
@@ -283,6 +285,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
         if isStreaming {
             let result = structuredStreamingResponse(
                 session: session, prompt: finalUserPrompt, schema: schema,
+                renderer: structuredRenderer,
                 id: requestId, created: created, genOpts: genOpts,
                 promptTokens: promptTokens, includeUsage: includeUsage,
                 requestBody: requestBodyString, events: events)
@@ -290,6 +293,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
         }
         let result = try await structuredNonStreamingResponse(
             session: session, prompt: finalUserPrompt, schema: schema,
+            renderer: structuredRenderer,
             id: requestId, created: created, genOpts: genOpts,
             promptTokens: promptTokens, requestBody: requestBodyString, events: events)
         return (result.response, result.trace)
@@ -1151,6 +1155,7 @@ private func structuredNonStreamingResponse(
     session: LanguageModelSession,
     prompt: Prompt,
     schema: GenerationSchema,
+    renderer: StructuredJSONRenderer,
     id: String,
     created: Int,
     genOpts: GenerationOptions,
@@ -1164,7 +1169,7 @@ private func structuredNonStreamingResponse(
     do {
         let generated = try await withModelRetry(maxRetries: nsRetryMax) { () -> (content: String, usage: TokenUsage?) in
             let result = try await session.respond(to: prompt, schema: schema, options: genOpts)
-            return (content: result.content.jsonString, usage: reportedUsage(of: result))
+            return (content: renderer.finalJSON(result.content), usage: reportedUsage(of: result))
         }
         content = generated.content
         reportedRound = generated.usage
@@ -1226,16 +1231,16 @@ private func structuredNonStreamingResponse(
 }
 
 /// Streaming schema-guided generation (#171, incremental #532).
-/// FoundationModels emits cumulative `GeneratedContent` snapshots. When each
-/// snapshot's JSON extends what we already sent (append-only), we emit only the
-/// new suffix as a content delta, so clients see incremental progress. If a
-/// snapshot diverges (key reorder), we hold back and the post-loop fallback
-/// emits the remainder, preserving one-chunk delivery as a safe default.
-/// The concatenated deltas always equal the final JSON.
+/// FoundationModels emits cumulative `GeneratedContent` snapshots whose own
+/// `jsonString` is a closed document with a varying key order, so it cannot
+/// be diffed. Each snapshot is rendered in schema order and only its stable
+/// prefix is streamed (`StructuredJSONStreamer`): every `delta.content` is
+/// append-only and the concatenation equals the non-streamed document.
 private func structuredStreamingResponse(
     session: LanguageModelSession,
     prompt: Prompt,
     schema: GenerationSchema,
+    renderer: StructuredJSONRenderer,
     id: String,
     created: Int,
     genOpts: GenerationOptions,
@@ -1280,52 +1285,31 @@ private func structuredStreamingResponse(
             var lastRoundUsage: TokenUsage? = nil
 
             do {
-                // Stream schema-guided JSON incrementally (#532). Each
-                // snapshot's jsonString is cumulative. When it extends what
-                // we already sent, emit the new suffix. If it diverges,
-                // hold back - the post-loop fallback handles the rest.
-                // Scalar counting per #543.
-                var emittedScalarCount = 0
-                var emittedJSON = ""
+                // Append-only deltas (#532): stream each snapshot's stable
+                // prefix, then the remainder of the final document.
+                var streamer = StructuredJSONStreamer()
+                var lastContent: GeneratedContent?
+                func emitDelta(_ delta: String) async {
+                    let chunkLine = sseDataLine(sseContentChunk(
+                        id: id, created: created, content: delta, includeUsage: includeUsage))
+                    responseLines?.append(chunkLine.trimmingCharacters(in: .whitespacesAndNewlines))
+                    continuation.yield(ByteBuffer(string: chunkLine))
+                }
+                var deltaCount = 0
                 for try await snapshot in stream {
-                    let json = snapshot.content.jsonString
+                    lastContent = snapshot.content
                     lastRoundUsage = reportedUsage(of: snapshot) ?? lastRoundUsage
-
-                    let jsonScalars = json.unicodeScalars
-                    guard jsonScalars.count > emittedScalarCount else { prev = json; continue }
-
-                    if emittedScalarCount == 0 || json.hasPrefix(emittedJSON) {
-                        let idx = jsonScalars.index(jsonScalars.startIndex, offsetBy: emittedScalarCount)
-                        let delta = String(json[idx...])
-                        let chunkLine = sseDataLine(sseContentChunk(
-                            id: id, created: created, content: delta, includeUsage: includeUsage))
-                        responseLines?.append(chunkLine.trimmingCharacters(in: .whitespacesAndNewlines))
-                        continuation.yield(ByteBuffer(string: chunkLine))
-                        emittedScalarCount = jsonScalars.count
-                        emittedJSON = json
-                        await eventBox.append("structured delta chars=\(delta.count)")
+                    if let delta = streamer.advance(to: renderer.stablePrefix(snapshot.content)) {
+                        await emitDelta(delta)
+                        deltaCount += 1
                     }
-                    prev = json
                 }
-
-                let prevScalars = prev.unicodeScalars
-                if emittedScalarCount < prevScalars.count {
-                    let remaining: String
-                    if emittedScalarCount == 0 {
-                        remaining = prev
-                    } else if prev.hasPrefix(emittedJSON) {
-                        let idx = prevScalars.index(prevScalars.startIndex, offsetBy: emittedScalarCount)
-                        remaining = String(prev[idx...])
-                    } else {
-                        remaining = prev
-                        await eventBox.append("structured stream diverged, emitting full final")
-                    }
-                    let contentLine = sseDataLine(sseContentChunk(
-                        id: id, created: created, content: remaining, includeUsage: includeUsage))
-                    responseLines?.append(contentLine.trimmingCharacters(in: .whitespacesAndNewlines))
-                    continuation.yield(ByteBuffer(string: contentLine))
-                    await eventBox.append("structured final delta chars=\(remaining.count)")
+                prev = lastContent.map(renderer.finalJSON) ?? ""
+                if let tail = try streamer.finish(with: prev) {
+                    await emitDelta(tail)
+                    deltaCount += 1
                 }
+                await eventBox.append("structured content deltas=\(deltaCount) chars=\(prev.count)")
 
                 // Usage: runtime-reported (macOS 27+), else counted (macOS 26).
                 let finalUsage: TokenUsage
