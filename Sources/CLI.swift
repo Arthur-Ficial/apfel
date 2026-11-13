@@ -86,7 +86,10 @@ func singlePrompt(_ prompt: String, systemPrompt: String?, stream: Bool, options
         printDelta: outputFormat == .plain && !codeOnly, mcpManager: mcpManager, hasMCPTools: hasMCPTools)
     return emitOneShotResult(
         result, stream: stream, hasMCPTools: hasMCPTools,
-        codeOnly: codeOnly, requireComplete: requireComplete)
+        codeOnly: codeOnly, requireComplete: requireComplete,
+        unknownFinishNote: CompletionPolicy.unknownFinishNote(
+            maxTokens: options.maxTokens,
+            tokenCountFallback: await TokenCounter.shared.tokenCountFallback))
 }
 
 /// Write a finished one-shot generation (single prompt or `--messages`) to
@@ -102,24 +105,35 @@ func emitOneShotResult(
     stream: Bool,
     hasMCPTools: Bool,
     codeOnly: Bool,
-    requireComplete: Bool
+    requireComplete: Bool,
+    unknownFinishNote: String? = nil
 ) -> Int32 {
     printToolLog(result.toolLog)
     let streamedLive = stream && outputFormat == .plain && !codeOnly && !hasMCPTools
-    let decision = CompletionPolicy.decide(finishReason: result.finishReason, requireComplete: requireComplete)
+    // Below macOS 26.4 with an explicit cap the stop/length decision is an
+    // estimate: report it as unknown rather than as fact (PR #551 review).
+    let reported = CompletionPolicy.reportedFinishReason(
+        result.finishReason, truncation: result.truncation,
+        finishSignalExact: unknownFinishNote == nil)
+    let decision = reported.map {
+        CompletionPolicy.decide(finishReason: $0, requireComplete: requireComplete)
+    } ?? .complete
     if let forced = decision.exitCode {
         if streamedLive {
             print()          // terminate the partial streamed line
             fflush(stdout)   // ...before the stderr error, so they don't interleave
         }
-        printError(CompletionPolicy.incompleteMessage)
+        printError(CompletionPolicy.incompleteMessage(cause: result.truncation))
         return forced
     }
-    let finishReason = result.finishReason.openAIValue
+    let finishReason = reported?.openAIValue
+    if reported == nil, let unknownFinishNote, !quietMode {
+        printStderr("\(styledErr("apfel:", .yellow)) \(unknownFinishNote)")
+    }
 
     if codeOnly {
         let exitCode = printCroppedResponse(result.content, finishReason: finishReason)
-        if decision.warnsTruncation { printLengthWarning() }
+        if decision.warnsTruncation { printLengthWarning(cause: result.truncation) }
         return exitCode
     }
 
@@ -133,19 +147,23 @@ func emitOneShotResult(
         print(jsonString(obj))
     }
 
-    if decision.warnsTruncation { printLengthWarning() }
+    if decision.warnsTruncation { printLengthWarning(cause: result.truncation) }
     return 0
 }
 
 /// Print the `--code` output contract (#373): the first fenced block's
 /// content (or, with no fence anywhere, the bare response — a fully steered
 /// model omits the fence and the response IS the code) to stdout, nothing
-/// else. An empty response exits `noCode` (7) so scripts can branch on
-/// "no code" vs "run failed".
+/// else. Empty extracted code (empty response, empty block, or a capped run
+/// that produced only the opening fence) exits `noCode` (7) so scripts can
+/// branch on "no code" vs "run failed"; it is never a silent exit 0.
 func printCroppedResponse(_ content: String, finishReason: String? = nil) -> Int32 {
-    guard let crop = CodeCropper.crop(from: content) else {
-        printStderr("\(styledErr("apfel:", .yellow)) empty model response, no code to print")
-        return ApfelExitCodes.noCode
+    let resolution = CodeOutputPolicy.resolve(response: content)
+    guard case .code(let crop) = resolution else {
+        if case .noCode(let message) = resolution {
+            printStderr("\(styledErr("apfel:", .yellow)) \(message)")
+        }
+        return resolution.exitCode
     }
     switch outputFormat {
     case .plain:
@@ -163,9 +181,9 @@ func printCroppedResponse(_ content: String, finishReason: String? = nil) -> Int
 }
 
 /// Default stderr warning for a response truncated with finish_reason=length
-/// (no `--require-complete`; output was still printed).
-func printLengthWarning() {
-    printStderr("\(styledErr("apfel:", .yellow)) response truncated at the context window (finish_reason=length). Pass --max-tokens to control the cap explicitly.")
+/// (no `--require-complete`; output was still printed), naming the real cause.
+func printLengthWarning(cause: TruncationCause?) {
+    printStderr("\(styledErr("apfel:", .yellow)) \(CompletionPolicy.lengthWarning(cause: cause))")
 }
 
 // MARK: - Structured Single Prompt (#361)
@@ -263,7 +281,10 @@ func messagesPrompt(
         printDelta: outputFormat == .plain && !codeOnly, mcpManager: mcpManager, hasMCPTools: hasMCPTools)
     return emitOneShotResult(
         result, stream: stream, hasMCPTools: hasMCPTools,
-        codeOnly: codeOnly, requireComplete: requireComplete)
+        codeOnly: codeOnly, requireComplete: requireComplete,
+        unknownFinishNote: CompletionPolicy.unknownFinishNote(
+            maxTokens: options.maxTokens,
+            tokenCountFallback: await TokenCounter.shared.tokenCountFallback))
 }
 
 // MARK: - Token Budget Preflight

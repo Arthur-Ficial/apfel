@@ -26,16 +26,16 @@ Each code keeps its meaning for the life of the major version and is never reuse
 |------|---------|
 | 0 | Success |
 | 1 | Runtime error |
-| 2 | Usage error |
+| 2 | Usage error (also: `--require-complete` with an explicit output cap on a Mac that cannot detect that cap, macOS < 26.4) |
 | 3 | Guardrail blocked / refusal |
 | 4 | Context overflow |
 | 5 | Model unavailable |
 | 6 | Rate limited / busy |
-| 7 | `--code`: no code in the response |
+| 7 | `--code`: no code in the response (empty response or empty code block) |
 | 8 | `--require-complete`: response ended with `finish_reason=length` |
 | 130 | Interrupted (Ctrl-C at the chat prompt) |
 
-The `finish_reason` key in the CLI `-o json` envelope is additive and stable: `"stop"` or `"length"`, omitted for `--schema` output. Exit 8 reports how generation ended, not whether the answer is correct.
+The `finish_reason` key in the CLI `-o json` envelope is additive and stable: `"stop"` or `"length"`, omitted for `--schema` output and when apfel cannot know it: with an explicit `--max-tokens` cap on macOS older than 26.4 (no on-device tokenizer API) the stop/length decision would only be an estimate, so the key is left out and stderr says why. A missing key means "unknown", never a guess. Exit 8 reports how generation ended, not whether the answer is correct.
 
 ## What is NOT stable (may change without version bump)
 

@@ -192,7 +192,17 @@ cannot be combined with
 .BR \-\-serve ,
 .BR \-\-count\-tokens ,
 .BR \-\-schema ,
-or MCP tools. Inside a pipeline use
+or MCP tools. With an explicit
+.B \-\-max\-tokens
+(or
+.BR APFEL_MAX_TOKENS )
+it needs the on-device tokenizer API (macOS 26.4+) to detect the cap
+exactly; on older macOS that combination is refused before generating
+with exit
+.BR 2 .
+Drop
+.B \-\-max\-tokens
+or update macOS. Inside a pipeline use
 .B set \-o pipefail
 to see the status. This reports how generation ended, not whether the
 answer is correct.
@@ -220,7 +230,10 @@ or
 .BR length ;
 it is omitted for
 .B \-\-schema
-output.
+output, and with an explicit
+.B \-\-max\-tokens
+cap on macOS older than 26.4, where whether the cap cut the response
+can only be estimated (stderr says so). A missing key means unknown.
 .TP
 .BR \-q ", " \-\-quiet
 Suppress non-essential output such as banners and chat headers.
@@ -504,6 +517,10 @@ failures.
 .TP
 .B 2
 Usage error. Invalid flags, conflicting modes, or malformed values.
+Also
+.B \-\-require\-complete
+with an explicit output cap on macOS older than 26.4, where the cap
+cannot be detected.
 .TP
 .B 3
 Guardrail blocked. The input or output violated the active content
@@ -526,7 +543,9 @@ or a concurrent session lock is held.
 .B 7
 No code in response. With
 .BR \-\-code ,
-the model returned an empty response, so there is no code to print.
+the model returned an empty response or an empty code block (for
+example only the opening fence of a capped run), so there is no code
+to print.
 .TP
 .B 8
 Incomplete response. With

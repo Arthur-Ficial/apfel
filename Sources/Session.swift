@@ -48,6 +48,7 @@ func processPrompt(
     }
     content = outcome.content
     finishReason = outcome.finishReason
+    var truncation = outcome.truncation
 
     debugLog("response", "length=\(content.count) finish=\(finishReason)")
 
@@ -61,9 +62,10 @@ func processPrompt(
         debugLog("mcp", "executed \(toolLog.count) tool calls")
         // After tool re-prompt the model produced a fresh natural reply.
         finishReason = .stop
+        truncation = nil
     }
 
-    return ProcessPromptResult(content: content, toolLog: toolLog, finishReason: finishReason)
+    return ProcessPromptResult(content: content, toolLog: toolLog, finishReason: finishReason, truncation: truncation)
 }
 
 /// Print tool execution log entries to stderr.

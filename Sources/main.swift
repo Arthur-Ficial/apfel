@@ -361,6 +361,20 @@ default:
     }
 }
 
+// --require-complete with an explicit output cap needs an exact finish
+// signal; refuse before generating where this Mac only estimates tokens
+// (PR #551 review). Capability via the #315 TokenCountFallback plumbing.
+if parsed.requireComplete {
+    if let refusal = CompletionPolicy.preflightRefusal(
+        requireComplete: true,
+        maxTokens: parsed.maxTokens,
+        tokenCountFallback: await TokenCounter.shared.tokenCountFallback
+    ) {
+        printError(refusal)
+        exit(CompletionPolicy.preflightExitCode)
+    }
+}
+
 // Initialize MCP servers if any.
 var mcpManager: MCPManager?
 if !parsed.mcpServerPaths.isEmpty {
