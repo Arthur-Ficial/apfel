@@ -1,0 +1,7 @@
+{
+  "type": "object",
+  "properties": {
+    "category": {"type": "string", "enum": ["billing", "bug", "question"]}
+  },
+  "required": ["category"]
+}

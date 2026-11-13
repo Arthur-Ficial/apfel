@@ -153,6 +153,7 @@ suite("EngineOptionsTests") { runEngineOptionsTests() }
 suite("StopSequenceTests") { runStopSequenceTests() }
 suite("StopFlagTests") { runStopFlagTests() }
 suite("InputTokensCountTests") { runInputTokensCountTests() }
+suite("BatchTests") { runBatchTests() }
 
 // MARK: - Summary
 
