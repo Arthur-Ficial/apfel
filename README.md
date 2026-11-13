@@ -225,6 +225,7 @@ alias apfel=apfel-run                 # optional, every apfel flag still works
 |---------|--------|-------|
 | `POST /v1/chat/completions` | Supported | Streaming + non-streaming |
 | `POST /v1/responses` | Supported | OpenAI Responses API: string/message input, `instructions`, streaming (canonical event sequence), `text.format` (incl. `json_schema`), function tools (non-streaming). Stateful features (`previous_response_id`, `store: true`, `background`, `reasoning`, hosted tools) return honest 501s |
+| `POST /v1/responses/input_tokens` | Supported | Token preflight (`client.responses.input_tokens.count(...)`): exact count from Apple's tokenizer, no generation; 501 below macOS 26.4 instead of an estimate. See [docs/openai-api-compatibility.md](docs/openai-api-compatibility.md#token-preflight-v1responsesinput_tokens) |
 | `GET /v1/models` | Supported | Returns `apple-foundationmodel` |
 | `GET /health` | Supported | Model availability, context window, languages, reported model capabilities (`capabilities`, `capabilities_reported`) |
 | `GET /v1/logs`, `/v1/logs/stats` | Debug only | Requires `--debug` |

@@ -76,6 +76,7 @@ Both tools start a local server. apfel: `apfel --serve` (port 11434). `fm`: `fm 
 | `response_format: json_schema` | yes, schema-guaranteed, `$ref` and bounds supported, also streaming | yes (`{"fruit": "apple"}` for the test schema) |
 | `response_format: json_object` | yes | not tested |
 | `POST /v1/responses` (Responses API) | yes, incl. streaming and `text.format` | no |
+| `POST /v1/responses/input_tokens` (token preflight) | yes: exact count with Apple's tokenizer, no generation, `x_apfel` budget report; 501 below macOS 26.4 | no (`404 not_found`, probed 2026-11-13) |
 | `GET /v1/models` | yes, with `context_window`, `context_window_measured`, `capabilities`, `capabilities_reported` | yes (`id: "system"`) |
 | `GET /health` | model availability, context window, languages, active requests, version | `{"status":"fm serve is running"}` plus model list |
 | `max_tokens` | honoured, `finish_reason: length` at the cap | **ignored**: `max_tokens: 5` returned 141 completion tokens with `finish_reason: stop` |
