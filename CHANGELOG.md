@@ -22,7 +22,7 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ### Changed
 
-- Context budgets and counted prompt tokens now include the default instructions the runtime adds to a conversation without a system message (46 tokens on macOS 27.0.1, measured as runtime `usage.input_tokens` against `tokenCount(for:)`), and a `json_schema` response format's prompt overhead on `/v1/chat/completions` and `/v1/responses`. Before, both were left out, so a request within about 50 tokens of the budget could pass the budget check and then overflow in the runtime. Only applies where Apple's tokenizer is available (macOS 26.4+); the chars/4 fallback is unchanged (#485).
+- Context budgets and counted prompt tokens now include the default instructions the runtime adds to a conversation without a system message (46 tokens on macOS 27.0.1, measured as runtime `usage.input_tokens` against `tokenCount(for:)`), and a `json_schema` response format's prompt overhead on `/v1/chat/completions` and `/v1/responses`. Before, both were left out, so a request within about 50 tokens of the budget could pass the budget check and then overflow in the runtime. The MCP tool-result truncation on the server and the `--chat` rotation check price their input the same way, so they agree with the budget check. `--count-tokens` is unchanged. Only applies where Apple's tokenizer is available (macOS 26.4+); the chars/4 fallback is unchanged (#485).
 
 ## [1.17.1] - 2026-11-11
 
