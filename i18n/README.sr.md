@@ -1,0 +1,429 @@
+<!-- i18n-source: 218b563163b08550cb0adc62e957ce6a40e6e1ba -->
+
+> Prevedeno sa [engleskog README-a](../README.md). Engleska verzija je merodavna.
+
+# apfel
+
+### Besplatna veštačka inteligencija koja je već na tvom Macu.
+
+[![Swift 6.3+](https://img.shields.io/badge/Swift-6.3%2B-F05138?logo=swift&logoColor=white)](https://swift.org)
+[![macOS 26 Tahoe+](https://img.shields.io/badge/macOS-26%20Tahoe%2B-000000?logo=apple&logoColor=white)](https://developer.apple.com/macos/)
+[![No Xcode Required](https://img.shields.io/badge/Xcode-not%20required-orange)](https://developer.apple.com/xcode/resources/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](../LICENSE)
+[![100% On-Device](https://img.shields.io/badge/inference-100%25%20on--device-green)](https://developer.apple.com/documentation/foundationmodels)
+[![Website](https://img.shields.io/badge/web-apfel.franzai.com-16A34A)](https://apfel.franzai.com)
+[![#agentswelcome](https://img.shields.io/badge/%23agentswelcome-PRs%20welcome-0066cc?style=for-the-badge&labelColor=0d1117&logo=probot&logoColor=white)](../README.md#contributing)
+
+Mac računari sa Apple Silicon-om dolaze sa ugrađenim LLM-om preko [Apple FoundationModels](https://developer.apple.com/documentation/foundationmodels). `apfel` ga izlaže kao UNIX alat i lokalni server kompatibilan sa OpenAI-jem. 100% na uređaju. Bez API ključeva, bez clouda.
+
+| Režim | Komanda | Šta dobijate |
+|------|---------|--------------|
+| UNIX alat | `apfel "prompt"` / `echo "text" \| apfel` | Odgovori pogodni za pipe, prilozi datoteka, JSON izlaz, izlazni kodovi |
+| Server kompatibilan sa OpenAI-jem | `apfel --serve` | Lokalni backend `http://localhost:11434/v1` kao direktna zamena za OpenAI SDK-ove |
+
+`apfel --chat` - interaktivni REPL.
+
+Pozivanje alata radi u svim kontekstima.
+
+![apfel CLI](../screenshots/cli.png)
+
+## Zahtevi i instalacija
+
+macOS 26 Tahoe+, Apple Silicon (M1+), [uključen Apple Intelligence](https://support.apple.com/en-us/121115). Na macOS-u 27 Mac računari sa čipom M3 ili novijim i 12 GB+ pokreću Appleov veći model na uređaju sa prozorom od 8192 tokena; Mac računari sa M1/M2 i svaki Mac sa macOS-om 26 imaju 4096. `apfel --model-info` prikazuje vašu vrednost.
+
+```bash
+brew install apfel
+```
+
+Ažuriranje:
+
+```bash
+brew upgrade apfel
+```
+
+Izgradnja iz izvornog koda (Command Line Tools sa macOS 27 SDK-om / Swift 6.3, bez Xcode-a; binarna datoteka radi na macOS-u 26 i 27):
+
+```bash
+git clone https://github.com/Arthur-Ficial/apfel.git && cd apfel && make install
+```
+
+Nix, same-day tap, Mint, mise, rešavanje problema: [docs/install.md](../docs/install.md).
+
+**Languages:** [English](../README.md) | [العربية](README.ar.md) | [Беларуская](README.be.md) | [Български](README.bg.md) | [বাংলা](README.bn.md) | [Bosanski](README.bs.md) | [Català](README.ca.md) | [Čeština](README.cs.md) | [Dansk](README.da.md) | [Deutsch](README.de.md) | [Ελληνικά](README.el.md) | [Español](README.es.md) | [Eesti](README.et.md) | [فارسی](README.fa.md) | [Suomi](README.fi.md) | [Français](README.fr.md) | [ગુજરાતી](README.gu.md) | [हिन्दी](README.hi.md) | [Hrvatski](README.hr.md) | [Magyar](README.hu.md) | [Italiano](README.it.md) | [日本語](README.ja.md) | [ಕನ್ನಡ](README.kn.md) | [한국어](README.ko.md) | [Lietuvių](README.lt.md) | [Latviešu](README.lv.md) | [Македонски](README.mk.md) | [മലയാളം](README.ml.md) | [मराठी](README.mr.md) | [Norsk bokmål](README.nb.md) | [Nederlands](README.nl.md) | [Polski](README.pl.md) | [Português](README.pt.md) | [Română](README.ro.md) | [Русский](README.ru.md) | [Slovenčina](README.sk.md) | [Slovenščina](README.sl.md) | [Shqip](README.sq.md) | **Srpski** | [Svenska](README.sv.md) | [தமிழ்](README.ta.md) | [తెలుగు](README.te.md) | [Türkçe](README.tr.md) | [Українська](README.uk.md) | [اردو](README.ur.md) | [简体中文](README.zh-hans.md) | [繁體中文](README.zh-hant.md)
+
+## Brzi početak
+
+### UNIX alat
+
+Promptove sa `!` stavljajte u jednostruke navodnike (proširenje istorije u zsh/bash): `apfel 'Hello, Mac!'`.
+
+```bash
+# Single prompt
+apfel "What is the capital of Austria?"
+
+# Permissive mode - reduces guardrail false positives for creative/long prompts
+apfel --permissive "Write a dramatic opening for a thriller novel"
+
+# Stream output
+apfel --stream "Write a haiku about code"
+
+# Pipe input
+echo "Summarize: $(cat README.md)" | apfel
+
+# Attach file content to prompt
+apfel -f README.md "Summarize this project"
+
+# Attach multiple files
+apfel -f old.swift -f new.swift "What changed between these two files?"
+
+# Attach a PDF or image - on-device text extraction, OCR, and "what the image is about"
+apfel -f report.pdf "Summarize the key findings"
+apfel -f receipt.jpg "What is the total?"
+
+# Pipe a file straight in (PDF, image, or text)
+cat report.pdf | apfel "Summarize this"
+
+# Combine files with piped input
+git diff HEAD~1 | apfel -f CONVENTIONS.md "Review this diff against our conventions"
+
+# Only the code - no prose, no markdown fences (pipe-safe, exit 7 if empty)
+apfel --code "a python function that deduplicates a list" > dedupe.py
+apfel --code "shell one-liner to find the 10 largest files here" | pbcopy
+
+# JSON output for scripting
+apfel -o json "Translate to German: hello" | jq .content
+
+# Guaranteed schema-valid JSON output (guided generation)
+apfel --schema person.schema.json "Extract the person: Alice is 30." | jq .name
+
+# One-shot multi-turn: conversation JSON in, next assistant turn out
+jq '. += [{"role":"user","content":"and in German?"}]' conv.json | apfel --messages -
+
+# Batch: JSONL records in, one JSON result line per record out (fresh session each)
+jq -c '{custom_id:(.id|tostring),prompt:("Classify as billing, bug, or question: " + .text)}' tickets.jsonl \
+  | apfel --batch | jq -c 'select(.status=="ok") | {id:.custom_id,category:.content}'
+
+# Preflight token budget before a large prompt
+apfel --count-tokens -f README.md "Summarize this"
+
+# System prompt
+apfel -s "You are a pirate" "What is recursion?"
+
+# System prompt from file
+apfel --system-file persona.txt "Explain TCP/IP"
+
+# Quiet mode for shell scripts
+result=$(apfel -q "Capital of France? One word.")
+```
+
+### Server kompatibilan sa OpenAI-jem
+
+```bash
+apfel --serve                              # foreground
+brew services start apfel                  # background (like Ollama)
+brew services stop apfel
+APFEL_TOKEN=$(uuidgen) APFEL_MCP=/path/to/tools.py brew services start apfel
+```
+
+```bash
+curl http://localhost:11434/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"apple-foundationmodel","messages":[{"role":"user","content":"Hello"}]}'
+```
+
+```python
+from openai import OpenAI
+client = OpenAI(base_url="http://localhost:11434/v1", api_key="unused")
+resp = client.chat.completions.create(
+    model="apple-foundationmodel",
+    messages=[{"role": "user", "content": "What is 1+1?"}],
+)
+print(resp.choices[0].message.content)
+```
+
+Detalji o pozadinskoj usluzi: [docs/background-service.md](../docs/background-service.md).
+
+### Chat za brzo testiranje
+
+`apfel --chat` je mali REPL za testiranje promptova ili MCP servera. Za chat aplikaciju sa grafičkim interfejsom pogledajte [apfel-chat](https://github.com/Arthur-Ficial/apfel-chat).
+
+```bash
+apfel --chat
+apfel --chat -s "You are a helpful coding assistant"
+apfel --chat --mcp ./mcp/calculator/server.py      # chat with MCP tools
+apfel --chat --debug                                # debug output to stderr
+```
+
+Ctrl-C izlazi iz programa. Kontekst se automatski skraćuje ([docs/context-strategies.md](../docs/context-strategies.md)).
+
+Ograničenja koja vredi znati pre pisanja skripti (kontekstni prozor po Macu, zaštitne ograde, bez embeddinga): [Ograničenja](../README.md#limitations).
+
+## Demo skripte
+
+Prave shell skripte koje omotavaju `apfel`: `cmd` (engleski u shell komandu), `oneliner`, `mac-narrator`, `wtd`, `explain`, `naming`, `port`, `gitsum`. Ugrađene su u binarnu datoteku - kloniranje repozitorijuma nije potrebno. Zapišite ih gde god ste instalirali apfel (homebrew-core, tap ili izvorni kod):
+
+```bash
+apfel demos ./apfel-demos
+```
+
+Ovo zapisuje sve demo skripte (izvršne) plus `README.md` u `./apfel-demos`. Zatim ih pokrećite odatle:
+
+```bash
+./apfel-demos/cmd "find all .log files modified today"
+# $ find . -name "*.log" -type f -mtime -1
+
+./apfel-demos/cmd -x "show disk usage sorted by size"   # -x = execute after confirm
+./apfel-demos/cmd -c "list open ports"                   # -c = copy to clipboard
+```
+
+Posle `brew upgrade apfel` ponovo pokrenite `apfel demos` radi osvežavanja. Izvori: [`demo/`](../demo/). Detaljniji primeri i shell funkcija `cmd` za kopiranje u vaš `.zshrc`: [docs/demos.md](../docs/demos.md).
+
+## Podrška za MCP alate
+
+Priključite [Model Context Protocol](https://modelcontextprotocol.io/) servere pomoću `--mcp`. apfel ih otkriva, poziva i vraća rezultat.
+
+```bash
+apfel --mcp ./mcp/calculator/server.py "What is 15 times 27?"
+```
+
+```
+mcp: ./mcp/calculator/server.py - add, subtract, multiply, divide, sqrt, power, round_number    ← stderr
+tool: multiply({"a": 15, "b": 27}) = 405                                          ← stderr
+15 times 27 is 405.                                                                ← stdout
+```
+
+Koristite `-q` da sakrijete informacije o alatima.
+
+```bash
+apfel --mcp ./server_a.py --mcp ./server_b.py "Use both tools"
+apfel --serve --mcp ./mcp/calculator/server.py
+apfel --chat --mcp ./mcp/calculator/server.py
+```
+
+Dolazi sa kalkulatorom u [`mcp/calculator/`](../mcp/calculator/) ([docs/mcp-calculator.md](../docs/mcp-calculator.md)).
+
+**Udaljeni MCP serveri** (Streamable HTTP, MCP specifikacija 2025-03-26):
+
+```bash
+apfel --mcp https://mcp.example.com/v1 "what tools do you have?"
+
+# bearer token - prefer env var (flag is visible in ps aux)
+APFEL_MCP_TOKEN=mytoken apfel --mcp https://mcp.example.com/v1 "..."
+
+# mixed local + remote
+apfel --mcp /path/to/local.py --mcp https://remote.example.com/v1 "..."
+```
+
+> **Bezbednost:** radije koristite `APFEL_MCP_TOKEN` nego `--mcp-token` (vidljivo u ps aux). apfel odbija bearer tokene preko nešifrovanog `http://`.
+
+## apfel-run: opcioni konfiguracioni sloj
+
+apfel sam nema konfiguracionu datoteku - zastavice + promenljive okruženja, kao svaki UNIX alat. Ako želite TOML konfiguraciju (mnogo MCP-ova, profili, timske konfiguracije u gitu), [**apfel-run**](https://github.com/Arthur-Ficial/apfel-run) je MIT omotač koji je dodaje kao direktnu zamenu preko `execve`.
+
+```bash
+brew install Arthur-Ficial/tap/apfel-run
+apfel-run config init                 # starter ~/.config/apfel/config.toml
+alias apfel=apfel-run                 # optional, every apfel flag still works
+```
+
+## Kompatibilnost sa OpenAI API-jem
+
+**Osnovni URL:** `http://localhost:11434/v1`
+
+| Funkcija | Status | Napomene |
+|---------|--------|-------|
+| `POST /v1/chat/completions` | Podržano | Streaming + bez streaminga |
+| `POST /v1/responses` | Podržano | OpenAI Responses API: ulaz kao string/poruka, `instructions`, streaming (kanonski redosled događaja), `text.format` (uklj. `json_schema`), funkcijski alati (bez streaminga). Funkcije sa stanjem (`previous_response_id`, `store: true`, `background`, `reasoning`, hostovani alati) vraćaju iskren 501 |
+| `POST /v1/responses/input_tokens` | Podržano | Preflight tokena (`client.responses.input_tokens.count(...)`): tačan broj iz Appleovog tokenizatora, bez generisanja; 501 ispod macOS-a 26.4 umesto procene. Pogledajte [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#token-preflight-v1responsesinput_tokens) |
+| `GET /v1/models` | Podržano | Vraća `apple-foundationmodel` |
+| `GET /health` | Podržano | Dostupnost modela, kontekstni prozor, jezici, prijavljene mogućnosti modela (`capabilities`, `capabilities_reported`) |
+| `GET /v1/logs`, `/v1/logs/stats` | Samo za debug | Zahteva `--debug` |
+| Pozivanje alata | Podržano | Nativni `ToolDefinition` + JSON detekcija. Pogledajte [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
+| `response_format: json_object` | Podržano | Ubacivanje u sistemski prompt; markdown ograde se uklanjaju iz izlaza |
+| `response_format: json_schema` | Podržano | Zagarantovan izlaz usklađen sa šemom preko FoundationModels `DynamicGenerationSchema`; radi sa `stream: true` |
+| `temperature`, `top_p`, `max_tokens`, `seed` | Podržano | Mapirano na `GenerationOptions`. `top_p` je nucleus sampling; `temperature` ispod 0.001 (uključujući 0) mapira se na greedy (deterministički). Izostavljanje `max_tokens` koristi preostali kontekstni prozor (direktna OpenAI semantika) - pogledajte [Podrazumevano ograničenje odgovora](../README.md#default-response-cap-max_tokens) |
+| `stream: true` | Podržano | SSE; završni usage chunk samo uz `stream_options: {"include_usage": true}` (prema OpenAI specifikaciji) |
+| `usage` | Podržano | Stvarni brojevi tokenizatora na macOS-u 26.4+ (ispod toga procena chars/4). macOS 27: sopstveno računanje runtimea uklj. Appleov okvir chat šablona (oko 46 dodatnih `prompt_tokens` za jednoredni prompt); macOS 26: apfel broji tekst poruke. Detalji u [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md) |
+| `finish_reason` | Podržano | `stop`, `tool_calls`, `length` |
+| Strategije konteksta | Podržano | Proširena polja `x_context_strategy`, `x_context_max_turns`, `x_context_output_reserve` |
+| CORS | Podržano | Uključite sa `--cors` |
+| `POST /v1/completions` | 501 | Nasleđeni tekstualni completions nisu podržani |
+| `POST /v1/embeddings` | 501 | Embeddings nisu dostupni na uređaju |
+| `stop` | Podržano | String ili do 4 stringa; samo običan tekst (400 ako su u igri alati ili `json_object`/`json_schema`). Primenjuje se na strani izlaza, identično uz streaming i bez njega. Pogledajte [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#stop-sequences) |
+| `logprobs=true`, `n>1`, `presence_penalty`, `frequency_penalty` | 400 | Izričito odbijeno. `n=1` i `logprobs=false` prihvataju se kao no-op |
+| Multimodalnost (slike) | Podržano na macOS-u 27 | Delovi `image_url` kao base64 data URL-ovi idu izvorno u model na uređaju (ograničenje 20 MB base64, najduža strana smanjena na 4096 px). Udaljeni `http(s)` URL-ovi i putanje datoteka su uvek 400 - apfel nikada ne preuzima slike i nikada ne čita datoteke za HTTP klijenta. Na macOS-u 26: 400 sa jasnom greškom. Pogledajte [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md) |
+| Zaglavlje `Authorization` | Podržano | Obavezno kada je postavljen `--token`. Pogledajte [docs/server-security.md](../docs/server-security.md) |
+
+Puna API specifikacija: [openai/openai-openapi](https://github.com/openai/openai-openapi).
+
+## Podrazumevano ograničenje odgovora (`max_tokens`)
+
+Kada je `max_tokens` izostavljen, **CLI i server kompatibilan sa OpenAI-jem ponašaju se identično**: vrednost se prosleđuje kao `nil` i model koristi sav prostor preostao u kontekstnom prozoru. To je direktna OpenAI semantika - bez proizvoljne rezervne konstante.
+
+Kontekstni prozor na uređaju drži ulaz *i* izlaz zajedno: **4096 tokena na macOS-u 26 i na Mac računarima sa M1/M2, 8192 tokena na macOS-u 27 sa čipom M3 ili novijim i 12 GB+**. apfel stvarnu veličinu čita u runtimeu preko `SystemLanguageModel.contextSize` - proverite svoju sa `apfel --model-info`. Ako generisanje udari u gornju granicu, odgovor se čisto završava sa `finish_reason: "length"` i vraća se delimičan sadržaj (server: HTTP 200; CLI: izlaz 0 sa upozorenjem na stderr, ili izlaz 8 uz `--require-complete` - pogledajte [docs/cli-reference.md](../docs/cli-reference.md)). Zadajte `max_tokens` izričito kada želite strožiji budžet latencije ili poznato ograničenje za svog klijenta.
+
+### Primeri
+
+```bash
+# Omitted: uses remaining window, finish_reason: "stop" or "length"
+curl -sS http://localhost:11434/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"apple-foundationmodel",
+       "messages":[{"role":"user","content":"Reply SKIP, MOVE, or RENAME."}]}'
+
+# Explicit cap (recommended for tight latency budgets)
+curl -sS http://localhost:11434/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"apple-foundationmodel","max_tokens":128,
+       "messages":[{"role":"user","content":"Summarise: ..."}]}'
+```
+
+### Izbor vrednosti
+
+| Slučaj upotrebe                        | `max_tokens`  |
+|----------------------------------------|---------------|
+| Odgovor od jedne reči / klasifikacija  | 16 - 32       |
+| Jednoredno uputstvo                    | 64 - 128      |
+| Kratak pasus                           | 256 - 512     |
+| Dug pasus / strukturirani JSON         | 1024 - 2048   |
+| Koliko god kontekstni prozor dozvoljava | izostavite   |
+
+Držite `input_tokens + max_tokens` udobno ispod kontekstnog prozora (4096 tokena na macOS-u 26 i na Mac računarima sa M1/M2, 8192 na macOS-u 27 sa čipom M3 ili novijim i 12 GB+ (Appleov model AFM 3 Core Advanced)). Ako sam prompt premašuje prozor, generisanje ne može početi i zahtev ne uspeva sa `[context overflow]` (HTTP 400 / CLI izlaz 4). Validator odbija nepozitivne vrednosti (`max_tokens <= 0`).
+
+### CLI paritet
+
+CLI i server dele jedno pravilo: izostavljeno = koristi preostali prozor. Nema konstante koja bi se razilazila. Nadjačajte sa `--max-tokens N` ili `APFEL_MAX_TOKENS=N`.
+
+```bash
+apfel "Reply SKIP."                    # uses remaining window
+apfel --max-tokens 64 "Reply SKIP."    # explicit cap
+APFEL_MAX_TOKENS=2048 apfel "..."      # via env var
+```
+
+### Permissive zaštitne ograde za server
+
+`apfel --serve --permissive` tera server da za **svaki zahtev** koji proces obradi koristi Appleove zaštitne ograde `.permissiveContentTransformations`. Ista zastavica, ista semantika kao `--permissive` u CLI-ju ([docs/PERMISSIVE.md](../docs/PERMISSIVE.md)). Nema nadjačavanja po zahtevu - operater servera odlučuje za ceo proces.
+
+```bash
+apfel --serve --permissive             # every request uses permissive guardrails
+```
+
+## Ograničenja
+
+| Ograničenje | Detalji |
+|------------|--------|
+| Kontekstni prozor | **4096 tokena na macOS-u 26 i na Mac računarima sa M1/M2, 8192 tokena na macOS-u 27 sa čipom M3 ili novijim i 12 GB+** (ulaz + izlaz zajedno). Nije čvrsto kodirana konstanta - apfel u runtimeu čita `SystemLanguageModel.contextSize`; `apfel --model-info` ispisuje trenutnu vrednost |
+| Platforma | Samo macOS 26+, Apple Silicon |
+| Model | Jedan model (`apple-foundationmodel`, ~3B parametara na uređaju), nije podesiv |
+| Zaštitne ograde | Appleov bezbednosni sistem može blokirati bezazlene promptove. `--permissive` smanjuje lažne pozitive ([docs/PERMISSIVE.md](../docs/PERMISSIVE.md)) |
+| Brzina | Na uređaju, ne u razmeri clouda - nekoliko sekundi po odgovoru |
+| Bez embeddinga | Nisu dostupni na uređaju |
+| Vizija | Ulaz slike stiže do modela samo na macOS-u 27 (server: data URL-ovi; CLI: `-f photo.jpg` i slike preko pipea, povrh OCR teksta). Na macOS-u 26 slike su samo tekst preko OCR-a/klasifikacije. Opisi scena modela od 3B su grubi - OCR ostaje pouzdan kanal za čitanje štampanog teksta |
+| Podaci za treniranje / granica znanja | Apple nije objavio tačan datum za model na uređaju. Kad ga se natera da ga navede, model **pri svakom uzorku izmisli drugi datum** (npr. "oktobar 2023.", "april 2023."). Sve izjave modela o sopstvenom treniranju smatrajte nepouzdanim. |
+| Nema trenutnog datuma ni svesti o stvarnom vremenu | Model ne zna današnji datum i nema pristup mreži ni satu. Ako ga upitate, ili će odbiti ili će izmisliti datum. Trenutni datum ubacite preko sistemskog prompta kada račun zavisi od njega (pogledajte zaobilazno rešenje ispod). |
+
+**Zaobilazno rešenje za promptove zavisne od datuma** - ubacite trenutni datum kao sistemsku poruku:
+
+```bash
+apfel -s "Today is $(date '+%B %d, %Y')." "Write a one-line release note dated today."
+```
+
+```bash
+apfel --chat -s "Today is $(date '+%B %d, %Y'). You are a helpful assistant."
+```
+
+Napomena: čak i sa ubačenim datumom model od 3B i dalje može halucinirati (naročito kad ga se direktno pita o sopstvenoj granici treniranja). Ubacivanje pomaže generativnim promptovima koji datum *koriste*; ne nadjačava refleks modela da izveštava o sebi.
+
+Pozadina: [#158](https://github.com/Arthur-Ficial/apfel/issues/158).
+
+## Referentna dokumentacija
+
+Vodiči za korišćenje apfela iz [Pythona](../docs/guides/python.md), [Node.js-a](../docs/guides/nodejs.md), [Rubyja](../docs/guides/ruby.md), [PHP-a](../docs/guides/php.md), [Bash/curl](../docs/guides/bash-curl.md), [Zsh](../docs/guides/zsh.md), [AppleScripta](../docs/guides/applescript.md), [Swifta](../docs/guides/swift-scripting.md), [Perla](../docs/guides/perl.md), [AWK](../docs/guides/awk.md) - pogledajte [docs/guides/index.md](../docs/guides/index.md). Empirijski testirano; pokretljiv dokaz na [apfel-guides-lab](https://github.com/Arthur-Ficial/apfel-guides-lab).
+
+- [docs/install.md](../docs/install.md) - instalacija, rešavanje problema i podešavanje Apple Intelligencea
+- [docs/cli-reference.md](../docs/cli-reference.md) - svaka zastavica, izlazni kod i promenljiva okruženja
+- [docs/file-extraction.md](../docs/file-extraction.md) - `-f` i izdvajanje PDF-a / slika / teksta preko pipea (OCR + razumevanje slika)
+- [docs/background-service.md](../docs/background-service.md) - korišćenje `brew services` i launchd
+- [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md) - detaljna matrica podrške za `/v1/*`
+- [docs/server-security.md](../docs/server-security.md) - provere porekla, CORS, tokeni i `--footgun`
+- [docs/context-strategies.md](../docs/context-strategies.md) - strategije skraćivanja u chatu
+- [docs/mcp-calculator.md](../docs/mcp-calculator.md) - korišćenje lokalnog i udaljenog MCP-a
+- [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) - detaljno ponašanje pozivanja alata
+- [docs/integrations.md](../docs/integrations.md) - integracije sa alatima trećih strana (opencode itd.)
+- [docs/local-setup-with-vs-code.md](../docs/local-setup-with-vs-code.md) - lokalni pregled sa apfelom + drugim modelom za uređivanje/primenu u VS Code-u
+- [docs/demos.md](../docs/demos.md) - duži primeri shell demo skripti
+- [docs/EXAMPLES.md](../docs/EXAMPLES.md) - 50+ stvarnih promptova sa neuređenim izlazom
+- [docs/swift-library.md](../docs/swift-library.md) - Swift Package `ApfelCore` za programere koji grade na njemu
+- [docs/coreai-impact.md](../docs/coreai-impact.md) - zašto apfel radi na FoundationModels, a ne na Appleovom novom Core AI-ju (naslednik Core MLa)
+- [docs/apfel-vs-fm.md](../docs/apfel-vs-fm.md) - poređenje apfela sa Appleovim sopstvenim CLI-jem `fm` (macOS 27), funkciju po funkciju sa izmerenim brojevima
+
+## Arhitektura
+
+```text
+CLI (single/stream/chat) ──┐
+                           ├─→ FoundationModels.SystemLanguageModel
+HTTP Server (/v1/*) ───────┘   (100% on-device, zero network)
+                                ContextManager → Transcript API
+                                SchemaConverter → native ToolDefinitions
+                                TokenCounter → real token counts (SDK 26.4)
+```
+
+Swift 6.3 strogi concurrency. Tri targeta: `ApfelCore` (čista logika, pogodna za unit testove, dostupna i kao Swift Package - poveznica pod Referentna dokumentacija gore), `apfel` (CLI + server) i `apfel-tests` (čisti Swift runner, bez XCTesta).
+
+## Izgradnja i testiranje
+
+```bash
+make test                                # release build + all unit/integration tests
+make preflight                           # full release qualification
+make install                             # build release + install to /usr/local/bin
+make build                               # build release only
+make version                             # print current version
+make release                             # patch release
+make release TYPE=minor                  # minor release
+make release TYPE=major                  # major release
+swift build                              # quick debug build (no version bump)
+swift run apfel-tests                    # unit tests
+python3 -m pytest Tests/integration/ -v  # integration tests
+apfel --benchmark -o json                # performance report
+```
+
+`.version` je jedini izvor istine. Verzije podiže samo `make release`. Lokalne izgradnje ne menjaju verziju.
+
+## Stablo apfela
+
+Projekti izgrađeni na apfelu. Svaki dolazi kao zaseban repozitorijum + Homebrew formula.
+
+| Projekat | Šta radi | Instalacija |
+|---------|--------------|---------|
+| [**apfel**](https://apfel.franzai.com) | Koren. CLI za FoundationModels na uređaju + server kompatibilan sa OpenAI-jem. | `brew install apfel` |
+| [**apfel-chat**](https://apfel-chat.franzai.com) | Chat klijent za macOS: streaming markdown, govorni ulaz/izlaz, analiza slika pomoću Apple Visiona. | `brew install Arthur-Ficial/tap/apfel-chat` |
+| [**apfel-clip**](https://apfel-clip.franzai.com) | AI radnje u traci menija nad klipbordom: sažimanje, prevođenje, prepisivanje. | `brew install Arthur-Ficial/tap/apfel-clip` |
+| [**apfel-quick**](https://apfel-quick.franzai.com) | Trenutni AI overlay: pritisnete taster, pitate, dobijete odgovor, odbacite. | `brew install Arthur-Ficial/tap/apfel-quick` |
+| [**apfelpad**](https://apfelpad.franzai.com) | Beležnica sa formulama - AI na uređaju kao funkcija ćelije u redu. | `brew install Arthur-Ficial/tap/apfelpad` |
+| [**apfel-mcp**](https://apfel-mcp.franzai.com) | MCP-ovi optimizovani za budžet tokena u malom prozoru na uređaju: `url-fetch`, `ddg-search`, `search-and-fetch`. | `brew install Arthur-Ficial/tap/apfel-mcp` |
+| [**apfel-gui**](https://github.com/Arthur-Ficial/apfel-gui) | SwiftUI debug inspektor: vremenska linija zahteva, pregledač MCP protokola, TTS/STT. | `brew install Arthur-Ficial/tap/apfel-gui` |
+| [**apfel-run**](https://github.com/Arthur-Ficial/apfel-run) | UNIX omotač koji povrh `apfel` dodaje trajni MCP registar + TOML konfiguraciju. | `brew install Arthur-Ficial/tap/apfel-run` |
+| [**apfel-tag**](https://github.com/Arthur-Ficial/apfel-tag) | CLI za označavanje sadržaja na uređaju: pošaljete tekst, dobijete oznake/teme/emocije. | `brew install Arthur-Ficial/tap/apfel-tag` |
+| [**apfel-server-kit**](https://github.com/Arthur-Ficial/apfel-server-kit) | Swift paket za alate ekosistema: otkrivanje, pokretanje i streaming iz lokalnog `apfel --serve`. | Swift Package |
+
+## Projekti zajednice
+
+Napravili ste nešto na osnovu apfela? Otvorite issue i može se dodati ovde.
+
+| Projekat | Šta radi | Linkovi |
+|---------|-------------|-------|
+| **apfelclaw** autora [@julianYaman](https://github.com/julianYaman) | Lokalni AI agent koji čita datoteke, kalendar, poštu i stanje Maca preko alata samo za čitanje | [github](https://github.com/julianyaman/apfelclaw) - [site](https://apfelclaw.yamanlabs.com/) |
+| **fruit-chat** autora [@bhaskarvilles](https://github.com/bhaskarvilles) | Chat interfejs u pregledaču koji sa `apfel --serve` komunicira preko API-ja kompatibilnog sa OpenAI-jem | [github](https://github.com/bhaskarvilles/fruit-chat) |
+| **local-claude** autora [@lucaspwo](https://github.com/lucaspwo) | Omotač za Claude Code koji preko malog Anthropic-OpenAI proksija ubacuje apfel kao lokalni backend | [github](https://github.com/lucaspwo/local-claude) |
+| **apfeller** autora [@hasit](https://github.com/hasit) | Menadžer aplikacija za lokalne shell aplikacije izgrađene oko apfela | [github](https://github.com/hasit/apfeller) - [site](https://hasit.github.io/apfeller/) - [catalog](https://hasit.github.io/apfeller/catalog/) |
+| **apfel-for-raycast** autora [@eggsy](https://github.com/eggsy) | Proširenje za komandnu traku Raycast: pitanja, prevođenje, objašnjavanje datoteka i direktorijuma, istorija razgovora, sopstveni sistemski promptovi. Na uređaju preko apfel CLI-ja. | [store](https://www.raycast.com/eggsy/apfel) - [github](https://github.com/raycast/extensions/tree/main/extensions/apfel) |
+
+## Doprinos
+
+Issue-i i PR-ovi su dobrodošli u svakom repozitorijumu `Arthur-Ficial/apfel*`.
+
+**#agentswelcome** - PR-ovi AI agenata su u redu. Pročitajte `CLAUDE.md` repozitorijuma, pokrenite testove, navedite alat u `Co-Authored-By` traileru. Isti kriterijumi kao za ljude: čist kod, prolazni testovi, iskrena ograničenja. Ulazna tačka najpogodnija za agente: [apfel-mcp](https://github.com/Arthur-Ficial/apfel-mcp) ([pravila doprinosa](https://apfel-mcp.franzai.com/#contribute)).
+
+## Licenca
+
+[MIT](../LICENSE)
