@@ -19,6 +19,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: README translations (i18n/)
+        # Fails on a missing translation, a missing/stale language bar or a broken
+        # relative link; a stale translation is only a warning.
+        run: python3 scripts/i18n-readme.py check
+
       - name: Select latest Xcode
         run: |
           latest=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
