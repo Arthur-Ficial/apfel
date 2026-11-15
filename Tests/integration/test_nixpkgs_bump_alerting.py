@@ -191,6 +191,8 @@ def test_bump_detects_2fa_readblock_as_auth_2fa(tmp_path):
     # Point the checkout dir at a throwaway path so a regression that skips the
     # read-probe can never touch the real ~/dev/nixpkgs-bump.
     env["NIXPKGS_BUMP_DIR"] = str(tmp_path / "nixpkgs-checkout")
+    # The repo may carry a real .nixpkgs-bump-paused; this test exercises the live path.
+    env["NIXPKGS_BUMP_PAUSE_FILE"] = str(tmp_path / "not-paused")
 
     rc, out, err = _run([str(BUMP), "--version", "1.6.0"], env=env)
 
