@@ -7,6 +7,8 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.18.0] - 2026-11-15
+
 ### Added
 
 - Streamed schema-constrained output (#532). `stream: true` with `response_format: json_schema` on `/v1/chat/completions` now delivers the JSON in many `delta.content` chunks while it is generated, instead of one chunk at the end, and the CLI accepts `--stream --schema` (and `--messages --stream --schema`) and prints the JSON as it grows. Every chunk is append-only: concatenating the deltas gives exactly the document the non-streamed request returns, byte for byte. apfel renders each runtime snapshot itself and sends only its settled part (an open string grows in place; a number or boolean is sent once complete, because a partial number can still change, e.g. 4 -> 4.5). `finish_reason`, `usage` and `include_usage` behave as in the plain-text stream. Works the same on macOS 26 and 27. `/v1/responses` with `json_schema` and `stream: true` stays an honest 501 for now.
