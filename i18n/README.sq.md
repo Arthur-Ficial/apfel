@@ -23,6 +23,8 @@ Mac-et me Apple Silicon vijnë me një LLM të integruar përmes [Apple Foundati
 
 `apfel --chat` - REPL interaktiv.
 
+[![Video demonstruese e apfel në terminal: komanda të vërteta, përgjigje të vërteta në pajisje (84 sekonda)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/sq/a/apfel-ai-tutorial/#video)
+
 Thirrja e mjeteve (tool calling) funksionon në të gjitha kontekstet.
 
 ![apfel CLI](../screenshots/cli.png)

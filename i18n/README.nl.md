@@ -23,6 +23,8 @@ Macs met Apple Silicon hebben een ingebouwd LLM via [Apple FoundationModels](htt
 
 `apfel --chat` - interactieve REPL.
 
+[![Demovideo van apfel in de terminal: echte commando's, echte antwoorden op het apparaat (84 seconden)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/nl/a/apfel-ai-tutorial/#video)
+
 Tool calling werkt in alle contexten.
 
 ![apfel CLI](../screenshots/cli.png)

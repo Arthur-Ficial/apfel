@@ -23,6 +23,8 @@ Apple Silicon Mac 通过 [Apple FoundationModels](https://developer.apple.com/do
 
 `apfel --chat` - 交互式 REPL。
 
+[![apfel 终端演示视频: 真实命令, 设备端真实回答 (84 秒)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/zh-hans/a/apfel-ai-tutorial/#video)
+
 所有场景下均支持工具调用。
 
 ![apfel CLI](../screenshots/cli.png)

@@ -23,6 +23,8 @@ Apple Silicon Mac-களில் [Apple FoundationModels](https://developer.app
 
 `apfel --chat` - உரையாடல் REPL.
 
+[![apfel டெர்மினல் டெமோ வீடியோ: உண்மையான கட்டளைகள், சாதனத்திலேயே உண்மையான பதில்கள் (84 வினாடிகள்)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/ta/a/apfel-ai-tutorial/#video)
+
 கருவி அழைப்பு (tool calling) எல்லாச் சூழல்களிலும் வேலை செய்யும்.
 
 ![apfel CLI](../screenshots/cli.png)

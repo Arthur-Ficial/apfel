@@ -23,6 +23,8 @@ Maki z Apple Silicon mają wbudowany LLM dostępny przez [Apple FoundationModels
 
 `apfel --chat` - interaktywny REPL.
 
+[![Film demonstracyjny apfel w terminalu: prawdziwe polecenia, prawdziwe odpowiedzi na urządzeniu (84 sekundy)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/pl/a/apfel-ai-tutorial/#video)
+
 Wywoływanie narzędzi działa w każdym kontekście.
 
 ![apfel CLI](../screenshots/cli.png)

@@ -23,6 +23,8 @@ Apple Silicon Mac에는 [Apple FoundationModels](https://developer.apple.com/doc
 
 `apfel --chat` - 대화형 REPL.
 
+[![apfel 터미널 데모 영상: 실제 명령어, 기기에서 나온 실제 답변 (84초)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/ko/a/apfel-ai-tutorial/#video)
+
 도구 호출은 모든 컨텍스트에서 동작합니다.
 
 ![apfel CLI](../screenshots/cli.png)

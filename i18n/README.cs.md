@@ -23,6 +23,8 @@ Macy s Apple Silicon mají vestavěný LLM přes [Apple FoundationModels](https:
 
 `apfel --chat` - interaktivní REPL.
 
+[![Ukázkové video apfel v terminálu: skutečné příkazy, skutečné odpovědi přímo v zařízení (84 sekund)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/cs/a/apfel-ai-tutorial/#video)
+
 Volání nástrojů funguje ve všech kontextech.
 
 ![apfel CLI](../screenshots/cli.png)

@@ -23,6 +23,8 @@ Računalniki Mac z Apple Silicon imajo vgrajen LLM prek [Apple FoundationModels]
 
 `apfel --chat` - interaktivni REPL.
 
+[![Predstavitveni video apfel v terminalu: prave ukazne vrstice, pravi odgovori na napravi (84 sekund)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/sl/a/apfel-ai-tutorial/#video)
+
 Klicanje orodij deluje v vseh kontekstih.
 
 ![apfel CLI](../screenshots/cli.png)

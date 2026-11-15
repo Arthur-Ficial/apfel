@@ -23,6 +23,8 @@
 
 `apfel --chat` - REPL تعاملی.
 
+[![ویدیوی نمایشی apfel در ترمینال: دستورهای واقعی، پاسخ‌های واقعی روی دستگاه (84 ثانیه)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/fa/a/apfel-ai-tutorial/#video)
+
 فراخوانی ابزار (tool calling) در همه حالت‌ها کار می‌کند.
 
 ![apfel CLI](../screenshots/cli.png)
