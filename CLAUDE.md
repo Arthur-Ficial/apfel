@@ -82,6 +82,21 @@ macOS 27 ships Apple's own FoundationModels CLI at `/usr/bin/fm` (`fm respond|ch
 - Then regenerate and deploy: `cd ~/dev/apfel-web && ./build-pages.sh && wrangler pages deploy . --project-name apfel-web --commit-dirty=true && git add -A && git commit -m "pages: regenerate apfel-vs-fm" && git push`.
 - Tone: honest. Where `fm` is better (zero install, Apple-signed, image/OCR tools, built-in transcript persistence) the page says so plainly. No marketing claims without a measurement or a reproducible command behind them.
 
+## Website tutorial + multilingual pages - release gate (2026-11-15)
+
+apfel.franzai.com is part of the product surface. Its repo `Arthur-Ficial/apfel-web` lives on Arthur Mac (`~/dev/apfel-web`, read its CLAUDE.md); Arthur, the maintainer, owns keeping it true. Franz: a page that still says "fixed but not in a release yet" after the fix shipped is a bug.
+
+Pages that MUST match the latest release:
+- **The apfel AI tutorial** in every language: `https://apfel.franzai.com/<lang>/a/apfel-ai-tutorial/` (source `content/<lang>/a/apfel-ai-tutorial.md`; `en` is the source of truth, all 46 other languages are translations, hreflang-linked).
+- **The landing page** in all 47 languages: `content/<lang>/index.md` -> `/` and `/<lang>/` (stats via `update-stats.sh`).
+- **The terminal demo video** embedded on those pages (VHS tape, real commands, real output): re-record it on the release binary when a command in it changes or the version it shows is older than the current release.
+- **The translated READMEs** in this repo (`i18n/README.<code>.md`, see above).
+
+Update rule - same weight as the `fm` rule above:
+- A PR that changes user-facing behavior (flag, endpoint, exit code, output, limits, install) updates the English tutorial section it touches in the same PR window, and then every translation in the same pass. English-only is not done.
+- Every release, before it is called done: rerun every tutorial command on the release binary, replace outputs that changed (never edit real model output), bump the "tested on" line (apfel version, macOS build, date), remove or rewrite every "fixed but not released" / known-bug note the release closes (e.g. #555 multi-argument MCP tools, fixed in #556), then `python3 build/i18n.py check` (all OK) + `build`, deploy, push, and verify the live URLs (HTTP 200, new version string, hreflang set complete).
+- Known bug shown on the tutorial = ship the fix: Arthur cuts the release (`make release`), not a note telling users to wait.
+
 ## Architecture
 
 ```
@@ -374,6 +389,8 @@ apfel ships through three channels. All pull the same tarball from each GitHub R
 - [ ] `make release` (scripts/publish-release.sh) completed green
 - [ ] `./scripts/post-release-verify.sh` passed
 - [ ] CLAUDE.md version and test counts updated (if changed)
+- [ ] Tutorial (`/<lang>/a/apfel-ai-tutorial/`, all languages) rerun on the release binary, outputs + "tested on" line + known-bug notes updated, translations synced, deployed (see "Website tutorial + multilingual pages")
+- [ ] Landing page in all 47 languages + demo video current, `i18n/README.*.md` synced
 - [ ] File a ticket on `Arthur-Ficial/apfel-web` if the landing page needs update
 
 ## CI / GitHub Actions
