@@ -1219,14 +1219,20 @@ def test_chat_f_flag_content_is_in_context(tmp_path):
 
     The model must be able to answer a question about the file on the very
     first turn - proving the seeded transcript reached it.
+
+    The fact is deliberately harmless. The earlier fixture ("The project
+    codeword is ZORBLAX. Remember it.") reads like a secret, and Apple's
+    macOS 26.1 model refuses to repeat it ("I apologize, but I cannot assist
+    with that.") in most runs with the same transcript on 1.17.1 and 1.18.0,
+    while this wording was recalled 12/12 there.
     """
     require_model()
     f = tmp_path / "fact.txt"
-    f.write_text("The project codeword is ZORBLAX. Remember it.\n")
+    f.write_text("Our team mascot is a purple giraffe named ZORBLAX.\n")
     returncode, output = run_chat_tty(
         ["-f", str(f), "--chat"],
         steps=[
-            (b"Type 'quit'", b"What is the project codeword?\n"),
+            (b"Type 'quit'", b"What is the name of our team mascot?\n"),
             # Once the ai prompt appears, let the answer stream, then quit.
             # This terminates cleanly whether or not the model recalls, so a
             # miss fails the assertion instead of hanging to the timeout.
