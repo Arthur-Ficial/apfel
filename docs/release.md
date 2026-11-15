@@ -29,8 +29,6 @@ make release [TYPE=]        run local release workflow
        |
   update Homebrew tap formula
        |
-  open nixpkgs bump PR (non-fatal)
-       |
        v
 ./scripts/post-release-verify.sh
 ```
@@ -80,7 +78,6 @@ This runs locally via `scripts/publish-release.sh` (not on GitHub Actions - GitH
 8. Verifies the Developer ID signature and notarizes the binary with Apple (hard gate - the release aborts if signing or notarization fails)
 9. Publishes the GitHub Release with changelog, the tarball, and an `apfel-<version>-arm64-macos.tar.gz.sha256` checksum asset
 10. Updates the Homebrew tap formula (`Arthur-Ficial/homebrew-tap`)
-11. Opens a build-verified nixpkgs bump PR (`scripts/publish-nixpkgs-bump.sh`) as a non-fatal final step - a failure here warns but does not fail the release, since the GitHub Release and tap are already published
 
 Total time: ~5 minutes.
 
@@ -116,15 +113,14 @@ GitHub CI **cannot** run the full integration suite because GitHub-hosted `macos
 
 ## Distribution channels
 
-Each release is published through three channels. All three pull the same tarball from the GitHub Release; nothing is rebuilt per-channel. The `apfel` binary inside is Developer ID signed under a hardened runtime and the submission is notarized by Apple (it is not stapled - a bare CLI binary in a tarball cannot carry a stapled ticket, so Gatekeeper verifies notarization online). A second asset, `apfel-<version>-arm64-macos.tar.gz.sha256`, publishes the checksum independently of the Homebrew formula; `scripts/post-release-verify.sh` cross-checks the tarball digest against both and confirms the Developer ID TeamIdentifier.
+Each release is published through two channels. Both pull the same tarball from the GitHub Release; nothing is rebuilt per-channel. The `apfel` binary inside is Developer ID signed under a hardened runtime and the submission is notarized by Apple (it is not stapled - a bare CLI binary in a tarball cannot carry a stapled ticket, so Gatekeeper verifies notarization online). A second asset, `apfel-<version>-arm64-macos.tar.gz.sha256`, publishes the checksum independently of the Homebrew formula; `scripts/post-release-verify.sh` cross-checks the tarball digest against both and confirms the Developer ID TeamIdentifier.
 
 | Channel | How fresh | Mechanism |
 |---------|-----------|-----------|
 | [homebrew-core](https://github.com/Homebrew/homebrew-core/blob/master/Formula/a/apfel.rb) (`brew install apfel`) | Up to ~24h after release | Homebrew `autobump-PR` bot detects new GitHub Releases and opens a formula-bump PR. |
 | [Arthur-Ficial/homebrew-tap](https://github.com/Arthur-Ficial/homebrew-tap) (`brew install Arthur-Ficial/tap/apfel`) | Synchronous with release | `scripts/publish-release.sh` pushes the new formula directly as part of `make release`. |
-| [nixpkgs](https://github.com/NixOS/nixpkgs/tree/master/pkgs/by-name/ap/apfel-llm) (`nix profile install nixpkgs#apfel-llm`) | Days to weeks | `make release` opens a build-verified bump PR on `NixOS/nixpkgs` (`scripts/publish-nixpkgs-bump.sh`); a committer merges it. `r-ryantm` CANNOT help (darwin-only, Linux-only bot). A twice-daily launchd catch-up (`scripts/nixpkgs-bump-cron.sh`) re-advances the PR and emails Franz if the bump ever fails. See [nixpkgs.md](nixpkgs.md). |
 
-All three channels are "owned" in the sense that we file PRs against them and respond to reviewer feedback - but merges into homebrew-core and nixpkgs are gated by their respective maintainer communities. The tap is the only channel where we merge directly.
+Both channels are "owned" in the sense that we respond to reviewer feedback - but merges into homebrew-core are gated by the Homebrew maintainer community. The tap is the only channel where we merge directly. nixpkgs was dropped on 2026-11-15, see [nixpkgs.md](nixpkgs.md).
 
 ## Versioning rules
 

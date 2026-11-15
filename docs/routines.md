@@ -19,8 +19,8 @@ Routines run on Anthropic's Linux cloud runners, so they cannot:
 
 - Run `make test`, `make preflight`, `swift build`, or any integration test that needs Apple Intelligence (there is no Apple Intelligence on Linux)
 - Test the actual behavior of code changes - only static review (style, structure, test coverage, security audit)
-- Merge a PR, approve a PR, cut a release, or update any distribution channel (Homebrew, nixpkgs, tap)
-- Change what you install via `brew install apfel` or `nix profile install nixpkgs#apfel-llm`
+- Merge a PR, approve a PR, cut a release, or update any distribution channel (Homebrew, tap)
+- Change what you install via `brew install apfel`
 
 Every code-PR review from a routine contains an explicit note that functional correctness was **not** verified and that @franzenzenhofer needs to run tests locally before merging.
 
@@ -52,4 +52,4 @@ All four routines share the same identity (Arthur Ficial voice - warm, short, sp
 
 ## Security note
 
-The Claude GitHub App is installed on `Arthur-Ficial/apfel` **only**, with minimum GitHub permissions: Contents (Read), Issues (Read + Write), Pull requests (Read + Write). It is explicitly NOT installed on `Arthur-Ficial/homebrew-tap` or `NixOS/nixpkgs` - those are release-side repos and routines must never reach them.
+The Claude GitHub App is installed on `Arthur-Ficial/apfel` **only**, with minimum GitHub permissions: Contents (Read), Issues (Read + Write), Pull requests (Read + Write). It is explicitly NOT installed on `Arthur-Ficial/homebrew-tap` - that is a release-side repo and routines must never reach it.

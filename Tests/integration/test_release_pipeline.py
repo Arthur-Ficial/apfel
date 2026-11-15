@@ -41,6 +41,6 @@ def test_no_divergent_dispatch_release_workflow():
     assert not stale.exists(), (
         "'.github/workflows/publish-release.yml' is a divergent dispatch path "
         "that can publish an unqualified release (no server-readiness gate, no "
-        "CHANGELOG stamp, no nixpkgs bump) on a runner without Apple "
+        "CHANGELOG stamp) on a runner without Apple "
         "Intelligence; CLAUDE.md mandates local releases only (#225)"
     )

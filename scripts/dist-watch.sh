@@ -85,32 +85,16 @@ if ! [[ "$hb_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   exit 2
 fi
 
-nix_raw=$(curl -sf "https://raw.githubusercontent.com/NixOS/nixpkgs/master/pkgs/by-name/ap/apfel-llm/package.nix" || true)
-if [[ -z "$nix_raw" ]]; then
-  err "could not fetch nixpkgs package.nix"
-  exit 2
-fi
-nix_version=$(printf '%s\n' "$nix_raw" \
-  | grep -E '^\s*version\s*=\s*"' \
-  | head -1 \
-  | sed -E 's/.*"([^"]+)".*/\1/')
-
-if ! [[ "$nix_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  err "could not parse nixpkgs version (got: '$nix_version')"
-  exit 2
-fi
-
 # --- Step 3: in-flight upstream bump PRs. Any open PR whose title contains
 # the canonical version counts as "in flight, not lagging".
 
 inflight_for() {
-  # $1 = upstream repo (e.g. NixOS/nixpkgs), $2 = title fragment to search,
+  # $1 = upstream repo (e.g. Homebrew/homebrew-core), $2 = title fragment to search,
   # $3 = canonical version we need the title to contain
   gh search prs --repo "$1" --state open "$2 in:title" \
     --json title --jq "[.[] | select(.title | contains(\"$3\"))] | length" 2>/dev/null || echo 0
 }
 
-nix_inflight=$(inflight_for "NixOS/nixpkgs"        "apfel-llm" "$canonical")
 hb_inflight=$( inflight_for "Homebrew/homebrew-core" "apfel"     "$canonical")
 
 # --- Step 4: decide which channels are lagging (mismatch + no in-flight cover).
@@ -118,9 +102,6 @@ hb_inflight=$( inflight_for "Homebrew/homebrew-core" "apfel"     "$canonical")
 lagging=()
 if [[ "$hb_version" != "$canonical" && "$hb_inflight" == "0" ]]; then
   lagging+=("homebrew-core")
-fi
-if [[ "$nix_version" != "$canonical" && "$nix_inflight" == "0" ]]; then
-  lagging+=("nixpkgs")
 fi
 
 if (( ${#lagging[@]} == 0 )); then
@@ -156,7 +137,6 @@ Routine check this morning - looks like ${lagging_joined//,/ and } trailing v${c
 |---|---|---|---|
 | GitHub Releases | v${canonical} | - | - |
 | homebrew-core | v${hb_version} | v${canonical} | ~${hours_since}h |
-| nixpkgs \`apfel-llm\` | ${nix_version} | ${canonical} | ~${hours_since}h |
 
 ## Fixing it (for you, not me)
 
@@ -165,12 +145,6 @@ Routine check this morning - looks like ${lagging_joined//,/ and } trailing v${c
 \`\`\`bash
 brew bump-formula-pr apfel \\
   --url=https://github.com/Arthur-Ficial/apfel/releases/download/v${canonical}/apfel-${canonical}-arm64-macos.tar.gz
-\`\`\`
-
-**nixpkgs (\`apfel-llm\`):** darwin-only, so \`r-ryantm\` can NEVER auto-bump it and the merge bot will not accept our self-opened PR - a committer has to merge it (days to weeks; that wait is normal, not a bug). \`make release\` plus a twice-daily launchd job (\`scripts/nixpkgs-bump-cron.sh\`) already open/advance one build-verified PR and email Franz if that fails. If nixpkgs lags with no open PR, the local bump is failing - check \`~/Library/Logs/apfel-nixpkgs-bump.log\` (most common cause: the GitHub 2FA-compliance block, i.e. an SMS factor on the account; remove it). Re-run on demand:
-
-\`\`\`bash
-./scripts/publish-nixpkgs-bump.sh --version ${canonical}
 \`\`\`
 
 ## What I did NOT do
