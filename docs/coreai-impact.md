@@ -71,7 +71,7 @@ including Linux servers"), and a **framework utilities package** whose building 
   macOS 27, so there is an adoption-window lead); **OpenAI-compat depth and maturity** (honest 501s,
   CORS, tool calling, `response_format`, real conformance tests vs. a brand-new `fm serve`);
   **MCP client** (no MCP client surface visible in `fm`); **UNIX ergonomics** (`--json`, `NO_COLOR`,
-  exit codes, stdin detection); **cross-channel install** (brew/nix) and the apfel-family ecosystem.
+  exit codes, stdin detection); **cross-channel install** (homebrew-core + tap) and the apfel-family ecosystem.
 - **Open question for triage:** is `fm serve` genuinely OpenAI-conformant (the exact question asked
   under Franz's HN post)? Worth running apfel's own `openapi_conformance` suite against `fm serve` on
   OS 27 hardware to know precisely where apfel is ahead.

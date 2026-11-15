@@ -120,7 +120,7 @@ Each release is published through two channels. Both pull the same tarball from 
 | [homebrew-core](https://github.com/Homebrew/homebrew-core/blob/master/Formula/a/apfel.rb) (`brew install apfel`) | Up to ~24h after release | Homebrew `autobump-PR` bot detects new GitHub Releases and opens a formula-bump PR. |
 | [Arthur-Ficial/homebrew-tap](https://github.com/Arthur-Ficial/homebrew-tap) (`brew install Arthur-Ficial/tap/apfel`) | Synchronous with release | `scripts/publish-release.sh` pushes the new formula directly as part of `make release`. |
 
-Both channels are "owned" in the sense that we respond to reviewer feedback - but merges into homebrew-core are gated by the Homebrew maintainer community. The tap is the only channel where we merge directly. nixpkgs was dropped on 2026-11-15, see [nixpkgs.md](nixpkgs.md).
+Both channels are "owned" in the sense that we respond to reviewer feedback - but merges into homebrew-core are gated by the Homebrew maintainer community. The tap is the only channel where we merge directly.
 
 ## Versioning rules
 
