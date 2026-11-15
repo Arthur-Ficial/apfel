@@ -45,6 +45,7 @@ Nothing reaches main, end users, or distribution channels without @franzenzenhof
 | **Cut releases (`make release`, tag, GitHub Release)** | ❌ **NO** |
 | **Update homebrew-core formula** | ❌ **NO** |
 | **Push to `Arthur-Ficial/homebrew-tap`** | ❌ **NO** |
+| **Update nixpkgs (`NixOS/nixpkgs`)** | ❌ **NO** |
 | **Any action that changes what end users install** | ❌ **NO** |
 
 **The rule:** routines draft, research, review, propose. Franz merges, releases, ships. Full stop.
