@@ -118,7 +118,7 @@ HTTP Server (/v1/*) ───────┘   ContextManager → Transcript API
 
 - Version: `1.18.0` (source of truth: `.version`)
 - Tests: 1748 unit + 712 integration
-- Distribution: homebrew-core (`brew install apfel`), nixpkgs (`nix profile install nixpkgs#apfel-llm`), and the Arthur-Ficial/homebrew-tap
+- Distribution: homebrew-core (`brew install apfel`) and the Arthur-Ficial/homebrew-tap
 - Stability policy: [STABILITY.md](STABILITY.md)
 - Security policy: [SECURITY.md](SECURITY.md)
 
@@ -350,7 +350,6 @@ This runs locally (not on GitHub Actions - GitHub runners lack Apple Intelligenc
 7. Creates git tag (`v<version>`) and pushes it
 8. Developer ID signs the binary under a hardened runtime, packages the tarball, notarizes it as a hard gate (#226), writes a `.sha256` checksum sidecar, and publishes the GitHub Release with the tarball, checksum asset, and changelog
 9. Updates the Homebrew tap formula
-10. Opens a build-verified nixpkgs bump PR (non-fatal final step; a failure warns but does not fail the release)
 
 ### After releasing
 
@@ -362,13 +361,12 @@ Verifies: GitHub Release exists with tarball, git tag exists, `.version` matches
 
 ### Distribution channels
 
-apfel ships through three channels. All pull the same tarball from each GitHub Release. The tarball's `apfel` binary is Developer ID signed (Franz Enzenhofer, team 7D2YX5DQ6M) under a hardened runtime and the submission is notarized by Apple. It is NOT stapled - a bare CLI binary in a tarball cannot hold a stapled ticket (stapler needs a bundle/dmg/pkg), so Gatekeeper verifies notarization online. Each release also publishes an `apfel-<v>-arm64-macos.tar.gz.sha256` checksum asset; `scripts/post-release-verify.sh` cross-checks it against the tarball and the tap formula sha256 and confirms the TeamIdentifier.
+apfel ships through two channels. All pull the same tarball from each GitHub Release. The tarball's `apfel` binary is Developer ID signed (Franz Enzenhofer, team 7D2YX5DQ6M) under a hardened runtime and the submission is notarized by Apple. It is NOT stapled - a bare CLI binary in a tarball cannot hold a stapled ticket (stapler needs a bundle/dmg/pkg), so Gatekeeper verifies notarization online. Each release also publishes an `apfel-<v>-arm64-macos.tar.gz.sha256` checksum asset; `scripts/post-release-verify.sh` cross-checks it against the tarball and the tap formula sha256 and confirms the TeamIdentifier.
 
 - **homebrew-core** - `brew install apfel`. Autobump detects new releases; latency ~24h. We do not maintain the formula.
 - **Arthur-Ficial/homebrew-tap** - `brew install Arthur-Ficial/tap/apfel`. Synchronous, pushed as part of `make release`. Secondary channel; also houses apfel-family tools (apfel-chat, apfel-clip, apfel-mcp, etc.).
-- **nixpkgs** - `nix profile install nixpkgs#apfel-llm`. Name is `apfel-llm` because nixpkgs already has an unrelated physics `apfel` package and the disambiguator landed upstream as `apfel-llm` (PR NixOS/nixpkgs#508084). `make release` opens a build-verified bump PR on `NixOS/nixpkgs` via `scripts/publish-nixpkgs-bump.sh` (final non-fatal step), and a nixpkgs committer merges it. There is **no zero-touch auto-merge**: apfel-llm is `aarch64-darwin`-only, so r-ryantm (Linux-only worker) can never evaluate it or open a PR, and the merge bot only merges PRs opened by r-ryantm or committers - maintainership lets us comment merge but not self-merge. The script build-verifies with `nix-build` on this Mac, opens one advancing PR following the nixpkgs Things-done + automation/AI-policy conventions, and re-runs twice daily via launchd (`com.arthurficial.apfel-nixpkgs-bump`) through the wrapper `scripts/nixpkgs-bump-cron.sh`, which emails Franz once per distinct failure. **Paused since 2026-11-15** (a nixpkgs maintainer closed the automated bump PR NixOS/nixpkgs#565008 under the contributing guidelines): while `.nixpkgs-bump-paused` exists the bump ends as PAUSED before any GitHub call and the launchd job is disabled on Arthur Mac; see [docs/nixpkgs.md](docs/nixpkgs.md). Silent failure mode to know: if the Arthur-Ficial GitHub account ever has an SMS 2FA factor, the NixOS org 403s ALL authenticated access (even reads), blocking PR creation and blinding `gh pr list` - remove SMS (authenticator TOTP is the anchor; `~/.claude/rules/services.md`). See [docs/nixpkgs.md](docs/nixpkgs.md).
+- nixpkgs: dropped 2026-11-15, see docs/nixpkgs.md.
 - Emergency Homebrew bump: `brew bump-formula-pr apfel --url=<tarball-url> --sha256=<hash>`
-- Standalone nixpkgs bump (e.g. catch-up if a release skipped it): `./scripts/publish-nixpkgs-bump.sh --version X.Y.Z`. Manual recovery in [docs/nixpkgs.md](docs/nixpkgs.md) "Manual self-bump".
 
 ### Do NOT manually
 

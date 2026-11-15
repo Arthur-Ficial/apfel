@@ -24,15 +24,11 @@ The tap installs eight companion commands alongside `apfel`: `apfel-cmd`, `apfel
 
 No build tools needed. See [brew-install.md](brew-install.md) for troubleshooting.
 
-## Option 2: Nix (nixpkgs)
+## Not on nixpkgs
 
-```bash
-nix profile install nixpkgs#apfel-llm
-```
+The nixpkgs package `apfel-llm` is not maintained by us and is outdated (1.10.0). We asked for its removal in [https://github.com/NixOS/nixpkgs/pull/588623](https://github.com/NixOS/nixpkgs/pull/588623). Use Homebrew (Option 1). See [docs/nixpkgs.md](nixpkgs.md).
 
-Attribute name is `apfel-llm` because nixpkgs already has an unrelated `apfel` package (a particle-physics PDF library); the binary on `$PATH` is still `apfel`. The package landed via [NixOS/nixpkgs#508084](https://github.com/NixOS/nixpkgs/pull/508084). See [docs/nixpkgs.md](nixpkgs.md) for automation details.
-
-## Option 3: Build from source
+## Option 2: Build from source
 
 Requires Swift 6.3+ with developer tools that include the **macOS 27 SDK** (Command Line Tools 27 or Xcode 27; since apfel 1.15.0 the sources use macOS 27 FoundationModels API behind runtime availability checks, so a 26.x SDK no longer compiles them - the binary still runs on macOS 26). Command Line Tools are enough - `make install` handles the SwiftPM 6.4 build-system workaround automatically. If you run `swift build` directly (outside the Makefile), add `--build-system native` - see the troubleshooting section below.
 

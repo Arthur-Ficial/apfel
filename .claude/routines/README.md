@@ -72,7 +72,7 @@ Max 20x plan: 15 routine runs per day. Webhook routines only burn budget when ev
 
 - **Phase 1 - live:** `02-pr-auto-review.md` - first responder on every PR.
 - **Phase 2 - live:** `01-issue-triage.md` - first responder on every issue. Applies `bug` label which triggers #5.
-- **Phase 3 - live:** `04-dist-channel-watch.md` - weekly Monday check of homebrew-core + nixpkgs sync.
+- **Phase 3 - live:** `04-dist-channel-watch.md` - weekly Monday check of homebrew-core sync.
 - **Bug solver - live:** `05-bug-solver.md` - fires on issues labeled `bug` or on `@Arthur-Ficial investigate` comments from Franz/Arthur. Drafts a fix PR.
 - **Deferred indefinitely:** `03-first-time-ci.md` (folded into #2), `stale-sweep`, `post-release-verify` (already covered by `scripts/post-release-verify.sh`).
 

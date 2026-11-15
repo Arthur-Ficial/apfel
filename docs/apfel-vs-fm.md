@@ -21,7 +21,7 @@ apfel came first. Its first commit and v0.1.0 landed on 2026-03-24, the first Gi
 
 | | apfel | Apple `fm` |
 |---|---|---|
-| Ships with | `brew install apfel` (also nixpkgs, MacPorts, source; building from source needs the macOS 27 SDK, the binary runs on 26 and 27) | macOS 27 (`/usr/bin/fm`), nothing to install |
+| Ships with | `brew install apfel` (also MacPorts, source; building from source needs the macOS 27 SDK, the binary runs on 26 and 27) | macOS 27 (`/usr/bin/fm`), nothing to install |
 | macOS support | **26 and 27**, one binary | 27 only |
 | First run | works immediately | `sudo fm license` in a terminal, type `yes` (machine-wide) |
 | License | MIT, open source | Apple SLA, closed |

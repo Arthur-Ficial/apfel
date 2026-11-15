@@ -18,7 +18,7 @@ Decide whether to open / comment / skip a `dist-sync` issue on `Arthur-Ficial/ap
 
 **You do not check channel versions yourself.** The script does that. You do not look up in-flight bump PRs yourself. The script does that. You do not write the issue body. The script does that. Your only job is to call `gh` correctly based on the script's three output modes.
 
-This routine used to be a long narrative prompt that asked you to fetch URLs, parse versions, search PRs, and decide. That structure failed on 2026-05-18 when you skipped the in-flight-PR guard and filed a false-alarm issue #154 against a nixpkgs lag that was already covered by upstream PR #520183. The work was moved into a shell script so the decision is deterministic; your job is just to act on its output.
+This routine used to be a long narrative prompt that asked you to fetch URLs, parse versions, search PRs, and decide. That structure failed on 2026-05-18 when you skipped the in-flight-PR guard and filed a false-alarm issue #154 against a channel lag that was already covered by upstream PR #520183. The work was moved into a shell script so the decision is deterministic; your job is just to act on its output.
 
 ## The one command
 
@@ -69,7 +69,7 @@ gh issue create --repo Arthur-Ficial/apfel \
 ## Hard limits
 
 - **Never** edit the body. The script wrote it. If it looks wrong, that is a script bug and the routine should open a meta-issue against the script instead of patching prose on the fly.
-- **Never** run `brew bump-formula-pr`, push to `Arthur-Ficial/homebrew-tap`, or run a nixpkgs bump from the routine.
+- **Never** run `brew bump-formula-pr`, or push to `Arthur-Ficial/homebrew-tap` from the routine.
 - **Never** close any issue.
 - **Never** invent advice that isn't in the script's template. If the user sees stale workflow names or made-up fix commands, it is because you ignored this rule.
 - The routine has no fallback "compose the body yourself if the script is unhappy". If the script is unhappy, that is Case A - exit clean.
