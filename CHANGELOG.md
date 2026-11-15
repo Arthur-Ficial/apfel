@@ -9,7 +9,7 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ### Removed
 
-- nixpkgs is no longer a distribution channel: apfel is developed entirely by AI agents and cannot follow the nixpkgs automation/AI policy, so the automated bump PR NixOS/nixpkgs#565008 was closed and we asked nixpkgs to drop `apfel-llm` (NixOS/nixpkgs#588623). The bump tooling (`scripts/publish-nixpkgs-bump.sh`, `scripts/nixpkgs-bump-cron.sh`, `scripts/bump-nixpkgs.sh`, the launchd job and their tests), the nixpkgs step in `scripts/publish-release.sh` and the nixpkgs check in `scripts/dist-watch.sh` are removed. Install with Homebrew. See docs/nixpkgs.md.
+- nixpkgs is no longer a distribution channel. The nixpkgs bump tooling, its launchd job, its tests, the nixpkgs step in `scripts/publish-release.sh` and the nixpkgs check in `scripts/dist-watch.sh` are removed. Install with Homebrew.
 
 ## [1.18.0] - 2026-11-15
 

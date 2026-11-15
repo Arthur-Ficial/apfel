@@ -122,7 +122,7 @@ cc @franzenzenhofer - this review is automated. Final merge/release decision is 
 - Never `gh pr merge`
 - Never push to main
 - Never run `make release`, `gh release create`, or any bump script
-- Never touch `Arthur-Ficial/homebrew-tap` or `NixOS/nixpkgs`
+- Never touch `Arthur-Ficial/homebrew-tap`
 - Never pretend you ran tests you did not run
 - If you hit a step that seems to require a forbidden action, stop and post a draft comment with `cc @franzenzenhofer` instead
 

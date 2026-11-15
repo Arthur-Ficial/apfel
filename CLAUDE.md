@@ -365,7 +365,6 @@ apfel ships through two channels. All pull the same tarball from each GitHub Rel
 
 - **homebrew-core** - `brew install apfel`. Autobump detects new releases; latency ~24h. We do not maintain the formula.
 - **Arthur-Ficial/homebrew-tap** - `brew install Arthur-Ficial/tap/apfel`. Synchronous, pushed as part of `make release`. Secondary channel; also houses apfel-family tools (apfel-chat, apfel-clip, apfel-mcp, etc.).
-- nixpkgs: dropped 2026-11-15, see docs/nixpkgs.md.
 - Emergency Homebrew bump: `brew bump-formula-pr apfel --url=<tarball-url> --sha256=<hash>`
 
 ### Do NOT manually
