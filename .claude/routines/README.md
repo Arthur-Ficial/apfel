@@ -107,8 +107,8 @@ If any routine run ever does something on this list, disable the routine IMMEDIA
 - Clicks `gh pr review --approve` or `gh pr merge`
 - Pushes a commit to `main`
 - Runs `make release`, creates a GitHub Release, or pushes a git tag
-- Touches `Arthur-Ficial/homebrew-tap`
+- Touches `Arthur-Ficial/homebrew-tap` or `NixOS/nixpkgs`
 - Modifies `.version`, `Sources/BuildInfo.swift`, or the README badge directly
-- Attempts any action that would change what end users install via Homebrew
+- Attempts any action that would change what end users install via Homebrew or Nix
 
 The guardrails in `_golden-goal.md` are not suggestions. They are the product.
