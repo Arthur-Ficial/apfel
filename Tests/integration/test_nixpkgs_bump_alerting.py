@@ -196,3 +196,40 @@ def test_bump_detects_2fa_readblock_as_auth_2fa(tmp_path):
 
     assert rc == 20, f"expected AUTH_2FA exit 20, got {rc}\nstdout:{out}\nstderr:{err}"
     assert "NIXPKGS_BUMP_STATUS=AUTH_2FA" in out, f"missing status line\n{out}"
+
+
+# --------------------------------------------------------------------------
+# Pause switch (2026-11-15: a nixpkgs maintainer closed the automated bump PR
+# under the contributing guidelines; no new automated PR until it is lifted)
+# --------------------------------------------------------------------------
+
+def test_bump_pause_file_stops_before_any_github_call(tmp_path):
+    """A present pause file ends the bump as PAUSED (exit 0) before gh, git or
+    nix are touched, so neither the launchd job nor `make release` opens a PR."""
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    marker = tmp_path / "gh-was-called"
+    _write_exec(bindir / "gh", f'#!/usr/bin/env bash\ntouch {marker}\nexit 0\n')
+    _write_exec(bindir / "nix-prefetch-url", '#!/usr/bin/env bash\nexit 0\n')
+    pause = tmp_path / "paused"
+    pause.write_text("closed by a nixpkgs maintainer, see NixOS/nixpkgs#565008\n")
+
+    env = dict(os.environ)
+    env["PATH"] = f"{bindir}:{env['PATH']}"
+    env["NIXPKGS_BUMP_DIR"] = str(tmp_path / "nixpkgs-checkout")
+    env["NIXPKGS_BUMP_PAUSE_FILE"] = str(pause)
+
+    rc, out, err = _run([str(BUMP), "--version", "1.18.0"], env=env)
+
+    assert rc == 0, f"paused bump must exit 0, got {rc}\nstdout:{out}\nstderr:{err}"
+    assert "NIXPKGS_BUMP_STATUS=PAUSED version=1.18.0" in out, out
+    assert "NixOS/nixpkgs#565008" in out, "the pause reason must be printed"
+    assert not marker.exists(), "gh must not be called while paused"
+    assert not (tmp_path / "nixpkgs-checkout").exists(), "no clone while paused"
+
+
+def test_paused_status_never_emails(cron_env):
+    env, record, make_bump, _ = cron_env
+    make_bump("NIXPKGS_BUMP_STATUS=PAUSED version=1.18.0", 0)
+    _run([str(CRON)], env=env)
+    assert _email_count(record) == 0

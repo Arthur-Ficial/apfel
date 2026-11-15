@@ -28,6 +28,8 @@ If nixpkgs' darwin stdenv later gains macOS 26 SDK support, we switch to a sourc
 
 ## How new versions land
 
+**PAUSED since 2026-11-15.** A nixpkgs maintainer closed the automated bump PR [NixOS/nixpkgs#565008](https://github.com/NixOS/nixpkgs/pull/565008) under the contributing guidelines (automated development, see [NixOS/nixpkgs#581542](https://github.com/NixOS/nixpkgs/issues/581542)). While the file `.nixpkgs-bump-paused` exists, `scripts/publish-nixpkgs-bump.sh` ends as `NIXPKGS_BUMP_STATUS=PAUSED` before any GitHub call, so neither `make release` nor the launchd job opens a PR; the launchd job `com.arthurficial.apfel-nixpkgs-bump` is also disabled on Arthur Mac (`launchctl enable gui/$(id -u)/com.arthurficial.apfel-nixpkgs-bump` to undo). Delete the file only after this is resolved with the nixpkgs maintainers.
+
 **The pipeline: `make release` opens a build-verified bump PR on `NixOS/nixpkgs`; a nixpkgs committer merges it.** There is no zero-touch auto-merge for apfel-llm, and that is a hard architectural limit, not a gap we can close. Here is why, because it dictates everything else.
 
 ### Why r-ryantm and the merge bot cannot help (the darwin-only wall)

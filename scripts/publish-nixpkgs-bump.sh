@@ -69,6 +69,16 @@ finish() {
   exit "$code"
 }
 
+# Pause switch: while this file exists, no automated nixpkgs PR is opened (not by
+# the launchd job, not by `make release`). Its first line says why. Checked before
+# any gh/git/nix call. Added 2026-11-15 after a nixpkgs maintainer closed the
+# automated bump PR NixOS/nixpkgs#565008 under the contributing guidelines.
+PAUSE_FILE="${NIXPKGS_BUMP_PAUSE_FILE:-$REPO_ROOT/.nixpkgs-bump-paused}"
+if [[ -f "$PAUSE_FILE" ]]; then
+  info "nixpkgs bump paused: $(head -1 "$PAUSE_FILE")"
+  finish PAUSED 0
+fi
+
 # Default target = latest published GitHub release (robust for the launchd
 # catch-up run, which has no --version and where the local .version may lag a
 # release made elsewhere). Falls back to local .version if the API is down.
