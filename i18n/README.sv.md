@@ -23,6 +23,8 @@ Macar med Apple Silicon levereras med en inbyggd LLM via [Apple FoundationModels
 
 `apfel --chat` - interaktiv REPL.
 
+[![Demovideo av apfel i terminalen: riktiga kommandon, riktiga svar direkt på enheten (84 sekunder)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/sv/a/apfel-ai-tutorial/#video)
+
 Tool calling fungerar i alla sammanhang.
 
 ![apfel CLI](../screenshots/cli.png)

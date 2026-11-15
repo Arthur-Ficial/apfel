@@ -23,6 +23,8 @@ Apple Silicon Mac kompiuteriuose yra įmontuotas LLM per [Apple FoundationModels
 
 `apfel --chat` - interaktyvus REPL.
 
+[![apfel demonstracinis vaizdo įrašas terminale: tikros komandos, tikri atsakymai įrenginyje (84 sekundės)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/lt/a/apfel-ai-tutorial/#video)
+
 Įrankių iškvietimas veikia visuose kontekstuose.
 
 ![apfel CLI](../screenshots/cli.png)

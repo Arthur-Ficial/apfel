@@ -23,6 +23,8 @@
 
 `apfel --chat` - διαδραστικό REPL.
 
+[![Βίντεο επίδειξης του apfel στο τερματικό: πραγματικές εντολές, πραγματικές απαντήσεις στη συσκευή (84 δευτερόλεπτα)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/el/a/apfel-ai-tutorial/#video)
+
 Η κλήση εργαλείων λειτουργεί σε όλα τα περιβάλλοντα.
 
 ![apfel CLI](../screenshots/cli.png)

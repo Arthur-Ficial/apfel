@@ -23,6 +23,8 @@ Apple Silicon वाले Mac [Apple FoundationModels](https://developer.apple.
 
 `apfel --chat` - इंटरैक्टिव REPL।
 
+[![apfel टर्मिनल डेमो वीडियो: असली कमांड, डिवाइस पर असली जवाब (84 सेकंड)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/hi/a/apfel-ai-tutorial/#video)
+
 Tool calling सभी मोड में काम करती है।
 
 ![apfel CLI](../screenshots/cli.png)

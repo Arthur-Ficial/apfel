@@ -23,6 +23,8 @@ Apple Silicon Mac मध्ये [Apple FoundationModels](https://developer.app
 
 `apfel --chat` - इंटरॅक्टिव्ह REPL.
 
+[![apfel टर्मिनल डेमो व्हिडिओ: खऱ्या कमांड, डिव्हाइसवर खरी उत्तरे (84 सेकंद)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/mr/a/apfel-ai-tutorial/#video)
+
 टूल कॉलिंग सर्व संदर्भांत काम करते.
 
 ![apfel CLI](../screenshots/cli.png)

@@ -23,6 +23,8 @@ Mac računari sa Apple Silicon-om dolaze sa ugrađenim LLM-om preko [Apple Found
 
 `apfel --chat` - interaktivni REPL.
 
+[![Demo video za apfel u terminalu: prave komande, pravi odgovori na uređaju (84 sekunde)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/sr/a/apfel-ai-tutorial/#video)
+
 Pozivanje alata radi u svim kontekstima.
 
 ![apfel CLI](../screenshots/cli.png)

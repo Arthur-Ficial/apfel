@@ -23,6 +23,8 @@ Apple Silicon Mac-এ [Apple FoundationModels](https://developer.apple.com/docum
 
 `apfel --chat` - ইন্টারেক্টিভ REPL।
 
+[![apfel টার্মিনাল ডেমো ভিডিও: আসল কমান্ড, ডিভাইসে আসল উত্তর (84 সেকেন্ড)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/bn/a/apfel-ai-tutorial/#video)
+
 Tool calling সব ক্ষেত্রেই কাজ করে।
 
 ![apfel CLI](../screenshots/cli.png)

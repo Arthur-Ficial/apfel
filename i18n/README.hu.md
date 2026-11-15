@@ -23,6 +23,8 @@ Az Apple Silicon Mac-ek beépített LLM-mel érkeznek az [Apple FoundationModels
 
 `apfel --chat` - interaktív REPL.
 
+[![apfel terminál-bemutatóvideó: valódi parancsok, valódi válaszok az eszközön (84 másodperc)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/hu/a/apfel-ai-tutorial/#video)
+
 Az eszközhívás minden környezetben működik.
 
 ![apfel CLI](../screenshots/cli.png)

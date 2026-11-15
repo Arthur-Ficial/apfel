@@ -23,6 +23,8 @@ Apple Silicon -Maceissa on sisäänrakennettu LLM [Apple FoundationModelsin](htt
 
 `apfel --chat` - interaktiivinen REPL.
 
+[![apfelin päätedemovideo: oikeat komennot, oikeat vastaukset suoraan laitteella (84 sekuntia)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/fi/a/apfel-ai-tutorial/#video)
+
 Työkalukutsut toimivat kaikissa yhteyksissä.
 
 ![apfel CLI](../screenshots/cli.png)
