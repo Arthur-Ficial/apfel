@@ -265,6 +265,25 @@ public enum ToolCallHandler {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// Try to extract a tool name from broken JSON text using regex. Checks
+    /// `name`, `function`, `function_name` first, then falls back to `type`
+    /// (excluding the protocol marker "function").
+    private static func salvageToolName(from text: String) -> String? {
+        if let regex = try? NSRegularExpression(
+               pattern: #""(?:name|function|function_name)"\s*:\s*"([A-Za-z0-9_.\-]+)""#),
+           let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+           let range = Range(match.range(at: 1), in: text) {
+            return String(text[range])
+        }
+        if let regex = try? NSRegularExpression(pattern: #""type"\s*:\s*"([A-Za-z0-9_.\-]+)""#),
+           let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+           let range = Range(match.range(at: 1), in: text) {
+            let candidate = String(text[range])
+            return candidate == "function" ? nil : candidate
+        }
+        return nil
+    }
+
     /// Extract what can be salvaged from a tool-call attempt whose JSON is
     /// unparseable: the first function name after the marker, plus the raw
     /// (still unparseable) arguments text so downstream validation fails into
@@ -279,12 +298,7 @@ public enum ToolCallHandler {
     private static func salvageUnparseableToolCall(from text: String) -> [ParsedToolCall]? {
         guard let start = text.range(of: "{\"tool_calls\"") else { return nil }
         let tail = String(text[start.lowerBound...])
-        guard let regex = try? NSRegularExpression(pattern: #""name"\s*:\s*"([A-Za-z0-9_.\-]+)""#),
-              let match = regex.firstMatch(in: tail, range: NSRange(tail.startIndex..., in: tail)),
-              let nameRange = Range(match.range(at: 1), in: tail) else {
-            return nil
-        }
-        let name = String(tail[nameRange])
+        guard let name = salvageToolName(from: tail) else { return nil }
         var rawArguments: String
         if let argsMarker = tail.range(of: "\"arguments\"") {
             rawArguments = String(tail[argsMarker.upperBound...])
@@ -568,6 +582,18 @@ public enum ToolCallHandler {
         return repaired
     }
 
+    private static let toolCallProtocolKeys: Set<String> = [
+        "id", "type", "function", "function_name", "name", "arguments",
+    ]
+
+    private static func collectSiblingArguments(from call: [String: Any]) -> Any? {
+        var args: [String: Any] = [:]
+        for (key, value) in call where !toolCallProtocolKeys.contains(key) {
+            args[key] = value
+        }
+        return args.isEmpty ? nil : args
+    }
+
     private static func parseToolCallJSON(_ json: String) -> [ParsedToolCall]? {
         guard let data = json.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -590,7 +616,16 @@ public enum ToolCallHandler {
                 rawArguments = fn["arguments"]
             } else if let fnName = call["function"] as? String {
                 name = fnName
-                rawArguments = call["arguments"]
+                rawArguments = call["arguments"] ?? collectSiblingArguments(from: call)
+            } else if let fnName = call["function_name"] as? String {
+                name = fnName
+                rawArguments = call["arguments"] ?? collectSiblingArguments(from: call)
+            } else if let fnName = call["name"] as? String {
+                name = fnName
+                rawArguments = call["arguments"] ?? collectSiblingArguments(from: call)
+            } else if let typeName = call["type"] as? String, typeName != "function" {
+                name = typeName
+                rawArguments = call["arguments"] ?? collectSiblingArguments(from: call)
             } else {
                 continue
             }
