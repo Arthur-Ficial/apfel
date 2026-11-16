@@ -649,6 +649,92 @@ func runToolCallHandlerTests() {
         """)
     }
 
+    // MARK: - Variant tool-call shapes (#580)
+    //
+    // Since #556 the model writes tool calls in shapes other than the
+    // documented envelope. The parser must read the name from whichever
+    // key carries it and collect arguments from sibling keys when the
+    // "arguments" wrapper is absent.
+
+    test("resolves name from \"type\" key when no \"function\" key (#580)") {
+        let response = #"{"tool_calls": [{"id": "call_1", "type": "web_search_exa", "arguments": {"query": "World Series winner"}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "web_search_exa")
+        let parsed = try JSONSerialization.jsonObject(with: Data(result!.first!.argumentsString.utf8)) as? [String: Any]
+        try assertEqual(parsed?["query"] as? String, "World Series winner")
+    }
+
+    test("resolves name from \"function_name\" key (#580)") {
+        let response = #"{"tool_calls": [{"id": "call_1", "type": "convert_time", "function_name": "convert_time", "arguments": {"source_timezone": "Asia/Tokyo", "target_timezone": "America/New_York", "time": "14:30"}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "convert_time")
+        let parsed = try JSONSerialization.jsonObject(with: Data(result!.first!.argumentsString.utf8)) as? [String: Any]
+        try assertEqual(parsed?["time"] as? String, "14:30")
+        try assertEqual(parsed?["source_timezone"] as? String, "Asia/Tokyo")
+    }
+
+    test("resolves name from \"name\" key at call level (#580)") {
+        let response = #"{"tool_calls": [{"id": "call_1", "name": "get_time", "arguments": {"timezone": "UTC"}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "get_time")
+        let parsed = try JSONSerialization.jsonObject(with: Data(result!.first!.argumentsString.utf8)) as? [String: Any]
+        try assertEqual(parsed?["timezone"] as? String, "UTC")
+    }
+
+    test("collects sibling keys as arguments when \"arguments\" key is absent (#580)") {
+        let response = #"{"tool_calls": [{"id": "call_1", "type": "convert_time", "function": "convert_time", "source_timezone": "America/New_York", "target_timezone": "Asia/Tokyo", "time": "14:30"}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "convert_time")
+        let parsed = try JSONSerialization.jsonObject(with: Data(result!.first!.argumentsString.utf8)) as? [String: Any]
+        try assertEqual(parsed?["source_timezone"] as? String, "America/New_York")
+        try assertEqual(parsed?["target_timezone"] as? String, "Asia/Tokyo")
+        try assertEqual(parsed?["time"] as? String, "14:30")
+    }
+
+    test("collects sibling keys when name comes from \"type\" (#580)") {
+        let response = #"{"tool_calls": [{"id": "call_1", "type": "convert_time", "source_timezone": "America/New_York", "target_timezone": "Asia/Tokyo", "time": "14:30"}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "convert_time")
+        let parsed = try JSONSerialization.jsonObject(with: Data(result!.first!.argumentsString.utf8)) as? [String: Any]
+        try assertEqual(parsed?["time"] as? String, "14:30")
+    }
+
+    test("\"type\": \"function\" is not mistaken for a tool name (#580)") {
+        let response = #"{"tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "add", "arguments": "{\"a\":1}"}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "add")
+    }
+
+    test("salvage finds name from \"function\" string key in broken JSON (#580)") {
+        let response = #"{"tool_calls": [{"id": "call_1", "type": "web_search_exa", "function": "web_search_exa", "arguments": {"query": "who won the most recent World Series", "category:sports"}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "web_search_exa")
+    }
+
+    test("salvage finds name from \"type\" key in broken JSON when no other name key matches (#580)") {
+        let response = #"{"tool_calls": [{"id": "call_1", "type": "get_current_time", "arguments": {"timezone: America/New_York"}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "get_current_time")
+    }
+
+    test("sibling keys ignored when \"arguments\" key is present (#580)") {
+        let response = #"{"tool_calls": [{"id": "call_1", "function": "calc", "arguments": {"expression": "2+2"}, "extra_key": "noise"}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "calc")
+        let parsed = try JSONSerialization.jsonObject(with: Data(result!.first!.argumentsString.utf8)) as? [String: Any]
+        try assertEqual(parsed?["expression"] as? String, "2+2")
+        try assertNil(parsed?["extra_key"])
+    }
+
     // MARK: - ToolLogEntry
 
     test("ToolLogEntry stores tool execution result") {

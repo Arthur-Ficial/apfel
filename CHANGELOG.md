@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Tool calls in variant shapes no longer leak as `content` or lose their arguments (#580). Since #556 the model frequently writes the function name under `type`, `function_name` or `name` instead of the documented `function.name`, and puts arguments as sibling keys instead of an `arguments` wrapper. `parseToolCallJSON` now resolves the name from all five key positions and collects sibling keys as arguments when the `arguments` key is absent; `salvageUnparseableToolCall` matches the same key variants. Before, these shapes returned `nil` (leaked as `content` with `finish_reason: "stop"`) or dropped the arguments to `{}`.
+
 ### Removed
 
 - nixpkgs is no longer a distribution channel. The nixpkgs bump tooling, its launchd job, its tests, the nixpkgs step in `scripts/publish-release.sh` and the nixpkgs check in `scripts/dist-watch.sh` are removed. Install with Homebrew.
