@@ -22,11 +22,15 @@ package struct SessionOptions: Sendable {
     public let contextConfig: ContextConfig
     public let retryEnabled: Bool
     public let retryCount: Int
+    /// Which tuned variant of the system model runs the request: the
+    /// server maps `apple-foundationmodel-content-tagging` to `.contentTagging`.
+    public let useCase: EngineOptions.UseCase
 
     public init(
         temperature: Double?, topP: Double?, maxTokens: Int?, seed: UInt64?,
         permissive: Bool, contextConfig: ContextConfig,
-        retryEnabled: Bool, retryCount: Int
+        retryEnabled: Bool, retryCount: Int,
+        useCase: EngineOptions.UseCase = .general
     ) {
         self.temperature = temperature
         self.topP = topP
@@ -36,6 +40,7 @@ package struct SessionOptions: Sendable {
         self.contextConfig = contextConfig
         self.retryEnabled = retryEnabled
         self.retryCount = retryCount
+        self.useCase = useCase
     }
 
     public static let defaults = SessionOptions(
@@ -92,8 +97,9 @@ package func makeGenerationOptions(
 
 // MARK: - Model Selection
 
-package func makeModel(permissive: Bool) -> SystemLanguageModel {
+package func makeModel(permissive: Bool, useCase: EngineOptions.UseCase = .general) -> SystemLanguageModel {
     SystemLanguageModel(
+        useCase: useCase == .contentTagging ? .contentTagging : .general,
         guardrails: permissive ? .permissiveContentTransformations : .default
     )
 }
@@ -103,7 +109,7 @@ package func makeModel(permissive: Bool) -> SystemLanguageModel {
 /// Create a LanguageModelSession with optional system instructions for CLI use.
 /// Uses Transcript.Instructions so streaming and non-streaming read the same source.
 package func makeSession(systemPrompt: String?, options: SessionOptions = .defaults) -> LanguageModelSession {
-    let model = makeModel(permissive: options.permissive)
+    let model = makeModel(permissive: options.permissive, useCase: options.useCase)
     guard let systemPrompt, !systemPrompt.isEmpty else {
         return LanguageModelSession(model: model)
     }

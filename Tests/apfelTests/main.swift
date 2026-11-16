@@ -77,6 +77,7 @@ suite("ExitCodeMapTests") { runExitCodeMapTests() }
 suite("ToolCallHandlerTests") { runToolCallHandlerTests() }
 suite("ContextStrategyTests") { runContextStrategyTests() }
 suite("OpenAIModelsTests") { runOpenAIModelsTests() }
+suite("ServedModelTests") { runServedModelTests() }
 suite("JSONFenceStripperTests") { runJSONFenceStripperTests() }
 suite("LogBodyTests") { runLogBodyTests() }
 suite("PromptBudgetCheckTests") { runPromptBudgetCheckTests() }

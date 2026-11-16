@@ -92,7 +92,7 @@ public enum ChatRequestValidationFailure: Sendable, Equatable, Hashable, CustomS
     /// Both `max_tokens` and `max_completion_tokens` were provided with
     /// different values.
     case conflictingMaxTokens(legacy: Int, modern: Int)
-    /// The request asked for a model name other than `apple-foundationmodel`.
+    /// The request asked for a model name the server does not serve (`ServedModel`).
     case invalidModel(String)
     /// The `stop` value was malformed, over the limits, or combined with
     /// tool calling / structured output (#483).
@@ -122,7 +122,7 @@ public enum ChatRequestValidationFailure: Sendable, Equatable, Hashable, CustomS
         case .conflictingMaxTokens(let legacy, let modern):
             return "Both 'max_tokens' (\(legacy)) and 'max_completion_tokens' (\(modern)) were provided with different values. Use 'max_completion_tokens' only, or provide the same value for both."
         case .invalidModel(let model):
-            return "The model '\(model)' does not exist. The only available model is 'apple-foundationmodel'."
+            return "The model '\(model)' does not exist. Available models: \(ServedModel.availableList)."
         case .invalidStop(let failure):
             return failure.message
         }
@@ -201,8 +201,9 @@ public enum ChatRequestValidationFailure: Sendable, Equatable, Hashable, CustomS
 }
 
 public enum ChatRequestValidator {
-    /// The only model name this server accepts.
-    public static let validModel = "apple-foundationmodel"
+    /// The default model name. The server also serves the other
+    /// `ServedModel` ids; validation goes through `ServedModel.resolve`.
+    public static let validModel = ServedModel.general.rawValue
     /// Roles the server understands. Must stay in sync with
     /// `ContextManager.historyEntry` and `buildInstructions`.
     public static let knownRoles: Set<String> = ["system", "developer", "user", "assistant", "tool"]
@@ -232,8 +233,14 @@ public enum ChatRequestValidator {
             return .emptyMessages
         }
 
-        if request.model != validModel {
+        guard let servedModel = ServedModel.resolve(request.model) else {
             return .invalidModel(request.model)
+        }
+
+        // The content-tagging model never calls tools (see ServedModel): say so
+        // instead of silently ignoring them.
+        if !servedModel.supportsTools, let tools = request.tools, !tools.isEmpty {
+            return .invalidParameterValue(servedModel.toolsUnsupportedMessage)
         }
 
         if let unsupported = UnsupportedChatParameter.detect(in: request) {

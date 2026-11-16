@@ -148,6 +148,7 @@ struct ResponsesUsage: Encodable {
 /// clients (openai SDK pydantic models) validate cleanly.
 struct ResponsesEnvelope: Encodable {
     let id: String
+    let model: String
     let createdAt: Int
     let status: String                 // "in_progress" | "completed" | "incomplete"
     let instructions: String?
@@ -192,7 +193,7 @@ struct ResponsesEnvelope: Encodable {
         try c.encode(instructions, forKey: .instructions)
         try c.encode(maxOutputTokens, forKey: .max_output_tokens)
         try c.encode(metadata ?? [:], forKey: .metadata)
-        try c.encode(modelName, forKey: .model)
+        try c.encode(model, forKey: .model)
         try c.encode(output, forKey: .output)
         try c.encode(false, forKey: .parallel_tool_calls)
         try c.encodeNil(forKey: .previous_response_id)

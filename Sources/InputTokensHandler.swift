@@ -190,6 +190,7 @@ func responsesSessionOptions(_ r: ResponsesRequest, truncation: ResponsesTruncat
             strategy: truncation.contextStrategy, maxTurns: nil,
             outputReserve: BodyLimits.defaultOutputReserveTokens),
         retryEnabled: serverState.config.retryEnabled,
-        retryCount: serverState.config.retryCount
+        retryCount: serverState.config.retryCount,
+        useCase: (r.model.flatMap(ServedModel.resolve) ?? .default).useCase
     )
 }

@@ -127,18 +127,20 @@ func startServer(config: ServerConfig, mcpManager: MCPManager? = nil) async thro
     router.get("/v1/models") { _, _ -> Response in
         let contextWindow = await TokenCounter.shared.contextWindow
         let capabilities = await TokenCounter.shared.capabilitiesReport
+        // One entry per served model. Both share the runtime's
+        // context window; the general entry is unchanged from upstream.
         return jsonResponse(jsonString(ModelsListResponse(
             object: "list",
-            data: [.init(
-                id: modelName, object: "model", created: 1719792000, owned_by: "apple",
+            data: ServedModel.allCases.map { served in .init(
+                id: served.rawValue, object: "model", created: 1719792000, owned_by: "apple",
                 context_window: contextWindow.tokens,
                 context_window_measured: contextWindow.isMeasured,
-                capabilities: capabilities.names,
+                capabilities: served.capabilities(from: capabilities.names),
                 capabilities_reported: capabilities.reported,
-                supported_parameters: ["temperature", "max_tokens", "max_completion_tokens", "seed", "stop", "stream", "tools", "tool_choice", "parallel_tool_calls", "response_format", "x_context_strategy", "x_context_max_turns", "x_context_output_reserve"],
+                supported_parameters: served.supportedParameters,
                 unsupported_parameters: ["logprobs", "n", "presence_penalty", "frequency_penalty"],
-                notes: "Apple on-device model via FoundationModels framework. Unsupported parameters are rejected with 400 when present (except n=1 and logprobs=false). Supported languages: \(cachedLangs.joined(separator: ", "))"
-            )]
+                notes: "\(served.notes) Supported languages: \(cachedLangs.joined(separator: ", "))"
+            ) }
         )))
     }
 

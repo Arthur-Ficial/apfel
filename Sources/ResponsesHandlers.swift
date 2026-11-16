@@ -24,6 +24,8 @@ import ApfelEngine
 
 /// Request fields echoed verbatim on every envelope for this request.
 struct ResponsesEcho {
+    /// The served model id the request named, echoed as `model`.
+    let model: String
     let instructions: String?
     let maxOutputTokens: Int?
     let metadata: [String: String]?
@@ -36,6 +38,7 @@ struct ResponsesEcho {
     let truncation: String
 
     init(_ r: ResponsesRequest, formatType: String) {
+        model = (r.model.flatMap(ServedModel.resolve) ?? .default).rawValue
         instructions = r.instructions
         maxOutputTokens = r.max_output_tokens
         metadata = r.metadata
@@ -56,7 +59,7 @@ struct ResponsesEcho {
                   output: [ResponsesOutputItem], usage: ResponsesUsage?,
                   incompleteReason: String? = nil) -> ResponsesEnvelope {
         ResponsesEnvelope(
-            id: id, createdAt: created, status: status,
+            id: id, model: model, createdAt: created, status: status,
             instructions: instructions, maxOutputTokens: maxOutputTokens,
             metadata: metadata, output: output,
             temperature: temperature, topP: topP,
