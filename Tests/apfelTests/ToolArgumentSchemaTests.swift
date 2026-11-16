@@ -38,9 +38,12 @@ func runToolArgumentSchemaTests() {
             ["multiply", "b", "a (number)", "b (number)"])
     }
 
-    test("unexpected key outside properties throws and names the key") {
+    test("unexpected key outside properties throws when additionalProperties is false") {
+        let strictSchema = """
+        {"type": "object", "properties": {"a": {"type": "number"}, "b": {"type": "number"}}, "required": ["a", "b"], "additionalProperties": false}
+        """
         try expectInvalid(
-            "multiply", #"{"numbers": [247, 83]}"#, multiplySchema,
+            "multiply", #"{"numbers": [247, 83]}"#, strictSchema,
             ["multiply", "numbers", "a", "b"])
     }
 
@@ -110,6 +113,25 @@ func runToolArgumentSchemaTests() {
     test("required key present but extra key absent passes with additionalProperties omitted") {
         try MCPProtocol.validateToolArguments(
             name: "multiply", arguments: #"{"a": 1, "b": 2}"#, inputSchemaJSON: multiplySchema)
+    }
+
+    test("extra keys pass when additionalProperties is absent - JSON Schema default is true (#584)") {
+        let schema = #"{"type":"object","properties":{"days":{"type":"integer","default":1}}}"#
+        try MCPProtocol.validateToolArguments(
+            name: "repository_space", arguments: #"{"days": 1, "data": "extra"}"#,
+            inputSchemaJSON: schema)
+    }
+
+    test("extra keys pass with required keys present when additionalProperties is absent (#584)") {
+        try MCPProtocol.validateToolArguments(
+            name: "multiply", arguments: #"{"a": 1, "b": 2, "extra": true}"#,
+            inputSchemaJSON: multiplySchema)
+    }
+
+    test("missing required keys still rejected when additionalProperties is absent (#584)") {
+        try expectInvalid(
+            "multiply", #"{"numbers": [247, 83]}"#, multiplySchema,
+            ["multiply", "a", "b"])
     }
 
     test("property without type is listed by name only in the error message") {
