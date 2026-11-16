@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Tool-call `arguments` containing model-written LaTeX commands (`\times`, `\beta`, `\frac`, `\neq`, `\rho`) no longer carry raw control characters (tab, backspace, form feed, newline, carriage return) through to the API response. Foundation's JSON parser decoded e.g. `\t` from `\times` as a raw 0x09 tab, and `ensureJSONArguments` returned the string as-is. Any strict JSON parser (Python, Node, jq) rejected the result. The arguments are now round-tripped through parse + re-serialize so control characters are properly escaped (#578).
+
 ### Removed
 
 - nixpkgs is no longer a distribution channel. The nixpkgs bump tooling, its launchd job, its tests, the nixpkgs step in `scripts/publish-release.sh` and the nixpkgs check in `scripts/dist-watch.sh` are removed. Install with Homebrew.

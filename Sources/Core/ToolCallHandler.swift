@@ -451,15 +451,21 @@ public enum ToolCallHandler {
         if trimmed.isEmpty { return "{}" }
         // Already a JSON object or array
         if trimmed.hasPrefix("{") || trimmed.hasPrefix("[") {
-            // On macOS 27 the model deterministically drops the final escaped
-            // `}` inside the arguments string when retrying a rejected tool
-            // call: the outer tool_calls JSON parses, so the truncated object
-            // lands here as-is. Repair unclosed strings/braces/brackets when
-            // (and only when) the repaired text parses; anything else is
-            // returned unchanged so #241 still fails loud (#193).
-            if (try? JSONSerialization.jsonObject(with: Data(trimmed.utf8))) == nil,
-               let repaired = repairUnclosedContainers(trimmed) {
-                return repaired
+            // Parse as-is, or repair structurally incomplete JSON first (#193).
+            var parsed = try? JSONSerialization.jsonObject(with: Data(trimmed.utf8))
+            if parsed == nil, let repaired = repairUnclosedContainers(trimmed) {
+                parsed = try? JSONSerialization.jsonObject(with: Data(repaired.utf8))
+            }
+            guard let obj = parsed else { return s }
+            // Re-serialize: Foundation's parser accepts raw control characters
+            // (0x09 tab, 0x0a newline, ...) inside strings; its serializer
+            // writes proper \t / \n / \r escapes.  Without this round-trip a
+            // model-written \times in arguments reaches the client as raw 0x09
+            // + "imes", which is not valid JSON (#578).
+            if let data = try? JSONSerialization.data(
+                   withJSONObject: obj, options: [.sortedKeys, .withoutEscapingSlashes]),
+               let clean = String(data: data, encoding: .utf8) {
+                return clean
             }
             return s
         }

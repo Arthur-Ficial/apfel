@@ -444,6 +444,56 @@ func runToolCallHandlerTests() {
         try assertEqual(parsed!["value"] as? String, "ls -l")
     }
 
+    // MARK: - Control character escaping in arguments (#578)
+
+    test("ensureJSONArguments escapes a raw tab from model-written LaTeX (#578)") {
+        // After outer JSON parsing, a model-written \times becomes raw 0x09 + "imes".
+        let withTab = "{\"expression\": \"17 \u{09}imes 23\"}"
+        let result = ToolCallHandler.ensureJSONArguments(withTab)
+        // Must not contain any raw control character (U+0000 through U+001F).
+        for scalar in result.unicodeScalars {
+            try assertTrue(scalar.value >= 0x20,
+                           "Raw U+\(String(format: "%04X", scalar.value)) in arguments")
+        }
+        // Must parse as valid JSON and preserve the semantic value.
+        let parsed = try JSONSerialization.jsonObject(with: Data(result.utf8)) as? [String: Any]
+        try assertNotNil(parsed)
+        try assertEqual(parsed?["expression"] as? String, "17 \u{09}imes 23")
+    }
+
+    test("ensureJSONArguments escapes all JSON-significant control characters (#578)") {
+        // \beta -> \b (backspace), \frac -> \f (form feed), \neq -> \n (newline),
+        // \rho -> \r (carriage return), \times -> \t (tab).
+        let all = "{\"b\": \"\u{08}eta\", \"f\": \"\u{0C}rac\", \"n\": \"\u{0A}eq\", \"r\": \"\u{0D}ho\", \"t\": \"\u{09}imes\"}"
+        let result = ToolCallHandler.ensureJSONArguments(all)
+        for scalar in result.unicodeScalars {
+            try assertTrue(scalar.value >= 0x20,
+                           "Raw U+\(String(format: "%04X", scalar.value)) in arguments")
+        }
+        let parsed = try JSONSerialization.jsonObject(with: Data(result.utf8)) as? [String: Any]
+        try assertNotNil(parsed)
+        try assertEqual(parsed?["t"] as? String, "\u{09}imes")
+        try assertEqual(parsed?["b"] as? String, "\u{08}eta")
+    }
+
+    test("detectToolCall produces strict-JSON arguments for LaTeX escapes (#578)") {
+        // In the outer JSON, \t inside the arguments string value is decoded to
+        // a raw tab by JSONSerialization. The full pipeline must re-serialize so
+        // any strict JSON parser (Python, Node, jq) accepts the result.
+        let response = #"{"tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "calculate", "arguments": "{\"expression\": \"17 \times 23\"}"}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first!.name, "calculate")
+        let args = result!.first!.argumentsString
+        for scalar in args.unicodeScalars {
+            try assertTrue(scalar.value >= 0x20,
+                           "Raw U+\(String(format: "%04X", scalar.value)) in arguments")
+        }
+        let parsed = try JSONSerialization.jsonObject(with: Data(args.utf8)) as? [String: Any]
+        try assertNotNil(parsed)
+        try assertEqual(parsed?["expression"] as? String, "17 \u{09}imes 23")
+    }
+
     // MARK: - Argument recovery from unparseable tool calls (#367)
 
     test("recovers balanced JSON arguments from unescaped-quote salvage (#367)") {
