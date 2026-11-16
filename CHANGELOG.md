@@ -10,6 +10,7 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 ### Fixed
 
 - MCP tool calls with extra arguments no longer rejected when the tool's `inputSchema` omits `additionalProperties`. Per JSON Schema, the default is `true` (extra properties allowed); only an explicit `"additionalProperties": false` now rejects unknown keys. Previously apfel treated absent as false, refusing valid calls the server would have accepted (#584).
+- Tool-call `arguments` containing model-written LaTeX commands (`\times`, `\beta`, `\frac`, `\neq`, `\rho`) no longer carry raw control characters (tab, backspace, form feed, newline, carriage return) through to the API response. Foundation's JSON parser decoded e.g. `\t` from `\times` as a raw 0x09 tab, and `ensureJSONArguments` returned the string as-is. Any strict JSON parser (Python, Node, jq) rejected the result. The arguments are now round-tripped through parse + re-serialize so control characters are properly escaped (#578).
 
 ### Removed
 
