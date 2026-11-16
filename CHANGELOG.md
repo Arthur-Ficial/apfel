@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Tool schema annotations (`minLength`, `maxLength`, `title`, `default`, `minimum`, ...) no longer leak into the model's argument list (#581). The old `; schema {...}` suffix sat inside the semicolon-separated argument list, so the model read `schema`, `minLength` and `maxLength` as argument names. Simple constraints are now rendered as words in the type label (e.g. `min length 1, max length 4096`), annotation-only keys (`title`, `$schema`, `examples`) are dropped, and structural keys (`items`, `properties`, `oneOf`, ...) use bracket notation (`[schema: ...]`) that does not parse as a new argument.
+
 ### Removed
 
 - nixpkgs is no longer a distribution channel. The nixpkgs bump tooling, its launchd job, its tests, the nixpkgs step in `scripts/publish-release.sh` and the nixpkgs check in `scripts/dist-watch.sh` are removed. Install with Homebrew.

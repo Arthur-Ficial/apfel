@@ -153,6 +153,22 @@ public enum ToolCallHandler {
         var labels: [String] = []
         if let type = schema["type"] as? String { labels.append(type) }
         if required { labels.append("required") }
+
+        // Simple constraints rendered as words (#581). The old `; schema {...}`
+        // sat inside the semicolon-separated argument list, so the model read
+        // `schema`, `minLength`, `maxLength` as argument names. Words in the
+        // parenthetical label avoid that, matching how `enum` is already shown.
+        if let v = schema["default"]          { labels.append("default \(compactJSONFragment(v))") }
+        if let v = schema["minimum"]          { labels.append("minimum \(compactJSONFragment(v))") }
+        if let v = schema["maximum"]          { labels.append("maximum \(compactJSONFragment(v))") }
+        if let v = schema["exclusiveMinimum"] { labels.append("exclusive minimum \(compactJSONFragment(v))") }
+        if let v = schema["exclusiveMaximum"] { labels.append("exclusive maximum \(compactJSONFragment(v))") }
+        if let v = schema["minLength"] as? Int { labels.append("min length \(v)") }
+        if let v = schema["maxLength"] as? Int { labels.append("max length \(v)") }
+        if let v = schema["minItems"]  as? Int { labels.append("min items \(v)") }
+        if let v = schema["maxItems"]  as? Int { labels.append("max items \(v)") }
+        if let v = schema["pattern"]   as? String { labels.append("pattern \"\(v)\"") }
+
         var text = labels.isEmpty ? name : "\(name) (\(labels.joined(separator: ", ")))"
         if let values = schema["enum"] as? [Any] {
             text += " one of " + values.map(compactJSONFragment).joined(separator: ", ")
@@ -160,11 +176,18 @@ public enum ToolCallHandler {
         if let description = schema["description"] as? String, !description.isEmpty {
             text += ": " + description
         }
-        let plainKeys: Set<String> = ["type", "description", "enum"]
-        if !Set(schema.keys).isSubset(of: plainKeys) {
-            var rest = schema
-            rest.removeValue(forKey: "description")
-            text += "; schema " + compactJSONFragment(rest)
+
+        // Keys fully handled above or annotation-only (no signal for the model).
+        let handledKeys: Set<String> = [
+            "type", "description", "enum",
+            "default", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum",
+            "minLength", "maxLength", "minItems", "maxItems", "pattern",
+            "title", "$schema", "$id", "$comment", "examples",
+            "additionalProperties",
+        ]
+        let rest = schema.filter { !handledKeys.contains($0.key) }
+        if !rest.isEmpty {
+            text += " [schema: " + compactJSONFragment(rest) + "]"
         }
         return text
     }
