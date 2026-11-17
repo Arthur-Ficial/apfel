@@ -93,8 +93,10 @@ public enum MCPProtocol {
     /// - `arguments` must be valid JSON (delegates to
     ///   `validateToolArguments(name:arguments:)`, #241).
     /// - Every key in the schema's `required` array must be present.
-    /// - When the schema declares `properties`, no argument key outside them
-    ///   is allowed - unless `additionalProperties` is literally `true`.
+    /// - When the schema declares `properties` and sets
+    ///   `additionalProperties` to `false`, no argument key outside them is
+    ///   allowed. Per JSON Schema, absent `additionalProperties` defaults to
+    ///   `true` (extra properties allowed), so only an explicit `false` rejects.
     ///
     /// A `nil`, unparseable, or `properties`/`required`-free schema skips the
     /// schema checks entirely, so schema-less tools behave exactly as before.
@@ -134,18 +136,11 @@ public enum MCPProtocol {
         let missing = required.filter { argsObject[$0] == nil }
 
         var unexpected: [String] = []
-        // JSON Schema: `properties: {}` does not close the object (only
-        // `additionalProperties: false` does, and argument-ignoring tools
-        // declare exactly `{"type": "object", "properties": {}}`). Enforce
-        // unknown-key rejection only when there are declared property names
-        // the model could use instead.
-        // `additionalProperties: true` or a schema object for it both mean
-        // "extra keys are allowed" in JSON Schema; only `false`/absent closes
-        // the object for our purposes (absent is where the model's invented
-        // keys show up, see the doc comment above).
-        let extraKeysAllowed = (schema["additionalProperties"] as? Bool == true)
-            || (schema["additionalProperties"] is [String: Any])
-        if let properties, !properties.isEmpty, !extraKeysAllowed {
+        // JSON Schema: absent `additionalProperties` defaults to `true`,
+        // so extra keys are only rejected when it is explicitly `false`.
+        // `true`, a schema object, or absent all mean "extra keys allowed".
+        let extraKeysForbidden = (schema["additionalProperties"] as? Bool == false)
+        if let properties, !properties.isEmpty, extraKeysForbidden {
             unexpected = argsObject.keys.filter { properties[$0] == nil }.sorted()
         }
 

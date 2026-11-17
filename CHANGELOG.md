@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- MCP tool calls with extra arguments no longer rejected when the tool's `inputSchema` omits `additionalProperties`. Per JSON Schema, the default is `true` (extra properties allowed); only an explicit `"additionalProperties": false` now rejects unknown keys. Previously apfel treated absent as false, refusing valid calls the server would have accepted (#584).
+
 ### Removed
 
 - nixpkgs is no longer a distribution channel. The nixpkgs bump tooling, its launchd job, its tests, the nixpkgs step in `scripts/publish-release.sh` and the nixpkgs check in `scripts/dist-watch.sh` are removed. Install with Homebrew.
