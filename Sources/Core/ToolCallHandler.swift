@@ -153,6 +153,22 @@ public enum ToolCallHandler {
         var labels: [String] = []
         if let type = schema["type"] as? String { labels.append(type) }
         if required { labels.append("required") }
+
+        // Simple constraints rendered as words (#581). The old `; schema {...}`
+        // sat inside the semicolon-separated argument list, so the model read
+        // `schema`, `minLength`, `maxLength` as argument names. Words in the
+        // parenthetical label avoid that, matching how `enum` is already shown.
+        if let v = schema["default"]          { labels.append("default \(compactJSONFragment(v))") }
+        if let v = schema["minimum"]          { labels.append("minimum \(compactJSONFragment(v))") }
+        if let v = schema["maximum"]          { labels.append("maximum \(compactJSONFragment(v))") }
+        if let v = schema["exclusiveMinimum"] { labels.append("exclusive minimum \(compactJSONFragment(v))") }
+        if let v = schema["exclusiveMaximum"] { labels.append("exclusive maximum \(compactJSONFragment(v))") }
+        if let v = schema["minLength"] as? Int { labels.append("min length \(v)") }
+        if let v = schema["maxLength"] as? Int { labels.append("max length \(v)") }
+        if let v = schema["minItems"]  as? Int { labels.append("min items \(v)") }
+        if let v = schema["maxItems"]  as? Int { labels.append("max items \(v)") }
+        if let v = schema["pattern"]   as? String { labels.append("pattern \"\(v)\"") }
+
         var text = labels.isEmpty ? name : "\(name) (\(labels.joined(separator: ", ")))"
         if let values = schema["enum"] as? [Any] {
             text += " one of " + values.map(compactJSONFragment).joined(separator: ", ")
@@ -160,11 +176,22 @@ public enum ToolCallHandler {
         if let description = schema["description"] as? String, !description.isEmpty {
             text += ": " + description
         }
-        let plainKeys: Set<String> = ["type", "description", "enum"]
-        if !Set(schema.keys).isSubset(of: plainKeys) {
-            var rest = schema
-            rest.removeValue(forKey: "description")
-            text += "; schema " + compactJSONFragment(rest)
+
+        // Keys fully handled above or annotation-only (no signal for the model).
+        let handledKeys: Set<String> = [
+            "type", "description", "enum",
+            "default", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum",
+            "minLength", "maxLength", "minItems", "maxItems", "pattern",
+            "title", "$schema", "$id", "$comment", "examples",
+        ]
+        // A boolean additionalProperties only opens or closes the object (the
+        // argument list already names every key); a schema value describes
+        // the map's values and stays.
+        let rest = schema.filter {
+            !handledKeys.contains($0.key) && !($0.key == "additionalProperties" && $0.value is Bool)
+        }
+        if !rest.isEmpty {
+            text += " [schema: " + compactJSONFragment(rest) + "]"
         }
         return text
     }
@@ -242,6 +269,78 @@ public enum ToolCallHandler {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// Try to extract a tool name from broken JSON text using regex. Checks
+    /// `name`, `function`, `function_name` first, then falls back to `type`
+    /// (excluding the protocol marker "function"). Argument values are cut
+    /// out first, so a key such as `"function": "erase"` inside the
+    /// arguments can never be taken for the call's name.
+    private static func salvageToolName(from rawText: String) -> String? {
+        let text = removingArgumentValues(rawText)
+        if let regex = try? NSRegularExpression(
+               pattern: #""(?:name|function|function_name)"\s*:\s*"([A-Za-z0-9_.\-]+)""#),
+           let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+           let range = Range(match.range(at: 1), in: text) {
+            return String(text[range])
+        }
+        if let regex = try? NSRegularExpression(pattern: #""type"\s*:\s*"([A-Za-z0-9_.\-]+)""#),
+           let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+           let range = Range(match.range(at: 1), in: text) {
+            let candidate = String(text[range])
+            return candidate == "function" ? nil : candidate
+        }
+        return nil
+    }
+
+    /// `text` with the value of every `"arguments"` key removed: a
+    /// balanced `{...}` / `[...]` or a string literal (string-aware scans).
+    /// An unterminated value removes the rest of the text.
+    private static func removingArgumentValues(_ text: String) -> String {
+        var out = ""
+        var rest = Substring(text)
+        while let key = rest.range(of: "\"arguments\"") {
+            out += rest[rest.startIndex..<key.lowerBound]
+            var idx = key.upperBound
+            while idx < rest.endIndex, rest[idx] == " " || rest[idx] == ":" || rest[idx].isNewline || rest[idx] == "\t" {
+                idx = rest.index(after: idx)
+            }
+            guard idx < rest.endIndex else { return out }
+            let open = rest[idx]
+            var depth = 0
+            var inString = false
+            var escaped = false
+            var end: Substring.Index? = nil
+            var scan = idx
+            while scan < rest.endIndex {
+                let ch = rest[scan]
+                if inString {
+                    if escaped { escaped = false }
+                    else if ch == "\\" { escaped = true }
+                    else if ch == "\"" {
+                        inString = false
+                        if open == "\"" { end = scan; break }
+                    }
+                } else if ch == "\"" {
+                    inString = true
+                } else if ch == "{" || ch == "[" {
+                    depth += 1
+                } else if ch == "}" || ch == "]" {
+                    depth -= 1
+                    if depth == 0, open == "{" || open == "[" { end = scan; break }
+                } else if open != "{", open != "[", ch == "," || ch == "}" {
+                    break
+                }
+                scan = rest.index(after: scan)
+            }
+            if open != "{", open != "[", open != "\"" {
+                rest = rest[scan...]
+                continue
+            }
+            guard let end else { return out }
+            rest = rest[rest.index(after: end)...]
+        }
+        return out + rest
+    }
+
     /// Extract what can be salvaged from a tool-call attempt whose JSON is
     /// unparseable: the first function name after the marker, plus the raw
     /// (still unparseable) arguments text so downstream validation fails into
@@ -256,12 +355,7 @@ public enum ToolCallHandler {
     private static func salvageUnparseableToolCall(from text: String) -> [ParsedToolCall]? {
         guard let start = text.range(of: "{\"tool_calls\"") else { return nil }
         let tail = String(text[start.lowerBound...])
-        guard let regex = try? NSRegularExpression(pattern: #""name"\s*:\s*"([A-Za-z0-9_.\-]+)""#),
-              let match = regex.firstMatch(in: tail, range: NSRange(tail.startIndex..., in: tail)),
-              let nameRange = Range(match.range(at: 1), in: tail) else {
-            return nil
-        }
-        let name = String(tail[nameRange])
+        guard let name = salvageToolName(from: tail) else { return nil }
         var rawArguments: String
         if let argsMarker = tail.range(of: "\"arguments\"") {
             rawArguments = String(tail[argsMarker.upperBound...])
@@ -451,20 +545,78 @@ public enum ToolCallHandler {
         if trimmed.isEmpty { return "{}" }
         // Already a JSON object or array
         if trimmed.hasPrefix("{") || trimmed.hasPrefix("[") {
+            if parsesAsJSON(trimmed) { return s }
+            // A model-written LaTeX `\times` inside the arguments string of
+            // the envelope decodes to a raw tab + "imes" (likewise `\beta`,
+            // `\frac`, `\neq`, `\rho` -> backspace, form feed, newline,
+            // carriage return). A raw control character inside a JSON string
+            // is invalid JSON, so strict clients reject the arguments (#578).
+            // Escape exactly those characters and keep every other byte.
+            let escaped = escapingControlCharactersInStrings(trimmed)
+            if escaped != trimmed, parsesAsJSON(escaped) { return escaped }
             // On macOS 27 the model deterministically drops the final escaped
             // `}` inside the arguments string when retrying a rejected tool
             // call: the outer tool_calls JSON parses, so the truncated object
             // lands here as-is. Repair unclosed strings/braces/brackets when
             // (and only when) the repaired text parses; anything else is
             // returned unchanged so #241 still fails loud (#193).
-            if (try? JSONSerialization.jsonObject(with: Data(trimmed.utf8))) == nil,
-               let repaired = repairUnclosedContainers(trimmed) {
+            if let repaired = repairUnclosedContainers(escaped) {
                 return repaired
             }
             return s
         }
         // Plain string — wrap as {"value": "..."} using the JSON encoder for escaping.
         return jsonObjectString(["value": trimmed]) ?? "{}"
+    }
+
+    private static func parsesAsJSON(_ text: String) -> Bool {
+        (try? JSONSerialization.jsonObject(with: Data(text.utf8), options: [.fragmentsAllowed])) != nil
+    }
+
+    /// Replace raw U+0000-U+001F characters inside JSON string literals with
+    /// their escapes (`\t`, `\n`, `\r`, `\b`, `\f`, else `\u00XX`). Text
+    /// outside strings is untouched (whitespace there is legal JSON).
+    private static func escapingControlCharactersInStrings(_ json: String) -> String {
+        var out = ""
+        out.reserveCapacity(json.utf8.count)
+        var inString = false
+        var escaped = false
+        for scalar in json.unicodeScalars {
+            if inString {
+                if escaped, scalar.value < 0x20 {
+                    // `\` + raw control character is no valid escape: keep the
+                    // backslash as a literal one and escape the character.
+                    escaped = false
+                    out += "\\"
+                    out += controlEscape(scalar)
+                    continue
+                } else if escaped {
+                    escaped = false
+                } else if scalar == "\\" {
+                    escaped = true
+                } else if scalar == "\"" {
+                    inString = false
+                } else if scalar.value < 0x20 {
+                    out += controlEscape(scalar)
+                    continue
+                }
+            } else if scalar == "\"" {
+                inString = true
+            }
+            out.unicodeScalars.append(scalar)
+        }
+        return out
+    }
+
+    private static func controlEscape(_ scalar: Unicode.Scalar) -> String {
+        switch scalar.value {
+        case 0x09: return "\\t"
+        case 0x0A: return "\\n"
+        case 0x0D: return "\\r"
+        case 0x08: return "\\b"
+        case 0x0C: return "\\f"
+        default: return String(format: "\\u%04x", scalar.value)
+        }
     }
 
     /// Close an unterminated trailing string and any unclosed `{`/`[`
@@ -539,6 +691,18 @@ public enum ToolCallHandler {
         return repaired
     }
 
+    private static let toolCallProtocolKeys: Set<String> = [
+        "id", "type", "function", "function_name", "name", "arguments", "index",
+    ]
+
+    private static func collectSiblingArguments(from call: [String: Any]) -> Any? {
+        var args: [String: Any] = [:]
+        for (key, value) in call where !toolCallProtocolKeys.contains(key) {
+            args[key] = value
+        }
+        return args.isEmpty ? nil : args
+    }
+
     private static func parseToolCallJSON(_ json: String) -> [ParsedToolCall]? {
         guard let data = json.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -561,7 +725,16 @@ public enum ToolCallHandler {
                 rawArguments = fn["arguments"]
             } else if let fnName = call["function"] as? String {
                 name = fnName
-                rawArguments = call["arguments"]
+                rawArguments = call["arguments"] ?? collectSiblingArguments(from: call)
+            } else if let fnName = call["function_name"] as? String {
+                name = fnName
+                rawArguments = call["arguments"] ?? collectSiblingArguments(from: call)
+            } else if let fnName = call["name"] as? String {
+                name = fnName
+                rawArguments = call["arguments"] ?? collectSiblingArguments(from: call)
+            } else if let typeName = call["type"] as? String, typeName != "function" {
+                name = typeName
+                rawArguments = call["arguments"] ?? collectSiblingArguments(from: call)
             } else {
                 continue
             }

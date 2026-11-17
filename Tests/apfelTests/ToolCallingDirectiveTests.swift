@@ -7,8 +7,9 @@
 // applies it under #available(macOS 27, *); macOS 26 ignores it entirely.
 //
 // Deliberate mapping, measured on macOS 27.0.1 (M2, 2026-10-05):
-//   - auto / omitted with tools in scope -> .allowed (the SDK default, set
-//     explicitly so the debug trace names it).
+//   - auto / omitted with tools in scope -> .allowed. The engine leaves the
+//     runtime mode unset for it (ToolCallingSupportTests): set explicitly,
+//     it made the runtime throw "Failed to parse generated content".
 //   - none                               -> .disallowed (runtime backstop on
 //     top of apfel stripping the tools from the prompt).
 //   - required / named function          -> .allowed, NOT the SDK's .required:

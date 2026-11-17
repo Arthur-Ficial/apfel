@@ -198,4 +198,110 @@ func runToolPolicyTests() {
             throw TestFailure("empty detection under required must be a violation")
         }
     }
+
+    // --- evaluate(output:): arguments held to the client tool schemas (#580) ---
+
+    let timeSchemas = [
+        "convert_time": #"{"type":"object","properties":{"time":{"type":"string"},"target_timezone":{"type":"string"}},"required":["time"]}"#,
+        "web_search": #"{"type":"object","properties":{"query":{"type":"string"}},"required":["query"],"additionalProperties":false}"#,
+    ]
+    func checked(_ choice: ToolChoice? = nil) throws -> ToolPolicy {
+        try resolve(choice, tools: ["convert_time", "web_search"]).withArgumentSchemas(timeSchemas)
+    }
+    func envelope(_ name: String, _ arguments: String) -> String {
+        let escaped = arguments.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        return #"{"tool_calls": [{"id": "call_1", "type": "function", "function": {"name": ""# + name
+            + #"", "arguments": ""# + escaped + #""}}]}"#
+    }
+    func violationCode(_ outcome: ToolPolicy.Outcome) throws -> String {
+        guard case .violation(let violation) = outcome else {
+            throw TestFailure("expected a violation, got \(outcome)")
+        }
+        return violation.code
+    }
+
+    test("evaluate(output:) passes a call whose arguments match the schema (#580)") {
+        let outcome = try checked().evaluate(output: envelope("convert_time", #"{"time": "14:30"}"#))
+        guard case .toolCalls(let calls) = outcome else { throw TestFailure("expected tool calls, got \(outcome)") }
+        try assertEqual(calls.map(\.name), ["convert_time"])
+        try assertEqual(calls.first?.argumentsString, #"{"time": "14:30"}"#)
+    }
+
+    test("evaluate(output:) rejects a call missing a required argument instead of sending {} (#580)") {
+        let policy = try checked()
+        let outcome = policy.evaluate(output: envelope("convert_time", "{}"))
+        try assertEqual(try violationCode(outcome), ToolPolicy.Violation.invalidArgumentsCode)
+        guard case .violation(let violation) = outcome else { return }
+        try assertTrue(violation.message.contains("convert_time"))
+        try assertTrue(violation.message.contains("time"))
+        try assertTrue(policy.repairPrompt(for: violation).contains("missing required parameter(s): time"))
+    }
+
+    test("evaluate(output:) rejects a bare string wrapped as {\"value\": ...} for a schema without value (#580)") {
+        let output = #"{"tool_calls": [{"id": "call_1", "type": "function", "function": "convert_time", "arguments": "14:30"}]}"#
+        try assertEqual(try violationCode(try checked().evaluate(output: output)), ToolPolicy.Violation.invalidArgumentsCode)
+    }
+
+    test("evaluate(output:) rejects undeclared arguments when additionalProperties is false (#581)") {
+        let outcome = try checked().evaluate(output: envelope("web_search", #"{"query": "x", "minLength": 1}"#))
+        try assertEqual(try violationCode(outcome), ToolPolicy.Violation.invalidArgumentsCode)
+    }
+
+    test("evaluate(output:) rejects arguments that are not valid JSON (#580)") {
+        let outcome = try checked().evaluate(output: envelope("web_search", #"{"query": "x", "n": 5"}"#))
+        try assertEqual(try violationCode(outcome), ToolPolicy.Violation.invalidArgumentsCode)
+    }
+
+    test("evaluate(output:) never delivers unparseable tool-call text as content under auto (#580)") {
+        let output = #"{"tool_calls": [{"id": "call_1", "arguments": {"query": "who won", "category:sports"}}]}"#
+        try assertEqual(try violationCode(try checked().evaluate(output: output)), ToolPolicy.Violation.invalidCallCode)
+    }
+
+    test("evaluate(output:) keeps prose that only mentions the envelope as content") {
+        let output = #"The empty envelope is {"tool_calls":[]} and nothing more."#
+        try assertEqual(try checked().evaluate(output: output), .content)
+    }
+
+    test("evaluate(output:) treats a fenced, pretty-printed unreadable envelope as a call attempt (#580)") {
+        let output = "```json\n{\n  \"tool_calls\": [{\"id\": \"call_2\", \"arguments\": {\"query\": \"x\", \"category:sports\"}}]\n}\n```"
+        try assertEqual(try violationCode(try checked().evaluate(output: output)), ToolPolicy.Violation.invalidCallCode)
+    }
+
+    test("evaluate(output:complete: false) keeps an envelope cut off by the token cap as content") {
+        let cut = #"{"tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "conv"#
+        try assertEqual(try checked().evaluate(output: cut, complete: false), .content)
+        try assertEqual(try violationCode(try checked().evaluate(output: cut)), ToolPolicy.Violation.invalidCallCode)
+    }
+
+    test("evaluate(output:complete: false) does not judge the arguments of a cut-off reply") {
+        guard case .toolCalls = try checked().evaluate(output: envelope("convert_time", "{}"), complete: false) else {
+            throw TestFailure("a cut-off reply keeps the pre-#580 verdict")
+        }
+    }
+
+    test("evaluate(output:) keeps plain text as content under auto") {
+        try assertEqual(try checked().evaluate(output: "It is 14:30 in Tokyo."), .content)
+    }
+
+    test("evaluate(output:) keeps tool-call-shaped text as content when tools are disabled") {
+        let policy = try resolve(ToolChoice.none).withArgumentSchemas(timeSchemas)
+        try assertEqual(policy.evaluate(output: envelope("convert_time", "{}")), .content)
+    }
+
+    test("parameterSchemas(of:) maps each tool name to its parameters JSON (#580)") {
+        let tools = [
+            OpenAITool(type: "function", function: OpenAIFunction(
+                name: "convert_time", description: nil, parameters: RawJSON(rawValue: #"{"type":"object"}"#))),
+            OpenAITool(type: "function", function: OpenAIFunction(name: "ping", description: nil, parameters: nil)),
+        ]
+        try assertEqual(ToolPolicy.parameterSchemas(of: tools), ["convert_time": #"{"type":"object"}"#])
+        try assertEqual(ToolPolicy.parameterSchemas(of: nil), [:])
+    }
+
+    test("evaluate(output:) without schemas only checks names, as evaluate(_:) does") {
+        let policy = try resolve(nil, tools: ["convert_time"])
+        guard case .toolCalls = policy.evaluate(output: envelope("convert_time", "{}")) else {
+            throw TestFailure("a schema-less policy must not judge arguments")
+        }
+    }
 }

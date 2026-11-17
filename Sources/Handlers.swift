@@ -172,7 +172,11 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
         parallelToolCalls: chatRequest.parallel_tool_calls
     ) {
     case .success(let policy):
-        toolPolicy = policy
+        // Client tools are run by the client exactly as called, so their
+        // calls are held to the declared parameter schemas (#580). Injected
+        // MCP tools are validated by the MCP client (#241).
+        toolPolicy = resolvedTools.injected
+            ? policy : policy.withArgumentSchemas(ToolPolicy.parameterSchemas(of: resolvedTools.tools))
     case .failure(let scopeError):
         return openAIFailure(
             status: .badRequest,
@@ -576,7 +580,7 @@ private func nonStreamingResponse(
         // ignored or a call outside the scope is a violation, parallel_tool_calls
         // false caps at one. A violation gets ONE bounded repair round in the
         // same session before it becomes a typed error; nothing has run yet.
-        verdict = policy.evaluate(ToolCallHandler.detectToolCall(in: outcome.content))
+        verdict = policy.evaluate(output: outcome.content, complete: outcome.finishReason != .length)
         if case .violation(let violation) = verdict {
             let repair = policy.repairPrompt(for: violation)
             events.append("tool policy repair: \(violation.code)")
@@ -590,7 +594,7 @@ private func nonStreamingResponse(
                 try await collectStream(session, prompt: repair, options: genOpts)
             }
             if let roundUsage = outcome.usage { usageRounds.append(roundUsage) }
-            verdict = policy.evaluate(ToolCallHandler.detectToolCall(in: outcome.content))
+            verdict = policy.evaluate(output: outcome.content, complete: outcome.finishReason != .length)
         }
     } catch {
         let classified = classifyModelError(error)
@@ -814,7 +818,20 @@ private func streamingResponse(
                 // client, a violation gets ONE bounded repair round in the same
                 // session; otherwise it terminates the stream with an OpenAI
                 // error event (headers are already sent).
-                verdict = policy.evaluate(ToolCallHandler.detectToolCall(in: prev))
+                verdict = policy.evaluate(output: prev)
+                // An envelope cut off by max_tokens is an incomplete answer,
+                // not a malformed call: judge it as before #580.
+                if case .violation(let violation) = verdict,
+                   violation.code == ToolPolicy.Violation.invalidCallCode || violation.code == ToolPolicy.Violation.invalidArgumentsCode,
+                   let cap = genOpts.maximumResponseTokens {
+                    let produced: Int
+                    if let reported = lastRoundUsage?.completionTokens {
+                        produced = reported
+                    } else {
+                        produced = await TokenCounter.shared.count(prev)
+                    }
+                    if produced >= cap { verdict = policy.evaluate(output: prev, complete: false) }
+                }
                 if case .violation(let violation) = verdict, !repaired, emittedContentCount == 0 {
                     repaired = true
                     let repair = policy.repairPrompt(for: violation)

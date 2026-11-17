@@ -444,6 +444,56 @@ func runToolCallHandlerTests() {
         try assertEqual(parsed!["value"] as? String, "ls -l")
     }
 
+    // MARK: - Control character escaping in arguments (#578)
+
+    test("ensureJSONArguments escapes a raw tab from model-written LaTeX (#578)") {
+        // After outer JSON parsing, a model-written \times becomes raw 0x09 + "imes".
+        let withTab = "{\"expression\": \"17 \u{09}imes 23\"}"
+        let result = ToolCallHandler.ensureJSONArguments(withTab)
+        // Must not contain any raw control character (U+0000 through U+001F).
+        for scalar in result.unicodeScalars {
+            try assertTrue(scalar.value >= 0x20,
+                           "Raw U+\(String(format: "%04X", scalar.value)) in arguments")
+        }
+        // Must parse as valid JSON and preserve the semantic value.
+        let parsed = try JSONSerialization.jsonObject(with: Data(result.utf8)) as? [String: Any]
+        try assertNotNil(parsed)
+        try assertEqual(parsed?["expression"] as? String, "17 \u{09}imes 23")
+    }
+
+    test("ensureJSONArguments escapes all JSON-significant control characters (#578)") {
+        // \beta -> \b (backspace), \frac -> \f (form feed), \neq -> \n (newline),
+        // \rho -> \r (carriage return), \times -> \t (tab).
+        let all = "{\"b\": \"\u{08}eta\", \"f\": \"\u{0C}rac\", \"n\": \"\u{0A}eq\", \"r\": \"\u{0D}ho\", \"t\": \"\u{09}imes\"}"
+        let result = ToolCallHandler.ensureJSONArguments(all)
+        for scalar in result.unicodeScalars {
+            try assertTrue(scalar.value >= 0x20,
+                           "Raw U+\(String(format: "%04X", scalar.value)) in arguments")
+        }
+        let parsed = try JSONSerialization.jsonObject(with: Data(result.utf8)) as? [String: Any]
+        try assertNotNil(parsed)
+        try assertEqual(parsed?["t"] as? String, "\u{09}imes")
+        try assertEqual(parsed?["b"] as? String, "\u{08}eta")
+    }
+
+    test("detectToolCall produces strict-JSON arguments for LaTeX escapes (#578)") {
+        // In the outer JSON, \t inside the arguments string value is decoded to
+        // a raw tab by JSONSerialization. The full pipeline must re-serialize so
+        // any strict JSON parser (Python, Node, jq) accepts the result.
+        let response = #"{"tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "calculate", "arguments": "{\"expression\": \"17 \times 23\"}"}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first!.name, "calculate")
+        let args = result!.first!.argumentsString
+        for scalar in args.unicodeScalars {
+            try assertTrue(scalar.value >= 0x20,
+                           "Raw U+\(String(format: "%04X", scalar.value)) in arguments")
+        }
+        let parsed = try JSONSerialization.jsonObject(with: Data(args.utf8)) as? [String: Any]
+        try assertNotNil(parsed)
+        try assertEqual(parsed?["expression"] as? String, "17 \u{09}imes 23")
+    }
+
     // MARK: - Argument recovery from unparseable tool calls (#367)
 
     test("recovers balanced JSON arguments from unescaped-quote salvage (#367)") {
@@ -629,8 +679,81 @@ func runToolCallHandlerTests() {
                              parametersJSON: #"{"type":"object","properties":{"tags":{"type":"array","items":{"type":"string"},"description":"labels"}},"required":["tags"]}"#)]
         try assertEqual(ToolCallHandler.buildToolSchemaPrompt(tools: tools), """
         Available functions:
-        - tag: Tag a file. Arguments: tags (array, required): labels; schema {"items":{"type":"string"},"type":"array"}
+        - tag: Tag a file. Arguments: tags (array, required): labels [schema: {"items":{"type":"string"}}]
         """)
+    }
+
+    // MARK: - Schema annotation and constraint rendering (#581)
+    //
+    // Extra schema keys (minLength, maxLength, title, default, ...) used to be
+    // appended as `; schema {...}`, which the model read as a new argument.
+    // Simple constraints are now rendered as words in the type label, annotation-
+    // only keys are dropped, and structural keys use `[schema: ...]` brackets.
+
+    test("buildToolSchemaPrompt: minLength/maxLength rendered as words, not JSON (#581)") {
+        let tools = [ToolDef(name: "search", description: "Search.",
+                             parametersJSON: #"{"type":"object","properties":{"query":{"type":"string","minLength":1,"description":"search term"},"objective":{"type":"string","minLength":1,"maxLength":4096,"description":"goal"}},"required":["query","objective"]}"#)]
+        let result = ToolCallHandler.buildToolSchemaPrompt(tools: tools)
+        try assertTrue(!result.contains("; schema"), "must not contain '; schema' separator (#581), got: \(result)")
+        try assertTrue(result.contains("min length 1"), "minLength should be rendered as words")
+        try assertTrue(result.contains("max length 4096"), "maxLength should be rendered as words")
+    }
+
+    test("buildToolSchemaPrompt: title is dropped as annotation-only noise (#581)") {
+        let tools = [ToolDef(name: "convert_time", description: "Convert time.",
+                             parametersJSON: #"{"type":"object","properties":{"time":{"type":"string","title":"Time","description":"24-hour HH:MM"},"tz":{"type":"string","title":"Timezone","default":"America/New_York","description":"IANA timezone"}},"required":["time"]}"#)]
+        let result = ToolCallHandler.buildToolSchemaPrompt(tools: tools)
+        try assertTrue(!result.contains("\"title\""), "title key must be dropped, got: \(result)")
+        try assertTrue(!result.contains("\"Time\""), "title value must be dropped, got: \(result)")
+        try assertTrue(result.contains("default \"America/New_York\""), "default should be rendered as words")
+    }
+
+    test("buildToolSchemaPrompt: minimum/maximum rendered as words (#581)") {
+        let tools = [ToolDef(name: "get_time_ago", description: "Time ago.",
+                             parametersJSON: #"{"type":"object","properties":{"days_ago":{"type":"integer","minimum":0,"default":0,"title":"Days Ago","description":"Whole days before now"}}}"#)]
+        let result = ToolCallHandler.buildToolSchemaPrompt(tools: tools)
+        try assertTrue(result.contains("minimum 0"), "minimum should be rendered as words")
+        try assertTrue(result.contains("default 0"), "default should be rendered as words")
+        try assertTrue(!result.contains("\"title\""), "title must be dropped")
+        try assertTrue(!result.contains("; schema"), "must not contain '; schema' separator")
+    }
+
+    test("buildToolSchemaPrompt: additionalProperties dropped silently (#581)") {
+        let tools = [ToolDef(name: "fn", description: "Do.",
+                             parametersJSON: #"{"type":"object","properties":{"x":{"type":"string","additionalProperties":false}},"required":["x"]}"#)]
+        let result = ToolCallHandler.buildToolSchemaPrompt(tools: tools)
+        try assertTrue(!result.contains("additionalProperties"), "additionalProperties must be dropped")
+        try assertEqual(result, """
+        Available functions:
+        - fn: Do. Arguments: x (string, required)
+        """)
+    }
+
+    test("buildToolSchemaPrompt: structural keys use bracket notation, not semicolon (#581)") {
+        let tools = [ToolDef(name: "tag", description: "Tag.",
+                             parametersJSON: #"{"type":"object","properties":{"tags":{"type":"array","items":{"type":"string"},"description":"labels"}},"required":["tags"]}"#)]
+        let result = ToolCallHandler.buildToolSchemaPrompt(tools: tools)
+        try assertTrue(!result.contains("; schema"), "structural keys must not use '; schema' separator")
+        try assertTrue(result.contains("[schema:"), "structural keys should use bracket notation")
+        try assertTrue(result.contains("items"), "items key must still be present")
+    }
+
+    test("buildToolSchemaPrompt: plain scalar schema needs no extra annotation") {
+        let tools = [ToolDef(name: "fn", description: "Do.",
+                             parametersJSON: #"{"type":"object","properties":{"x":{"type":"string","description":"input"}},"required":["x"]}"#)]
+        try assertEqual(ToolCallHandler.buildToolSchemaPrompt(tools: tools), """
+        Available functions:
+        - fn: Do. Arguments: x (string, required): input
+        """)
+    }
+
+    test("buildToolSchemaPrompt: full Exa-style tool with constraints (#581)") {
+        let tools = [ToolDef(name: "web_fetch_exa", description: "Read a webpage.",
+                             parametersJSON: #"{"type":"object","properties":{"urls":{"type":"array","items":{"type":"string"},"description":"URLs to read."},"maxCharacters":{"type":"number","minimum":1,"description":"Max chars per page"}},"required":["urls"],"additionalProperties":false}"#)]
+        let result = ToolCallHandler.buildToolSchemaPrompt(tools: tools)
+        try assertTrue(!result.contains("; schema"), "must not contain '; schema' separator (#581), got: \(result)")
+        try assertTrue(result.contains("minimum 1"), "minimum should be rendered as words")
+        try assertTrue(result.contains("[schema:"), "array items needs bracket notation")
     }
 
     test("buildToolSchemaPrompt: an unparseable parameter schema is passed through, not dropped") {
@@ -647,6 +770,92 @@ func runToolCallHandlerTests() {
         Available functions:
         - ping: Ping.
         """)
+    }
+
+    // MARK: - Variant tool-call shapes (#580)
+    //
+    // Since #556 the model writes tool calls in shapes other than the
+    // documented envelope. The parser must read the name from whichever
+    // key carries it and collect arguments from sibling keys when the
+    // "arguments" wrapper is absent.
+
+    test("resolves name from \"type\" key when no \"function\" key (#580)") {
+        let response = #"{"tool_calls": [{"id": "call_1", "type": "web_search_exa", "arguments": {"query": "World Series winner"}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "web_search_exa")
+        let parsed = try JSONSerialization.jsonObject(with: Data(result!.first!.argumentsString.utf8)) as? [String: Any]
+        try assertEqual(parsed?["query"] as? String, "World Series winner")
+    }
+
+    test("resolves name from \"function_name\" key (#580)") {
+        let response = #"{"tool_calls": [{"id": "call_1", "type": "convert_time", "function_name": "convert_time", "arguments": {"source_timezone": "Asia/Tokyo", "target_timezone": "America/New_York", "time": "14:30"}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "convert_time")
+        let parsed = try JSONSerialization.jsonObject(with: Data(result!.first!.argumentsString.utf8)) as? [String: Any]
+        try assertEqual(parsed?["time"] as? String, "14:30")
+        try assertEqual(parsed?["source_timezone"] as? String, "Asia/Tokyo")
+    }
+
+    test("resolves name from \"name\" key at call level (#580)") {
+        let response = #"{"tool_calls": [{"id": "call_1", "name": "get_time", "arguments": {"timezone": "UTC"}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "get_time")
+        let parsed = try JSONSerialization.jsonObject(with: Data(result!.first!.argumentsString.utf8)) as? [String: Any]
+        try assertEqual(parsed?["timezone"] as? String, "UTC")
+    }
+
+    test("collects sibling keys as arguments when \"arguments\" key is absent (#580)") {
+        let response = #"{"tool_calls": [{"id": "call_1", "type": "convert_time", "function": "convert_time", "source_timezone": "America/New_York", "target_timezone": "Asia/Tokyo", "time": "14:30"}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "convert_time")
+        let parsed = try JSONSerialization.jsonObject(with: Data(result!.first!.argumentsString.utf8)) as? [String: Any]
+        try assertEqual(parsed?["source_timezone"] as? String, "America/New_York")
+        try assertEqual(parsed?["target_timezone"] as? String, "Asia/Tokyo")
+        try assertEqual(parsed?["time"] as? String, "14:30")
+    }
+
+    test("collects sibling keys when name comes from \"type\" (#580)") {
+        let response = #"{"tool_calls": [{"id": "call_1", "type": "convert_time", "source_timezone": "America/New_York", "target_timezone": "Asia/Tokyo", "time": "14:30"}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "convert_time")
+        let parsed = try JSONSerialization.jsonObject(with: Data(result!.first!.argumentsString.utf8)) as? [String: Any]
+        try assertEqual(parsed?["time"] as? String, "14:30")
+    }
+
+    test("\"type\": \"function\" is not mistaken for a tool name (#580)") {
+        let response = #"{"tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "add", "arguments": "{\"a\":1}"}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "add")
+    }
+
+    test("salvage finds name from \"function\" string key in broken JSON (#580)") {
+        let response = #"{"tool_calls": [{"id": "call_1", "type": "web_search_exa", "function": "web_search_exa", "arguments": {"query": "who won the most recent World Series", "category:sports"}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "web_search_exa")
+    }
+
+    test("salvage finds name from \"type\" key in broken JSON when no other name key matches (#580)") {
+        let response = #"{"tool_calls": [{"id": "call_1", "type": "get_current_time", "arguments": {"timezone: America/New_York"}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "get_current_time")
+    }
+
+    test("sibling keys ignored when \"arguments\" key is present (#580)") {
+        let response = #"{"tool_calls": [{"id": "call_1", "function": "calc", "arguments": {"expression": "2+2"}, "extra_key": "noise"}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "calc")
+        let parsed = try JSONSerialization.jsonObject(with: Data(result!.first!.argumentsString.utf8)) as? [String: Any]
+        try assertEqual(parsed?["expression"] as? String, "2+2")
+        try assertNil(parsed?["extra_key"])
     }
 
     // MARK: - ToolLogEntry
@@ -727,5 +936,33 @@ func runToolCallHandlerTests() {
     test("ProcessPromptResult content can be empty") {
         let result = ProcessPromptResult(content: "", toolLog: [])
         try assertTrue(result.content.isEmpty)
+    }
+
+    // --- Codex review of the #580/#581 fix (2026-11-17) ---
+
+    test("salvage takes the call name, not a name inside the arguments") {
+        // Missing the final outer brace, so only salvage can read it.
+        let response = #"{"tool_calls":[{"function":{"arguments":{"function":"erase"},"name":"lookup"}}]"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertEqual(result?.first?.name, "lookup")
+    }
+    test("salvage still reads a name that comes after string arguments") {
+        let response = #"{"tool_calls":[{"id":"c1","function":{"arguments":"{\"name\": \"Bob\"}","name":"greet"}}"#
+        try assertEqual(ToolCallHandler.detectToolCall(in: response)?.first?.name, "greet")
+    }
+    test("index is protocol metadata, not a sibling argument") {
+        let response = #"{"tool_calls":[{"function":"ping","index":0}]}"#
+        try assertEqual(ToolCallHandler.detectToolCall(in: response)?.first?.argumentsString, "{}")
+    }
+    test("a schema-valued additionalProperties stays in the tool text") {
+        let tool = ToolDef(name: "setenv", description: nil,
+            parametersJSON: #"{"type":"object","properties":{"env":{"type":"object","additionalProperties":{"type":"string"}}}}"#)
+        let prompt = ToolCallHandler.buildToolSchemaPrompt(tools: [tool])
+        try assertTrue(prompt.contains("additionalProperties"), prompt)
+    }
+    test("ensureJSONArguments repairs a raw control character right after a backslash") {
+        let result = ToolCallHandler.ensureJSONArguments("{\"x\":\"a\\\u{09}b\"}")
+        let parsed = try JSONSerialization.jsonObject(with: Data(result.utf8)) as? [String: Any]
+        try assertEqual(parsed?["x"] as? String, "a\\\u{09}b")
     }
 }

@@ -74,6 +74,13 @@ public struct ToolPolicy: Sendable, Equatable {
 
         public static let notSatisfiedCode = "tool_choice_not_satisfied"
         public static let notAllowedCode = "tool_call_not_allowed"
+        /// A call whose arguments break the tool's declared parameter schema
+        /// (invalid JSON, a missing required argument, or an undeclared one
+        /// under `additionalProperties: false`) (#580).
+        public static let invalidArgumentsCode = "invalid_tool_arguments"
+        /// Text that opens the tool-call envelope but cannot be read as a
+        /// call, so it must not reach the client as message content (#580).
+        public static let invalidCallCode = "invalid_tool_call"
 
         public init(code: String, message: String) {
             self.code = code
@@ -97,6 +104,11 @@ public struct ToolPolicy: Sendable, Equatable {
     /// Maximum number of calls to expose; `1` when `parallel_tool_calls` is
     /// `false`, `nil` when unlimited.
     public let maxCalls: Int?
+    /// Declared parameter schemas (JSON Schema text) of the client tools,
+    /// keyed by function name. Empty unless set with
+    /// `withArgumentSchemas(_:)`; `evaluate(output:)` checks every call's
+    /// arguments against its tool's entry.
+    public private(set) var argumentSchemas: [String: String] = [:]
 
     /// True when any tool may reach the model or be detected in its output.
     public var toolsInScope: Bool { mode != .disabled }
@@ -141,6 +153,28 @@ public struct ToolPolicy: Sendable, Equatable {
             }
             return .success(ToolPolicy(mode: .auto, allowedNames: toolNames, maxCalls: maxCalls))
         }
+    }
+
+    /// A copy of this policy that also checks call arguments against these
+    /// parameter schemas (function name -> JSON Schema text) in
+    /// `evaluate(output:)`. For client tools, which the client must be able
+    /// to run as called; MCP tools are validated by the MCP client itself.
+    public func withArgumentSchemas(_ schemas: [String: String]) -> ToolPolicy {
+        var copy = self
+        copy.argumentSchemas = schemas
+        return copy
+    }
+
+    /// The `parameters` JSON Schema of each tool, keyed by function name, for
+    /// `withArgumentSchemas(_:)`. Tools without `parameters` are left out.
+    public static func parameterSchemas(of tools: [OpenAITool]?) -> [String: String] {
+        var schemas: [String: String] = [:]
+        for tool in tools ?? [] {
+            if let parameters = tool.function.parameters?.value {
+                schemas[tool.function.name] = parameters
+            }
+        }
+        return schemas
     }
 
     /// The tool definitions the model should see: none when disabled, only
@@ -224,5 +258,54 @@ public struct ToolPolicy: Sendable, Equatable {
             return .toolCalls(Array(calls.prefix(maxCalls)))
         }
         return .toolCalls(calls)
+    }
+
+    /// Judge one model response: detect its tool calls, then apply
+    /// `evaluate(_:)` plus two checks that keep broken calls away from the
+    /// client (#580). Both become violations, so the caller's bounded repair
+    /// round runs instead of delivering a wrong result:
+    /// - text that opens the `{"tool_calls"` envelope but holds no readable
+    ///   call is not delivered as content;
+    /// - a call whose arguments break its tool's schema in
+    ///   `argumentSchemas` is not delivered with `{}`, a wrapped
+    ///   `{"value": ...}` or undeclared keys.
+    ///
+    /// Pass `complete: false` when generation stopped at the token cap: a
+    /// cut-off reply is an incomplete answer, not a malformed call, so only
+    /// `evaluate(_:)` applies (the verdict before #580).
+    public func evaluate(output: String, complete: Bool = true) -> Outcome {
+        let detected = ToolCallHandler.detectToolCall(in: output)
+        guard complete else { return evaluate(detected) }
+        if mode != .disabled, detected?.isEmpty ?? true, Self.opensToolCallEnvelope(output) {
+            return .violation(Violation(
+                code: Violation.invalidCallCode,
+                message: #"the reply started a tool call that could not be read; write it as {"tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "<name>", "arguments": "<escaped_json_string>"}}]}."#))
+        }
+        let outcome = evaluate(detected)
+        guard case .toolCalls(let calls) = outcome, !argumentSchemas.isEmpty else { return outcome }
+        for call in calls {
+            guard let schema = argumentSchemas[call.name] else { continue }
+            do {
+                try MCPProtocol.validateToolArguments(
+                    name: call.name, arguments: call.argumentsString, inputSchemaJSON: schema)
+            } catch {
+                return .violation(Violation(code: Violation.invalidArgumentsCode, message: "\(error)"))
+            }
+        }
+        return outcome
+    }
+
+    /// True when the reply itself is a tool-call attempt: it opens with
+    /// `{"tool_calls"` (whitespace allowed), directly or inside a code fence.
+    /// Prose that merely mentions the envelope is content.
+    private static func opensToolCallEnvelope(_ output: String) -> Bool {
+        var text = Substring(output.trimmingCharacters(in: .whitespacesAndNewlines))
+        if text.hasPrefix("```") {
+            guard let newline = text.firstIndex(where: \.isNewline) else { return false }
+            text = text[text.index(after: newline)...]
+        }
+        text = text.drop(while: { $0.isWhitespace })
+        guard text.first == "{" else { return false }
+        return text.dropFirst().drop(while: { $0.isWhitespace }).hasPrefix(#""tool_calls""#)
     }
 }
