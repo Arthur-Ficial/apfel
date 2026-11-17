@@ -156,6 +156,7 @@ func guidedToolCallResponse(
     includeUsage: Bool,
     id: String,
     created: Int,
+    model: String,
     requestBody: String?,
     events: [String]
 ) -> (response: Response, trace: ChatRequestTrace) {
@@ -165,9 +166,9 @@ func guidedToolCallResponse(
     let traceEvents = events + ["tool_calls: \(call.name)", "finish_reason=\(finishReason)"]
     if stream {
         var chunks: [String] = [
-            sseDataLine(sseRoleChunk(id: id, created: created, includeUsage: includeUsage)),
+            sseDataLine(sseRoleChunk(id: id, created: created, model: model, includeUsage: includeUsage)),
             sseDataLine(ChatCompletionChunk(
-                id: id, object: "chat.completion.chunk", created: created, model: modelName,
+                id: id, object: "chat.completion.chunk", created: created, model: model,
                 choices: [.init(
                     index: 0,
                     delta: .init(role: nil, content: nil, tool_calls: [
@@ -176,14 +177,14 @@ func guidedToolCallResponse(
                     finish_reason: nil, logprobs: nil)],
                 usage: nil, includeUsageNull: includeUsage)),
             sseDataLine(ChatCompletionChunk(
-                id: id, object: "chat.completion.chunk", created: created, model: modelName,
+                id: id, object: "chat.completion.chunk", created: created, model: model,
                 choices: [.init(index: 0, delta: .init(role: nil, content: nil, tool_calls: nil),
                                 finish_reason: finishReason, logprobs: nil)],
                 usage: nil, includeUsageNull: includeUsage)),
         ]
         if includeUsage {
             chunks.append(sseDataLine(sseUsageChunk(
-                id: id, created: created, promptTokens: usage.promptTokens, completionTokens: usage.completionTokens)))
+                id: id, created: created, model: model, promptTokens: usage.promptTokens, completionTokens: usage.completionTokens)))
         }
         chunks.append(sseDone)
         let body = chunks.joined()
@@ -194,7 +195,7 @@ func guidedToolCallResponse(
             responseBody: captureTruncatedLogBody(body, enabled: serverState.config.debug), events: traceEvents))
     }
     let payload = ChatCompletionResponse(
-        id: id, object: "chat.completion", created: created, model: modelName,
+        id: id, object: "chat.completion", created: created, model: model,
         choices: [.init(index: 0, message: OpenAIMessage(role: "assistant", content: nil, tool_calls: [toolCall]),
                         finish_reason: finishReason, logprobs: nil)],
         usage: .init(prompt_tokens: usage.promptTokens, completion_tokens: usage.completionTokens,

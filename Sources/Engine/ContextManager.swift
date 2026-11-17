@@ -59,7 +59,7 @@ package enum ContextManager {
                 contextSize: await TokenCounter.shared.contextSize)
         }
 
-        let session = makeTranscriptSession(model: makeModel(permissive: options.permissive), entries: entries)
+        let session = makeTranscriptSession(model: makeModel(permissive: options.permissive, useCase: options.useCase), entries: entries)
         return (session, prepared.finalPrompt, entries, prepared.finalPieces)
     }
 

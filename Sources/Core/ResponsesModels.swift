@@ -247,7 +247,8 @@ public enum ResponsesMapper {
 /// shape: one ordered pass, each failure knows its HTTP status and message.
 public enum ResponsesRequestValidator {
 
-    static let validModel = "apple-foundationmodel"
+    /// The default model id; every `ServedModel` id is accepted.
+    static let validModel = ServedModel.general.rawValue
     static let allowedRoles: Set<String> = ["system", "developer", "user", "assistant"]
     static let allowedFormats: Set<String> = ["text", "json_object", "json_schema"]
 
@@ -275,6 +276,9 @@ public enum ResponsesRequestValidator {
         /// A feature the on-device model / this stateless server does not
         /// support. Always a 501 with a plain-spoken message.
         case unsupported(String)
+        /// Tools sent to a served model that never calls them
+        /// (the content-tagging model). A 400 naming the model.
+        case toolsUnsupportedForModel(String)
 
         public var httpStatusCode: Int {
             switch self {
@@ -289,7 +293,7 @@ public enum ResponsesRequestValidator {
             case .missingModel:
                 return "'model' is required."
             case .invalidModel(let m):
-                return "Model '\(m)' not found. This server serves only '\(validModel)'."
+                return "Model '\(m)' not found. Available models: \(ServedModel.availableList)."
             case .missingInput:
                 return "'input' is required (a string or a list of message items)."
             case .emptyInput:
@@ -335,6 +339,9 @@ public enum ResponsesRequestValidator {
                 default:
                     return "'\(feature)' is not supported by this server."
                 }
+            case .toolsUnsupportedForModel(let model):
+                return ServedModel.resolve(model)?.toolsUnsupportedMessage
+                    ?? "'tools' are not supported by model '\(model)'."
             }
         }
 
@@ -346,6 +353,7 @@ public enum ResponsesRequestValidator {
         public var errorParam: String? {
             if case .invalidModel = self { return "model" }
             if case .invalidTruncation = self { return "truncation" }
+            if case .toolsUnsupportedForModel = self { return "tools" }
             return nil
         }
 
@@ -364,7 +372,10 @@ public enum ResponsesRequestValidator {
     public static func validate(_ r: ResponsesRequest, imagePolicy: ImageInputPolicy) -> Failure? {
         // Model first (matches the chat handler's 404 behavior).
         guard let model = r.model, !model.isEmpty else { return .missingModel }
-        guard model == validModel else { return .invalidModel(model) }
+        guard let servedModel = ServedModel.resolve(model) else { return .invalidModel(model) }
+        if !servedModel.supportsTools, let tools = r.tools, !tools.isEmpty {
+            return .toolsUnsupportedForModel(model)
+        }
 
         // Honest 501s before anything else: say what we will not do.
         if r.previous_response_id != nil { return .unsupported("previous_response_id") }

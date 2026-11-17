@@ -11,7 +11,7 @@
 | `POST /v1/chat/completions` | Supported | Streaming + non-streaming |
 | `POST /v1/responses` | Supported | See [Responses API](#responses-api) below |
 | `POST /v1/responses/input_tokens` | Supported | Exact token preflight, no generation. See [Token preflight](#token-preflight-v1responsesinput_tokens) below |
-| `GET /v1/models` | Supported | Returns `apple-foundationmodel` |
+| `GET /v1/models` | Supported | Returns `apple-foundationmodel` (the default) and `apple-foundationmodel-content-tagging`. See [Content-tagging model](#content-tagging-model) |
 | `GET /health` | Supported | Model availability, context window, languages |
 | `GET /v1/logs`, `/v1/logs/stats` | Debug only | Requires `--debug` |
 | Tool calling | Supported | Tools described in the instructions as a plain-language list; for client tools the call is generated under a JSON schema (`--tool-calling guided`, default) or detected as JSON in the output (`--tool-calling text`, also used for `--mcp` tools and `/v1/responses`). Client tools are never executed by apfel. See [tool-calling-guide.md](tool-calling-guide.md) |
@@ -83,6 +83,23 @@ EOF
 ```
 
 Be honest about what to expect: the ~3B on-device model's scene understanding is coarse. Asked to describe the Apollo 11 plaque photo, it answered "A bottle of amber liquid is wrapped in clear plastic and placed on a metal shelf surrounded by leaves." Unambiguous content works well (a solid red square is reliably "Red"); for reading print, the CLI's OCR path (`apfel -f photo.jpg`) remains the reliable channel - on macOS 27 the CLI sends both.
+
+## Content-tagging model
+
+`apfel --serve` also serves Apple's content-tagging adapter (`SystemLanguageModel.UseCase.contentTagging`, macOS 26 and 27) as the model `apple-foundationmodel-content-tagging`. It runs on the same on-device model with the same context window, tuned to return labels instead of prose: tags, topics, emotions and actions. Name it in the `model` field of `/v1/chat/completions`, `/v1/responses` or `/v1/responses/input_tokens`; `apple-foundationmodel` stays the default and is unchanged.
+
+- **Use guided generation.** The adapter follows `response_format: json_schema` and fills the schema with labels. Say in the instructions what to extract. Without a schema it answers with a short comma-separated label list, whatever the prompt asks.
+- **No tools.** It never calls a tool, so client `tools` are a 400 (`/v1/responses`: also a 400, `param: "tools"`), and the server's `--mcp` tools are not attached to its requests. `/v1/models` lists no tool parameters and no `tool_calling` capability for it.
+- **Everything else** (`stream`, `stop`, `temperature`, `seed`, `max_tokens`, context strategies, `--permissive`) works as for the general model. Responses echo the requested model id.
+
+Tag a sentence, getting the labels as JSON:
+
+```bash
+curl -s http://localhost:11434/v1/chat/completions -H 'Content-Type: application/json' \
+  -d '{"model":"apple-foundationmodel-content-tagging","messages":[{"role":"system","content":"Extract topic tags."},{"role":"user","content":"The quarterly budget review moved to Friday; finance needs the slides."}],"response_format":{"type":"json_schema","json_schema":{"name":"tags","schema":{"type":"object","properties":{"tags":{"type":"array","items":{"type":"string"}}},"required":["tags"]}}}}'
+```
+
+The message content is a JSON document such as `{"tags": ["task assignment", "schedule"]}`.
 
 ## Responses API
 

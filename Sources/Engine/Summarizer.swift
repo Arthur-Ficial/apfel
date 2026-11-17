@@ -120,6 +120,8 @@ private func renderEntries(_ entries: [Transcript.Entry]) -> String {
 private func generateSummary(
     _ text: String, maxTokens: Int, permissive: Bool = false
 ) async -> String? {
+    // Always the general model: a summary needs prose, even when the
+    // conversation runs on the content-tagging model.
     let model = makeModel(permissive: permissive)
     let session = LanguageModelSession(
         model: model,

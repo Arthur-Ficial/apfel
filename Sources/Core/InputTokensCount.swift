@@ -114,7 +114,7 @@ public enum ResponsesInputTokensValidator {
     /// parameters the Responses decoder does not model are still caught.
     public static func validate(_ r: ResponsesRequest, presentKeys: Set<String>) -> Failure? {
         guard let model = r.model, !model.isEmpty else { return .request(.missingModel) }
-        guard model == ResponsesRequestValidator.validModel else { return .request(.invalidModel(model)) }
+        guard ServedModel.resolve(model) != nil else { return .request(.invalidModel(model)) }
         if let unknown = presentKeys.subtracting(countParameters).sorted().first {
             return .unsupportedParameter(unknown)
         }

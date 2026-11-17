@@ -32,12 +32,12 @@ let sseDone = "data: [DONE]\n\n"
 ///
 /// `includeUsage` emits explicit `usage: null` on this non-final chunk when the
 /// client opted into `stream_options.include_usage` (#238).
-func sseRoleChunk(id: String, created: Int, includeUsage: Bool = false) -> ChatCompletionChunk {
+func sseRoleChunk(id: String, created: Int, model: String, includeUsage: Bool = false) -> ChatCompletionChunk {
     ChatCompletionChunk(
         id: id,
         object: "chat.completion.chunk",
         created: created,
-        model: modelName,
+        model: model,
         choices: [.init(
             index: 0,
             delta: .init(role: "assistant", content: nil, tool_calls: nil),
@@ -50,12 +50,12 @@ func sseRoleChunk(id: String, created: Int, includeUsage: Bool = false) -> ChatC
 }
 
 /// Create a content delta SSE chunk.
-func sseContentChunk(id: String, created: Int, content: String, includeUsage: Bool = false) -> ChatCompletionChunk {
+func sseContentChunk(id: String, created: Int, model: String, content: String, includeUsage: Bool = false) -> ChatCompletionChunk {
     ChatCompletionChunk(
         id: id,
         object: "chat.completion.chunk",
         created: created,
-        model: modelName,
+        model: model,
         choices: [.init(
             index: 0,
             delta: .init(role: nil, content: content, tool_calls: nil),
@@ -68,12 +68,12 @@ func sseContentChunk(id: String, created: Int, content: String, includeUsage: Bo
 }
 
 /// Create a refusal delta SSE chunk (streams the model's refusal text).
-func sseRefusalChunk(id: String, created: Int, refusal: String, includeUsage: Bool = false) -> ChatCompletionChunk {
+func sseRefusalChunk(id: String, created: Int, model: String, refusal: String, includeUsage: Bool = false) -> ChatCompletionChunk {
     ChatCompletionChunk(
         id: id,
         object: "chat.completion.chunk",
         created: created,
-        model: modelName,
+        model: model,
         choices: [.init(
             index: 0,
             delta: .init(refusal: refusal),
@@ -86,12 +86,12 @@ func sseRefusalChunk(id: String, created: Int, refusal: String, includeUsage: Bo
 }
 
 /// Create the final SSE chunk that carries `finish_reason: "content_filter"`.
-func sseContentFilterFinishChunk(id: String, created: Int, includeUsage: Bool = false) -> ChatCompletionChunk {
+func sseContentFilterFinishChunk(id: String, created: Int, model: String, includeUsage: Bool = false) -> ChatCompletionChunk {
     ChatCompletionChunk(
         id: id,
         object: "chat.completion.chunk",
         created: created,
-        model: modelName,
+        model: model,
         choices: [.init(
             index: 0,
             delta: .init(),
@@ -104,12 +104,12 @@ func sseContentFilterFinishChunk(id: String, created: Int, includeUsage: Bool = 
 }
 
 /// Create a usage-only SSE chunk (empty choices, usage stats).
-func sseUsageChunk(id: String, created: Int, promptTokens: Int, completionTokens: Int) -> ChatCompletionChunk {
+func sseUsageChunk(id: String, created: Int, model: String, promptTokens: Int, completionTokens: Int) -> ChatCompletionChunk {
     ChatCompletionChunk(
         id: id,
         object: "chat.completion.chunk",
         created: created,
-        model: modelName,
+        model: model,
         choices: [],
         usage: .init(
             prompt_tokens: promptTokens,

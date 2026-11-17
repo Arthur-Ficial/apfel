@@ -234,7 +234,7 @@ alias apfel=apfel-run                 # optional, every apfel flag still works
 | `POST /v1/chat/completions` | Supported | Streaming + non-streaming |
 | `POST /v1/responses` | Supported | OpenAI Responses API: string/message input, `instructions`, streaming (canonical event sequence), `text.format` (incl. `json_schema`), function tools (non-streaming). Stateful features (`previous_response_id`, `store: true`, `background`, `reasoning`, hosted tools) return honest 501s |
 | `POST /v1/responses/input_tokens` | Supported | Token preflight (`client.responses.input_tokens.count(...)`): exact count from Apple's tokenizer, no generation; 501 below macOS 26.4 instead of an estimate. See [docs/openai-api-compatibility.md](docs/openai-api-compatibility.md#token-preflight-v1responsesinput_tokens) |
-| `GET /v1/models` | Supported | Returns `apple-foundationmodel` |
+| `GET /v1/models` | Supported | Returns `apple-foundationmodel` (general, the default) and `apple-foundationmodel-content-tagging` (labels, not prose). See [docs/openai-api-compatibility.md](docs/openai-api-compatibility.md#content-tagging-model) |
 | `GET /health` | Supported | Model availability, context window, languages, reported model capabilities (`capabilities`, `capabilities_reported`) |
 | `GET /v1/logs`, `/v1/logs/stats` | Debug only | Requires `--debug` |
 | Tool calling | Supported | The call is written under guided generation (`--tool-calling guided`, default) or as JSON the server parses (`--tool-calling text`). See [docs/tool-calling-guide.md](docs/tool-calling-guide.md) |
@@ -313,7 +313,7 @@ apfel --serve --permissive             # every request uses permissive guardrail
 |------------|--------|
 | Context window | **4096 tokens on macOS 26 and on M1/M2 Macs, 8192 tokens on macOS 27 with an M3 or newer chip and 12 GB+** (input + output combined). Not a hardcoded constant - apfel reads `SystemLanguageModel.contextSize` at runtime; `apfel --model-info` prints the live value |
 | Platform | macOS 26+, Apple Silicon only |
-| Model | One model (`apple-foundationmodel`, ~3B params on-device), not configurable |
+| Model | One on-device model (~3B params), served as `apple-foundationmodel` (general) and `apple-foundationmodel-content-tagging` (Apple's content-tagging adapter; no tools) |
 | Guardrails | Apple's safety system may block benign prompts. `--permissive` reduces false positives ([docs/PERMISSIVE.md](docs/PERMISSIVE.md)) |
 | Speed | On-device, not cloud-scale - a few seconds per response |
 | No embeddings | Not available on-device |
