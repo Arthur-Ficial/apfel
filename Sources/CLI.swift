@@ -696,6 +696,7 @@ func printModelInfo() async {
     let contextWindow = await tc.contextWindow
     let languages = await tc.supportedLanguages
     let capabilities = await tc.capabilitiesReport
+    let variant = readModelVariant()
 
     let availabilityLine = availability.isAvailable
         ? styled(availability.shortLabel, .green)
@@ -707,6 +708,7 @@ func printModelInfo() async {
     \(styled("├", .dim)) on-device:  true (always)
     \(styled("├", .dim)) available:  \(availabilityLine)
     \(styled("├", .dim)) context:    \(contextWindow.displayText)
+    \(styled("├", .dim)) variant:    \(variant.displayName) (\(variant.id))
     \(styled("├", .dim)) capabilities: \(capabilities.displayText)
     \(styled("├", .dim)) languages:  \(languages.joined(separator: ", "))
     \(styled("└", .dim)) framework:  FoundationModels (macOS 26+)

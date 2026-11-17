@@ -183,6 +183,21 @@ public func readModelCapabilities() -> CapabilitiesReport {
     return .notReported
 }
 
+/// The on-device model variant (#576): the runtime's report on macOS 27,
+/// the OS version on macOS 26 (AFM 2.1 Core from 26.4, AFM 2 Core before),
+/// following Apple's "Detecting available Apple Foundation Models".
+package func readModelVariant() -> ModelVariant {
+    if #available(macOS 27, *) {
+        let variant = SystemLanguageModel.default.variant
+        return .macOS27(isCore3: variant == .core3, isCoreAdvanced3: variant == .coreAdvanced3,
+                        displayName: variant.displayName)
+    }
+    if #available(macOS 26.4, *) {
+        return .macOS26(atLeast26_4: true)
+    }
+    return .macOS26(atLeast26_4: false)
+}
+
 /// The on-device model variant's display name; nil on macOS 26, which does
 /// not report one. Read by `FoundationModelsBackend.modelInfo()`.
 public func readModelVariantName() -> String? {
