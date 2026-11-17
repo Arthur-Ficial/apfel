@@ -180,4 +180,10 @@ func runToolArgumentSchemaTests() {
         let prompt = MCPProtocol.toolRetryPrompt(name: "t", inputSchemaJSON: schema)
         try assertTrue(prompt?.contains("'a', 'b' and 'c'") == true, "got: \(prompt ?? "nil")")
     }
+
+    test("keys matching patternProperties are not rejected as unexpected") {
+        let schema = #"{"type":"object","properties":{"q":{"type":"string"}},"patternProperties":{"^x_":{"type":"string"}},"additionalProperties":false}"#
+        try MCPProtocol.validateToolArguments(
+            name: "search", arguments: #"{"q": "a", "x_tag": "b"}"#, inputSchemaJSON: schema)
+    }
 }

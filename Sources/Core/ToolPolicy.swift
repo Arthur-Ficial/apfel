@@ -271,7 +271,7 @@ public struct ToolPolicy: Sendable, Equatable {
     ///   `{"value": ...}` or undeclared keys.
     public func evaluate(output: String) -> Outcome {
         let detected = ToolCallHandler.detectToolCall(in: output)
-        if mode != .disabled, detected?.isEmpty ?? true, output.contains(Self.envelopeMarker) {
+        if mode != .disabled, detected?.isEmpty ?? true, Self.opensToolCallEnvelope(output) {
             return .violation(Violation(
                 code: Violation.invalidCallCode,
                 message: #"the reply started a tool call that could not be read; write it as {"tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "<name>", "arguments": "<escaped_json_string>"}}]}."#))
@@ -290,5 +290,17 @@ public struct ToolPolicy: Sendable, Equatable {
         return outcome
     }
 
-    private static let envelopeMarker = #"{"tool_calls""#
+    /// True when the reply itself is a tool-call attempt: it opens with
+    /// `{"tool_calls"` (whitespace allowed), directly or inside a code fence.
+    /// Prose that merely mentions the envelope is content.
+    private static func opensToolCallEnvelope(_ output: String) -> Bool {
+        var text = Substring(output.trimmingCharacters(in: .whitespacesAndNewlines))
+        if text.hasPrefix("```") {
+            guard let newline = text.firstIndex(where: \.isNewline) else { return false }
+            text = text[text.index(after: newline)...]
+        }
+        text = text.drop(while: { $0.isWhitespace })
+        guard text.first == "{" else { return false }
+        return text.dropFirst().drop(while: { $0.isWhitespace }).hasPrefix(#""tool_calls""#)
+    }
 }

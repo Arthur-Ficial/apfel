@@ -257,6 +257,16 @@ func runToolPolicyTests() {
         try assertEqual(try violationCode(try checked().evaluate(output: output)), ToolPolicy.Violation.invalidCallCode)
     }
 
+    test("evaluate(output:) keeps prose that only mentions the envelope as content") {
+        let output = #"The empty envelope is {"tool_calls":[]} and nothing more."#
+        try assertEqual(try checked().evaluate(output: output), .content)
+    }
+
+    test("evaluate(output:) treats a fenced, pretty-printed unreadable envelope as a call attempt (#580)") {
+        let output = "```json\n{\n  \"tool_calls\": [{\"id\": \"call_2\", \"arguments\": {\"query\": \"x\", \"category:sports\"}}]\n}\n```"
+        try assertEqual(try violationCode(try checked().evaluate(output: output)), ToolPolicy.Violation.invalidCallCode)
+    }
+
     test("evaluate(output:) keeps plain text as content under auto") {
         try assertEqual(try checked().evaluate(output: "It is 14:30 in Tokyo."), .content)
     }

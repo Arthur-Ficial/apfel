@@ -183,9 +183,13 @@ public enum ToolCallHandler {
             "default", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum",
             "minLength", "maxLength", "minItems", "maxItems", "pattern",
             "title", "$schema", "$id", "$comment", "examples",
-            "additionalProperties",
         ]
-        let rest = schema.filter { !handledKeys.contains($0.key) }
+        // A boolean additionalProperties only opens or closes the object (the
+        // argument list already names every key); a schema value describes
+        // the map's values and stays.
+        let rest = schema.filter {
+            !handledKeys.contains($0.key) && !($0.key == "additionalProperties" && $0.value is Bool)
+        }
         if !rest.isEmpty {
             text += " [schema: " + compactJSONFragment(rest) + "]"
         }
@@ -267,8 +271,11 @@ public enum ToolCallHandler {
 
     /// Try to extract a tool name from broken JSON text using regex. Checks
     /// `name`, `function`, `function_name` first, then falls back to `type`
-    /// (excluding the protocol marker "function").
-    private static func salvageToolName(from text: String) -> String? {
+    /// (excluding the protocol marker "function"). Argument values are cut
+    /// out first, so a key such as `"function": "erase"` inside the
+    /// arguments can never be taken for the call's name.
+    private static func salvageToolName(from rawText: String) -> String? {
+        let text = removingArgumentValues(rawText)
         if let regex = try? NSRegularExpression(
                pattern: #""(?:name|function|function_name)"\s*:\s*"([A-Za-z0-9_.\-]+)""#),
            let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
@@ -282,6 +289,56 @@ public enum ToolCallHandler {
             return candidate == "function" ? nil : candidate
         }
         return nil
+    }
+
+    /// `text` with the value of every `"arguments"` key removed: a
+    /// balanced `{...}` / `[...]` or a string literal (string-aware scans).
+    /// An unterminated value removes the rest of the text.
+    private static func removingArgumentValues(_ text: String) -> String {
+        var out = ""
+        var rest = Substring(text)
+        while let key = rest.range(of: "\"arguments\"") {
+            out += rest[rest.startIndex..<key.lowerBound]
+            var idx = key.upperBound
+            while idx < rest.endIndex, rest[idx] == " " || rest[idx] == ":" || rest[idx].isNewline || rest[idx] == "\t" {
+                idx = rest.index(after: idx)
+            }
+            guard idx < rest.endIndex else { return out }
+            let open = rest[idx]
+            var depth = 0
+            var inString = false
+            var escaped = false
+            var end: Substring.Index? = nil
+            var scan = idx
+            while scan < rest.endIndex {
+                let ch = rest[scan]
+                if inString {
+                    if escaped { escaped = false }
+                    else if ch == "\\" { escaped = true }
+                    else if ch == "\"" {
+                        inString = false
+                        if open == "\"" { end = scan; break }
+                    }
+                } else if ch == "\"" {
+                    inString = true
+                } else if ch == "{" || ch == "[" {
+                    depth += 1
+                } else if ch == "}" || ch == "]" {
+                    depth -= 1
+                    if depth == 0, open == "{" || open == "[" { end = scan; break }
+                } else if open != "{", open != "[", ch == "," || ch == "}" {
+                    break
+                }
+                scan = rest.index(after: scan)
+            }
+            if open != "{", open != "[", open != "\"" {
+                rest = rest[scan...]
+                continue
+            }
+            guard let end else { return out }
+            rest = rest[rest.index(after: end)...]
+        }
+        return out + rest
     }
 
     /// Extract what can be salvaged from a tool-call attempt whose JSON is
@@ -526,21 +583,21 @@ public enum ToolCallHandler {
         var escaped = false
         for scalar in json.unicodeScalars {
             if inString {
-                if escaped {
+                if escaped, scalar.value < 0x20 {
+                    // `\` + raw control character is no valid escape: keep the
+                    // backslash as a literal one and escape the character.
+                    escaped = false
+                    out += "\\"
+                    out += controlEscape(scalar)
+                    continue
+                } else if escaped {
                     escaped = false
                 } else if scalar == "\\" {
                     escaped = true
                 } else if scalar == "\"" {
                     inString = false
                 } else if scalar.value < 0x20 {
-                    switch scalar.value {
-                    case 0x09: out += "\\t"
-                    case 0x0A: out += "\\n"
-                    case 0x0D: out += "\\r"
-                    case 0x08: out += "\\b"
-                    case 0x0C: out += "\\f"
-                    default: out += String(format: "\\u%04x", scalar.value)
-                    }
+                    out += controlEscape(scalar)
                     continue
                 }
             } else if scalar == "\"" {
@@ -549,6 +606,17 @@ public enum ToolCallHandler {
             out.unicodeScalars.append(scalar)
         }
         return out
+    }
+
+    private static func controlEscape(_ scalar: Unicode.Scalar) -> String {
+        switch scalar.value {
+        case 0x09: return "\\t"
+        case 0x0A: return "\\n"
+        case 0x0D: return "\\r"
+        case 0x08: return "\\b"
+        case 0x0C: return "\\f"
+        default: return String(format: "\\u%04x", scalar.value)
+        }
     }
 
     /// Close an unterminated trailing string and any unclosed `{`/`[`
@@ -624,7 +692,7 @@ public enum ToolCallHandler {
     }
 
     private static let toolCallProtocolKeys: Set<String> = [
-        "id", "type", "function", "function_name", "name", "arguments",
+        "id", "type", "function", "function_name", "name", "arguments", "index",
     ]
 
     private static func collectSiblingArguments(from call: [String: Any]) -> Any? {

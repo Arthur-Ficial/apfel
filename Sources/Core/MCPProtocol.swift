@@ -141,7 +141,18 @@ public enum MCPProtocol {
         // `true`, a schema object, or absent all mean "extra keys allowed".
         let extraKeysForbidden = (schema["additionalProperties"] as? Bool == false)
         if let properties, !properties.isEmpty, extraKeysForbidden {
-            unexpected = argsObject.keys.filter { properties[$0] == nil }.sorted()
+            // Keys matching a `patternProperties` pattern are declared too.
+            let patterns = ((schema["patternProperties"] as? [String: Any]) ?? [:]).keys.map { pattern in
+                (pattern, try? NSRegularExpression(pattern: pattern))
+            }
+            unexpected = argsObject.keys.filter { key in
+                guard properties[key] == nil else { return false }
+                return !patterns.contains { pattern, regex in
+                    // An unreadable pattern cannot be checked: allow, do not refuse.
+                    guard let regex else { return true }
+                    return regex.firstMatch(in: key, range: NSRange(key.startIndex..., in: key)) != nil
+                }
+            }.sorted()
         }
 
         guard !missing.isEmpty || !unexpected.isEmpty else { return }

@@ -937,4 +937,32 @@ func runToolCallHandlerTests() {
         let result = ProcessPromptResult(content: "", toolLog: [])
         try assertTrue(result.content.isEmpty)
     }
+
+    // --- Codex review of the #580/#581 fix (2026-11-17) ---
+
+    test("salvage takes the call name, not a name inside the arguments") {
+        // Missing the final outer brace, so only salvage can read it.
+        let response = #"{"tool_calls":[{"function":{"arguments":{"function":"erase"},"name":"lookup"}}]"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertEqual(result?.first?.name, "lookup")
+    }
+    test("salvage still reads a name that comes after string arguments") {
+        let response = #"{"tool_calls":[{"id":"c1","function":{"arguments":"{\"name\": \"Bob\"}","name":"greet"}}"#
+        try assertEqual(ToolCallHandler.detectToolCall(in: response)?.first?.name, "greet")
+    }
+    test("index is protocol metadata, not a sibling argument") {
+        let response = #"{"tool_calls":[{"function":"ping","index":0}]}"#
+        try assertEqual(ToolCallHandler.detectToolCall(in: response)?.first?.argumentsString, "{}")
+    }
+    test("a schema-valued additionalProperties stays in the tool text") {
+        let tool = ToolDef(name: "setenv", description: nil,
+            parametersJSON: #"{"type":"object","properties":{"env":{"type":"object","additionalProperties":{"type":"string"}}}}"#)
+        let prompt = ToolCallHandler.buildToolSchemaPrompt(tools: [tool])
+        try assertTrue(prompt.contains("additionalProperties"), prompt)
+    }
+    test("ensureJSONArguments repairs a raw control character right after a backslash") {
+        let result = ToolCallHandler.ensureJSONArguments("{\"x\":\"a\\\u{09}b\"}")
+        let parsed = try JSONSerialization.jsonObject(with: Data(result.utf8)) as? [String: Any]
+        try assertEqual(parsed?["x"] as? String, "a\\\u{09}b")
+    }
 }
