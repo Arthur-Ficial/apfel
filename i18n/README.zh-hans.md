@@ -1,4 +1,4 @@
-<!-- i18n-source: e8eb4f6c529cf64d34734df80149c4cdbd7dd262 -->
+<!-- i18n-source: 456189202748709f4afd193b0fb6c49c6fd36c3c -->
 
 > 译自[英文 README](../README.md)。以英文版为准。
 

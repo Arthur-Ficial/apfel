@@ -1,4 +1,4 @@
-<!-- i18n-source: e8eb4f6c529cf64d34734df80149c4cdbd7dd262 -->
+<!-- i18n-source: 456189202748709f4afd193b0fb6c49c6fd36c3c -->
 
 > [英語版 README](../README.md) からの翻訳です。英語版が正本です。
 
