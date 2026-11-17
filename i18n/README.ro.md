@@ -23,7 +23,7 @@ Mac-urile cu Apple Silicon vin cu un LLM integrat, prin [Apple FoundationModels]
 
 `apfel --chat` - REPL interactiv.
 
-[![Video demonstrativ apfel în terminal: comenzi reale, răspunsuri reale pe dispozitiv (84 de secunde)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/ro/a/apfel-ai-tutorial/#video)
+[![Video demonstrativ apfel în terminal: comenzi reale, răspunsuri reale pe dispozitiv (82 de secunde)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/ro/a/apfel-ai-tutorial/#video)
 
 Apelarea de instrumente funcționează în toate contextele.
 

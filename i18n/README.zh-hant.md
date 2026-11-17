@@ -23,7 +23,7 @@ Apple Silicon Mac 透過 [Apple FoundationModels](https://developer.apple.com/do
 
 `apfel --chat` - 互動式 REPL。
 
-[![apfel 終端機示範影片: 真實指令, 裝置端真實回答 (84 秒)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/zh-hant/a/apfel-ai-tutorial/#video)
+[![apfel 終端機示範影片: 真實指令, 裝置端真實回答 (82 秒)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/zh-hant/a/apfel-ai-tutorial/#video)
 
 所有情境下皆支援工具呼叫。
 

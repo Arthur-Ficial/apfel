@@ -23,7 +23,7 @@ Apple Silicon 搭載の Mac には、[Apple FoundationModels](https://developer.
 
 `apfel --chat` - 対話型 REPL。
 
-[![apfel のターミナルデモ動画: 実際のコマンドと、デバイス上で生成された実際の回答 (84 秒)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/ja/a/apfel-ai-tutorial/#video)
+[![apfel のターミナルデモ動画: 実際のコマンドと、デバイス上で生成された実際の回答 (82 秒)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/ja/a/apfel-ai-tutorial/#video)
 
 ツール呼び出しはすべてのコンテキストで動作します。
 

@@ -23,7 +23,7 @@ Els Mac amb Apple Silicon porten un LLM integrat mitjançant [Apple FoundationMo
 
 `apfel --chat` - REPL interactiu.
 
-[![Vídeo de demostració d'apfel al terminal: ordres reals, respostes reals al dispositiu (84 segons)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/ca/a/apfel-ai-tutorial/#video)
+[![Vídeo de demostració d'apfel al terminal: ordres reals, respostes reals al dispositiu (82 segons)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/ca/a/apfel-ai-tutorial/#video)
 
 La crida d'eines (tool calling) funciona en tots els contextos.
 

@@ -23,7 +23,7 @@ Os Macs com Apple Silicon trazem um LLM integrado por meio do [Apple FoundationM
 
 `apfel --chat` - REPL interativo.
 
-[![Vídeo de demonstração do apfel no terminal: comandos reais, respostas reais no dispositivo (84 segundos)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/pt/a/apfel-ai-tutorial/#video)
+[![Vídeo de demonstração do apfel no terminal: comandos reais, respostas reais no dispositivo (82 segundos)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/pt/a/apfel-ai-tutorial/#video)
 
 A chamada de ferramentas funciona em todos os contextos.
 

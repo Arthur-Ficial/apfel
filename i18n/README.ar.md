@@ -23,7 +23,7 @@
 
 `apfel --chat` - واجهة REPL تفاعلية.
 
-[![فيديو عرض apfel في الطرفية: أوامر حقيقية وإجابات حقيقية على الجهاز (84 ثانية)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/ar/a/apfel-ai-tutorial/#video)
+[![فيديو عرض apfel في الطرفية: أوامر حقيقية وإجابات حقيقية على الجهاز (82 ثانية)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/ar/a/apfel-ai-tutorial/#video)
 
 استدعاء الأدوات (tool calling) يعمل في جميع السياقات.
 

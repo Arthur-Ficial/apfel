@@ -23,7 +23,7 @@ Apple Silicon Mac లలో [Apple FoundationModels](https://developer.apple.com
 
 `apfel --chat` - ఇంటరాక్టివ్ REPL.
 
-[![apfel టెర్మినల్ డెమో వీడియో: నిజమైన కమాండ్‌లు, డివైస్‌లోనే నిజమైన సమాధానాలు (84 సెకన్లు)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/te/a/apfel-ai-tutorial/#video)
+[![apfel టెర్మినల్ డెమో వీడియో: నిజమైన కమాండ్‌లు, డివైస్‌లోనే నిజమైన సమాధానాలు (82 సెకన్లు)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/te/a/apfel-ai-tutorial/#video)
 
 టూల్ కాలింగ్ అన్ని సందర్భాల్లోనూ పనిచేస్తుంది.
 

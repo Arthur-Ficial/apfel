@@ -23,7 +23,7 @@ Apple Silicon Macidel on sisseehitatud LLM [Apple FoundationModelsi](https://dev
 
 `apfel --chat` - interaktiivne REPL.
 
-[![apfeli terminali demovideo: päris käsud, päris vastused otse seadmes (84 sekundit)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/et/a/apfel-ai-tutorial/#video)
+[![apfeli terminali demovideo: päris käsud, päris vastused otse seadmes (82 sekundit)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/et/a/apfel-ai-tutorial/#video)
 
 Tööriistakutsed töötavad igas kontekstis.
 

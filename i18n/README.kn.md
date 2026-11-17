@@ -23,7 +23,7 @@ Apple Silicon Mac ಗಳಲ್ಲಿ [Apple FoundationModels](https://developer.
 
 `apfel --chat` - ಇಂಟರ್ಯಾಕ್ಟಿವ್ REPL.
 
-[![apfel ಟರ್ಮಿನಲ್ ಡೆಮೊ ವಿಡಿಯೋ: ನಿಜವಾದ ಕಮಾಂಡ್‌ಗಳು, ಸಾಧನದಲ್ಲೇ ನಿಜವಾದ ಉತ್ತರಗಳು (84 ಸೆಕೆಂಡುಗಳು)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/kn/a/apfel-ai-tutorial/#video)
+[![apfel ಟರ್ಮಿನಲ್ ಡೆಮೊ ವಿಡಿಯೋ: ನಿಜವಾದ ಕಮಾಂಡ್‌ಗಳು, ಸಾಧನದಲ್ಲೇ ನಿಜವಾದ ಉತ್ತರಗಳು (82 ಸೆಕೆಂಡುಗಳು)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/kn/a/apfel-ai-tutorial/#video)
 
 ಟೂಲ್ ಕಾಲಿಂಗ್ ಎಲ್ಲಾ ಸಂದರ್ಭಗಳಲ್ಲಿ ಕೆಲಸ ಮಾಡುತ್ತದೆ.
 

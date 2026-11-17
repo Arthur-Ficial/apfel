@@ -23,7 +23,7 @@ Apple Silicon Mac માં [Apple FoundationModels](https://developer.apple.com
 
 `apfel --chat` - ઇન્ટરેક્ટિવ REPL.
 
-[![apfel ટર્મિનલ ડેમો વિડિયો: સાચા કમાન્ડ, ડિવાઇસ પર સાચા જવાબ (84 સેકન્ડ)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/gu/a/apfel-ai-tutorial/#video)
+[![apfel ટર્મિનલ ડેમો વિડિયો: સાચા કમાન્ડ, ડિવાઇસ પર સાચા જવાબ (82 સેકન્ડ)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/gu/a/apfel-ai-tutorial/#video)
 
 ટૂલ કૉલિંગ બધા સંદર્ભોમાં કામ કરે છે.
 

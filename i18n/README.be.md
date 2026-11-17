@@ -23,7 +23,7 @@ Mac на Apple Silicon пастаўляюцца са ўбудаванай LLM п
 
 `apfel --chat` - інтэрактыўны REPL.
 
-[![Дэмаадэа apfel у тэрмінале: сапраўдныя каманды, сапраўдныя адказы на прыладзе (84 секунды)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/be/a/apfel-ai-tutorial/#video)
+[![Дэмаадэа apfel у тэрмінале: сапраўдныя каманды, сапраўдныя адказы на прыладзе (82 секунды)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/be/a/apfel-ai-tutorial/#video)
 
 Выклік інструментаў (tool calling) працуе ва ўсіх кантэкстах.
 

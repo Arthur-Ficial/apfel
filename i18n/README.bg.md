@@ -23,7 +23,7 @@ Mac компютрите с Apple Silicon идват с вграден LLM чр�
 
 `apfel --chat` - интерактивен REPL.
 
-[![Демо видео на apfel в терминала: истински команди, истински отговори на устройството (84 секунди)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/bg/a/apfel-ai-tutorial/#video)
+[![Демо видео на apfel в терминала: истински команди, истински отговори на устройството (82 секунди)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/bg/a/apfel-ai-tutorial/#video)
 
 Извикването на инструменти (tool calling) работи във всички контексти.
 

@@ -20,7 +20,7 @@ Apple Silicon Macs ship a built-in LLM via [Apple FoundationModels](https://deve
 
 `apfel --chat` - interactive REPL.
 
-[![apfel terminal demo video: real commands, real on-device answers (84 seconds)](screenshots/demo-video.jpg)](https://apfel.franzai.com/en/a/apfel-ai-tutorial/#video)
+[![apfel terminal demo video: real commands, real on-device answers (82 seconds)](screenshots/demo-video.jpg)](https://apfel.franzai.com/en/a/apfel-ai-tutorial/#video)
 
 Tool calling works in all contexts.
 

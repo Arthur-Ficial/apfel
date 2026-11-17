@@ -23,7 +23,7 @@ Mac компјутерите со Apple Silicon доаѓаат со вграде
 
 `apfel --chat` - интерактивен REPL.
 
-[![Демо видео за apfel во терминал: вистински команди, вистински одговори на уредот (84 секунди)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/mk/a/apfel-ai-tutorial/#video)
+[![Демо видео за apfel во терминал: вистински команди, вистински одговори на уредот (82 секунди)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/mk/a/apfel-ai-tutorial/#video)
 
 Повикувањето алатки (tool calling) работи во сите контексти.
 

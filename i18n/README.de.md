@@ -23,7 +23,7 @@ Macs mit Apple Silicon bringen ein integriertes LLM über [Apple FoundationModel
 
 `apfel --chat` - interaktive REPL.
 
-[![apfel-Terminal-Demovideo: echte Befehle, echte Antworten direkt auf dem Mac (84 Sekunden)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/de/a/apfel-ai-tutorial/#video)
+[![apfel-Terminal-Demovideo: echte Befehle, echte Antworten direkt auf dem Mac (82 Sekunden)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/de/a/apfel-ai-tutorial/#video)
 
 Tool Calling funktioniert in allen Kontexten.
 

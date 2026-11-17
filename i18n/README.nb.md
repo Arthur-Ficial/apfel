@@ -23,7 +23,7 @@ Mac-maskiner med Apple Silicon leveres med en innebygd LLM via [Apple Foundation
 
 `apfel --chat` - interaktiv REPL.
 
-[![Demovideo av apfel i terminalen: ekte kommandoer, ekte svar rett på enheten (84 sekunder)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/nb/a/apfel-ai-tutorial/#video)
+[![Demovideo av apfel i terminalen: ekte kommandoer, ekte svar rett på enheten (82 sekunder)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/nb/a/apfel-ai-tutorial/#video)
 
 Verktøykall fungerer i alle sammenhenger.
 

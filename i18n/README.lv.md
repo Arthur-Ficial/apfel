@@ -23,7 +23,7 @@ Apple Silicon Mac datoriem ir iebūvēts LLM, ko nodrošina [Apple FoundationMod
 
 `apfel --chat` - interaktīvs REPL.
 
-[![apfel demonstrācijas video terminālī: īstas komandas, īstas atbildes ierīcē (84 sekundes)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/lv/a/apfel-ai-tutorial/#video)
+[![apfel demonstrācijas video terminālī: īstas komandas, īstas atbildes ierīcē (82 sekundes)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/lv/a/apfel-ai-tutorial/#video)
 
 Rīku izsaukšana darbojas visos kontekstos.
 

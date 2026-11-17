@@ -23,7 +23,7 @@ Apple Silicon Mac'ler, [Apple FoundationModels](https://developer.apple.com/docu
 
 `apfel --chat` - etkileşimli REPL.
 
-[![apfel terminal demo videosu: gerçek komutlar, cihaz üzerinde gerçek yanıtlar (84 saniye)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/tr/a/apfel-ai-tutorial/#video)
+[![apfel terminal demo videosu: gerçek komutlar, cihaz üzerinde gerçek yanıtlar (82 saniye)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/tr/a/apfel-ai-tutorial/#video)
 
 Araç çağırma (tool calling) tüm bağlamlarda çalışır.
 

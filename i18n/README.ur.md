@@ -23,7 +23,7 @@ Apple Silicon والے Mac میں [Apple FoundationModels](https://developer.app
 
 `apfel --chat` - انٹرایکٹو REPL۔
 
-[![apfel ٹرمینل ڈیمو ویڈیو: اصلی کمانڈز، ڈیوائس پر اصلی جوابات (84 سیکنڈ)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/ur/a/apfel-ai-tutorial/#video)
+[![apfel ٹرمینل ڈیمو ویڈیو: اصلی کمانڈز، ڈیوائس پر اصلی جوابات (82 سیکنڈ)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/ur/a/apfel-ai-tutorial/#video)
 
 ٹول کالنگ ہر صورت میں کام کرتی ہے۔
 

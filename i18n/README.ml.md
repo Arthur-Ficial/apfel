@@ -23,7 +23,7 @@ Apple Silicon Mac-കളിൽ [Apple FoundationModels](https://developer.apple.
 
 `apfel --chat` - ഇന്ററാക്ടീവ് REPL.
 
-[![apfel ടെർമിനൽ ഡെമോ വീഡിയോ: യഥാർത്ഥ കമാൻഡുകൾ, ഉപകരണത്തിൽ തന്നെ യഥാർത്ഥ ഉത്തരങ്ങൾ (84 സെക്കൻഡ്)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/ml/a/apfel-ai-tutorial/#video)
+[![apfel ടെർമിനൽ ഡെമോ വീഡിയോ: യഥാർത്ഥ കമാൻഡുകൾ, ഉപകരണത്തിൽ തന്നെ യഥാർത്ഥ ഉത്തരങ്ങൾ (82 സെക്കൻഡ്)](../screenshots/demo-video.jpg)](https://apfel.franzai.com/ml/a/apfel-ai-tutorial/#video)
 
 ടൂൾ കോളിംഗ് എല്ലാ സാഹചര്യങ്ങളിലും പ്രവർത്തിക്കുന്നു.
 
