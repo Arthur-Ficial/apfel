@@ -259,14 +259,17 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
                 if case .refusal(let explanation) = classified {
                     let refusalEvents = events + ["refusal: \(classified.cliLabel)"]
                     let stepPromptTokens = failure?.promptTokens ?? 0
+                    let completedRounds = failure?.completedUsage.map { [$0] } ?? []
                     if isStreaming {
                         return await refusalStreamingResponse(
                             id: requestId, created: created, promptTokens: stepPromptTokens,
+                            completedRounds: completedRounds,
                             refusal: explanation, includeUsage: includeUsage,
                             requestBody: requestBodyString, events: refusalEvents)
                     }
                     return await refusalNonStreamingResponse(
                         id: requestId, created: created, promptTokens: stepPromptTokens,
+                        completedRounds: completedRounds,
                         refusal: explanation, requestBody: requestBodyString, events: refusalEvents)
                 }
                 return openAIFailure(
@@ -282,7 +285,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
             }
             switch outcome {
             case .call(let call, let usage):
-                switch toolPolicy.evaluate([call]) {
+                switch toolPolicy.evaluate(calls: [call]) {
                 case .violation(let violation):
                     return toolPolicyFailure(violation, stream: isStreaming, requestBody: requestBodyString, events: events)
                 case .content, .toolCalls:

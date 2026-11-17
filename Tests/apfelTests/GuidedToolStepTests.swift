@@ -32,12 +32,30 @@ func runGuidedToolStepTests() {
         try assertEqual(lenient["required"] as? [String], ["query"])
     }
 
-    test("lenientSchema drops schema-valued additionalProperties and non-string enums") {
-        let raw = #"{"type":"object","properties":{"mode":{"type":"integer","enum":[1,2]},"opts":{"type":"object","additionalProperties":{"type":"string"}}}}"#
+    test("lenientSchema drops non-string enums") {
+        let raw = #"{"type":"object","properties":{"mode":{"type":"integer","enum":[1,2]}}}"#
+        let lenient = try object(GuidedToolStep.lenientSchemaJSON(raw)!)
+        try assertNil((lenient["properties"] as? [String: [String: Any]])?["mode"]?["enum"])
+    }
+
+    test("lenientSchema keeps map schemas, so such a tool falls back to free text instead of losing its entries") {
+        let raw = #"{"type":"object","properties":{"env":{"type":"object","additionalProperties":{"type":"string"}},"tags":{"type":"object","patternProperties":{"^x_":{"type":"string"}}}}}"#
         let lenient = try object(GuidedToolStep.lenientSchemaJSON(raw)!)
         let props = lenient["properties"] as? [String: [String: Any]]
-        try assertNil(props?["mode"]?["enum"])
-        try assertNil(props?["opts"]?["additionalProperties"])
+        try assertNotNil(props?["env"]?["additionalProperties"] as? [String: Any])
+        try assertNotNil(props?["tags"]?["patternProperties"])
+    }
+
+    test("a tool whose parameters are a root $ref or union is not mistaken for a parameterless tool") {
+        for raw in [##"{"$ref":"#/$defs/P","$defs":{"P":{"type":"object","properties":{"q":{"type":"string"}},"required":["q"]}}}"##,
+                    #"{"anyOf":[{"type":"object","properties":{"q":{"type":"string"}}}]}"#] {
+            do {
+                _ = try GuidedToolStep(tools: [ToolDef(name: "find", description: nil, parametersJSON: raw)], mode: .auto)
+                throw TestFailure("expected unavailable for \(raw)")
+            } catch let error as GuidedToolStep.Unavailable {
+                try assertTrue(error.reason.contains("find"))
+            }
+        }
     }
 
     test("lenientSchema recurses into array items and $defs") {
@@ -86,6 +104,13 @@ func runGuidedToolStepTests() {
         try assertTrue(step.answerAction != "answer")
         let action = ((try object(step.schemaJSON))["properties"] as? [String: Any])?["action"] as? [String: Any]
         try assertEqual(action?["enum"] as? [String], ["answer", step.answerAction])
+    }
+
+    test("the answer action never collides with a tool name") {
+        let tools = ["answer", "reply_to_user", "respond_to_user"].map { ToolDef(name: $0, description: nil, parametersJSON: nil) }
+        let step = try GuidedToolStep(tools: tools, mode: .auto)
+        try assertFalse(tools.map(\.name).contains(step.answerAction))
+        try assertEqual(step.parse("{\"action\":\"\(step.answerAction)\"}"), .answer)
     }
 
     test("a disabled policy has no guided step") {

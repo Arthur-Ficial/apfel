@@ -281,7 +281,17 @@ public struct ToolPolicy: Sendable, Equatable {
                 code: Violation.invalidCallCode,
                 message: #"the reply started a tool call that could not be read; write it as {"tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "<name>", "arguments": "<escaped_json_string>"}}]}."#))
         }
-        let outcome = evaluate(detected)
+        return checkingArguments(evaluate(detected))
+    }
+
+    /// Judge calls that are already parsed (the guided tool step, #533):
+    /// `evaluate(_:)` plus the `argumentSchemas` check of
+    /// `evaluate(output:)`.
+    public func evaluate(calls: [ParsedToolCall]) -> Outcome {
+        checkingArguments(evaluate(calls))
+    }
+
+    private func checkingArguments(_ outcome: Outcome) -> Outcome {
         guard case .toolCalls(let calls) = outcome, !argumentSchemas.isEmpty else { return outcome }
         for call in calls {
             guard let schema = argumentSchemas[call.name] else { continue }

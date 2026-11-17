@@ -71,6 +71,12 @@ package struct GuidedToolStep: Sendable {
                   let schema = Self.jsonObject(schemaText) else {
                 throw Unavailable(reason: "the parameters of tool '\(tool.name)' are not a JSON Schema object")
             }
+            // Arguments behind a root $ref or union have no slot the step
+            // could fill; treating the tool as parameterless would send {}.
+            if schema["properties"] == nil,
+               ["$ref", "anyOf", "oneOf", "allOf"].contains(where: { schema[$0] != nil }) {
+                throw Unavailable(reason: "the parameters of tool '\(tool.name)' are a root $ref or union")
+            }
             lenient[tool.name] = schemaText
             if let properties = schema["properties"] as? [String: Any], !properties.isEmpty {
                 argumentSlots[tool.name] = schema
@@ -79,9 +85,10 @@ package struct GuidedToolStep: Sendable {
 
         let names = offered.map(\.name)
         var answer = "answer"
-        for candidate in ["answer", "reply_to_user", "respond_to_user"] where !names.contains(candidate) {
-            answer = candidate
-            break
+        var suffix = 1
+        while names.contains(answer) {
+            suffix += 1
+            answer = "answer_\(suffix)"
         }
         let allowsAnswer: Bool
         if case .auto = mode { allowsAnswer = true } else { allowsAnswer = false }
@@ -160,16 +167,19 @@ package struct GuidedToolStep: Sendable {
     // MARK: - Lenient schemas
 
     /// Keywords apfel's guided generation rejects (docs/openai-api-
-    /// compatibility.md, "Rejected"). A tool schema is a description for
-    /// the model, not a response_format contract, so these are dropped from
-    /// the copy the step is generated under instead of failing the request;
-    /// the returned arguments are still checked against the original schema
-    /// (ToolPolicy.evaluate(output:)).
+    /// compatibility.md, "Rejected") that only narrow a value. A tool schema
+    /// is a description for the model, not a response_format contract, so
+    /// these are dropped from the copy the step is generated under instead
+    /// of failing the request; the returned arguments are still checked
+    /// against the original schema (ToolPolicy.evaluate(calls:)). Map
+    /// schemas (schema-valued `additionalProperties`, `patternProperties`)
+    /// stay: guided generation cannot write their entries, so such a tool
+    /// fails conversion and the request uses the free-text format.
     private static let droppedKeywords: Set<String> = [
         "multipleOf", "minLength", "maxLength", "pattern",
         "contentEncoding", "contentMediaType", "contentSchema",
         "uniqueItems", "contains", "minContains", "maxContains", "prefixItems", "additionalItems",
-        "minProperties", "maxProperties", "patternProperties", "propertyNames",
+        "minProperties", "maxProperties", "propertyNames",
         "dependentRequired", "dependentSchemas", "dependencies",
     ]
 
@@ -185,7 +195,7 @@ package struct GuidedToolStep: Sendable {
         for (key, value) in node {
             if droppedKeywords.contains(key) { continue }
             switch key {
-            case "additionalProperties", "unevaluatedProperties", "unevaluatedItems":
+            case "unevaluatedProperties", "unevaluatedItems":
                 if value is Bool { out[key] = value }
             case "enum":
                 if let values = value as? [Any], values.allSatisfy({ $0 is String }) { out[key] = value }

@@ -24,10 +24,13 @@ enum GuidedToolOutcome: Sendable {
     case answer(usage: TokenUsage)
 }
 
-/// A model error during the guided step, with the step's counted input.
+/// A model error during the guided step: the failed round's counted input
+/// and the usage of any round that completed before it, so a refusal is
+/// reported with honest token counts.
 struct GuidedToolStepFailure: Error {
     let underlying: any Error
     let promptTokens: Int
+    let completedUsage: TokenUsage?
 }
 
 /// Generate the guided step for one request and resolve it to a call or an
@@ -54,6 +57,14 @@ func runGuidedToolStep(
     let retryMax = options.retryEnabled ? options.retryCount : 0
     let prompt = makeUserPrompt(text: finalPrompt, pieces: pieces)
     let renderer = StructuredJSONRenderer(schemaJSON: step.schemaJSON, name: "tool_step")
+    // macOS 26 counts what the runtime sees: the built entries plus the final
+    // prompt carrying the step schema as its response format (#485).
+    @Sendable func stepInputTokens() async -> Int {
+        let finalEntry = hasImagePiece(pieces)
+            ? makePromptEntry(pieces: pieces, options: options, responseSchema: stepSchema)
+            : makePromptEntry(finalPrompt, options: options, responseSchema: stepSchema)
+        return await TokenCounter.shared.countInput(entries: entries + [finalEntry])
+    }
 
     let first: (json: String, usage: TokenUsage?)
     do {
@@ -64,19 +75,15 @@ func runGuidedToolStep(
     } catch {
         // A refusal (or any failure) is reported with the step's real input
         // size, so the client's usage stays honest.
-        let inputEntries = sessionInputEntries(
-            builtEntries: entries, finalPrompt: finalPrompt, options: options, finalPieces: pieces)
         throw GuidedToolStepFailure(
-            underlying: error, promptTokens: await TokenCounter.shared.countInput(entries: inputEntries))
+            underlying: error, promptTokens: await stepInputTokens(), completedUsage: nil)
     }
     var usage: TokenUsage
     if let reported = first.usage {
         usage = reported
     } else {
-        let inputEntries = sessionInputEntries(
-            builtEntries: entries, finalPrompt: finalPrompt, options: options, finalPieces: pieces)
         usage = TokenUsage(
-            promptTokens: await TokenCounter.shared.countInput(entries: inputEntries),
+            promptTokens: await stepInputTokens(),
             completionTokens: await TokenCounter.shared.count(first.json))
     }
     events.append("guided tool step: \(first.json.prefix(300))")
@@ -98,17 +105,25 @@ func runGuidedToolStep(
         // write them under the tool's own schema in the same session.
         let argumentSchema = try SchemaConverter.generationSchema(fromJSON: request.schemaJSON, name: name)
         let argumentRenderer = StructuredJSONRenderer(schemaJSON: request.schemaJSON, name: name)
-        let second = try await withModelRetry(maxRetries: retryMax) { () -> (json: String, usage: TokenUsage?) in
-            let result = try await session.respond(to: request.prompt, schema: argumentSchema, options: genOpts)
-            return (argumentRenderer.finalJSON(result.content), reportedUsage(of: result))
+        // Same convention as the repair round: the step's output and the
+        // follow-up prompt (with its schema) are the second round's added input.
+        let followUpInput = await TokenCounter.shared.count(first.json)
+            + TokenCounter.shared.countInput(entries: [
+                makePromptEntry(request.prompt, options: options, responseSchema: argumentSchema)])
+        let second: (json: String, usage: TokenUsage?)
+        do {
+            second = try await withModelRetry(maxRetries: retryMax) { () -> (json: String, usage: TokenUsage?) in
+                let result = try await session.respond(to: request.prompt, schema: argumentSchema, options: genOpts)
+                return (argumentRenderer.finalJSON(result.content), reportedUsage(of: result))
+            }
+        } catch {
+            throw GuidedToolStepFailure(underlying: error, promptTokens: followUpInput, completedUsage: usage)
         }
         if let reported = second.usage {
             usage = usage.adding(reported)
         } else {
-            // Same convention as the repair round: the discarded step and the
-            // follow-up prompt are input to the second round.
             usage = usage.adding(TokenUsage(
-                promptTokens: await TokenCounter.shared.count(first.json) + TokenCounter.shared.count(request.prompt),
+                promptTokens: followUpInput,
                 completionTokens: await TokenCounter.shared.count(second.json)))
         }
         events.append("guided arguments request: \(name)")
