@@ -269,8 +269,13 @@ public struct ToolPolicy: Sendable, Equatable {
     /// - a call whose arguments break its tool's schema in
     ///   `argumentSchemas` is not delivered with `{}`, a wrapped
     ///   `{"value": ...}` or undeclared keys.
-    public func evaluate(output: String) -> Outcome {
+    ///
+    /// Pass `complete: false` when generation stopped at the token cap: a
+    /// cut-off reply is an incomplete answer, not a malformed call, so only
+    /// `evaluate(_:)` applies (the verdict before #580).
+    public func evaluate(output: String, complete: Bool = true) -> Outcome {
         let detected = ToolCallHandler.detectToolCall(in: output)
+        guard complete else { return evaluate(detected) }
         if mode != .disabled, detected?.isEmpty ?? true, Self.opensToolCallEnvelope(output) {
             return .violation(Violation(
                 code: Violation.invalidCallCode,

@@ -267,6 +267,18 @@ func runToolPolicyTests() {
         try assertEqual(try violationCode(try checked().evaluate(output: output)), ToolPolicy.Violation.invalidCallCode)
     }
 
+    test("evaluate(output:complete: false) keeps an envelope cut off by the token cap as content") {
+        let cut = #"{"tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "conv"#
+        try assertEqual(try checked().evaluate(output: cut, complete: false), .content)
+        try assertEqual(try violationCode(try checked().evaluate(output: cut)), ToolPolicy.Violation.invalidCallCode)
+    }
+
+    test("evaluate(output:complete: false) does not judge the arguments of a cut-off reply") {
+        guard case .toolCalls = try checked().evaluate(output: envelope("convert_time", "{}"), complete: false) else {
+            throw TestFailure("a cut-off reply keeps the pre-#580 verdict")
+        }
+    }
+
     test("evaluate(output:) keeps plain text as content under auto") {
         try assertEqual(try checked().evaluate(output: "It is 14:30 in Tokyo."), .content)
     }

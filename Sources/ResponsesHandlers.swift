@@ -265,13 +265,13 @@ private func responsesNonStreamingResponse(
             if let roundUsage = outcome.usage { usageRounds.append(roundUsage) }
             // Hold detected calls to the request's tool contract (#480), with
             // one bounded repair round before a violation becomes an error.
-            var verdict = policy.evaluate(output: outcome.content)
+            var verdict = policy.evaluate(output: outcome.content, complete: outcome.finishReason != .length)
             if case .violation(let violation) = verdict {
                 outcome = try await withModelRetry(maxRetries: retryMax) {
                     try await collectStream(session, prompt: policy.repairPrompt(for: violation), options: genOpts)
                 }
                 if let roundUsage = outcome.usage { usageRounds.append(roundUsage) }
-                verdict = policy.evaluate(output: outcome.content)
+                verdict = policy.evaluate(output: outcome.content, complete: outcome.finishReason != .length)
             }
             let judged: [ParsedToolCall]?
             switch verdict {
