@@ -31,11 +31,12 @@ package enum ContextManager {
         options: SessionOptions,
         jsonMode: Bool = false,
         toolChoice: ToolChoice? = nil,
-        responseSchema: GenerationSchema? = nil
+        responseSchema: GenerationSchema? = nil,
+        toolInstructions: String? = nil
     ) async throws -> (session: LanguageModelSession, finalPrompt: String, inputEntries: [Transcript.Entry], finalPieces: [PromptPiece]) {
         let prepared = try await prepareEntries(
             messages: messages, tools: tools, options: options, jsonMode: jsonMode,
-            toolChoice: toolChoice, responseSchema: responseSchema)
+            toolChoice: toolChoice, responseSchema: responseSchema, toolInstructions: toolInstructions)
         let budget = await TokenCounter.shared.inputBudget(reservedForOutput: options.contextConfig.outputReserve)
         guard let entries = await trimHistoryEntriesToBudget(
             baseEntries: prepared.base,
@@ -84,13 +85,18 @@ package enum ContextManager {
     /// respond(schema:). The runtime prices it as part of the prompt, so the
     /// final entry carries it as its response format and every budget check
     /// and token preflight sees that overhead (#485).
+    ///
+    /// `toolInstructions`, when set, replaces the tool list and the
+    /// free-text call format in the instructions: the guided tool step
+    /// (#533) brings its own list and decision text.
     public static func prepareEntries(
         messages: [OpenAIMessage],
         tools: [OpenAITool]?,
         options: SessionOptions,
         jsonMode: Bool = false,
         toolChoice: ToolChoice? = nil,
-        responseSchema: GenerationSchema? = nil
+        responseSchema: GenerationSchema? = nil,
+        toolInstructions: String? = nil
     ) async throws -> PreparedEntries {
         // Instruction roles never take a conversation turn -- they are folded
         // into the instructions block below. `developer` used to survive this
@@ -155,7 +161,8 @@ package enum ContextManager {
             tools: effectiveTools,
             textToolDefs: textToolDefs,
             jsonMode: jsonMode,
-            toolChoice: toolChoice
+            toolChoice: toolChoice,
+            toolInstructions: toolInstructions
         )
 
         // Build transcript entries
@@ -196,7 +203,8 @@ package enum ContextManager {
         tools: [OpenAITool]?,
         textToolDefs: [ToolDef],
         jsonMode: Bool,
-        toolChoice: ToolChoice?
+        toolChoice: ToolChoice?,
+        toolInstructions: String? = nil
     ) -> String {
         var parts: [String] = []
 
@@ -218,6 +226,10 @@ package enum ContextManager {
         // and arguments (#555): the runtime ignores transcript-only
         // ToolDefinitions. The list goes before the call format; measured on
         // macOS 26.1, schema text after it tripped the guardrail.
+        if let toolInstructions {
+            parts.append(toolInstructions)
+            return parts.joined(separator: "\n\n")
+        }
         if !textToolDefs.isEmpty {
             parts.append(ToolCallHandler.buildToolSchemaPrompt(tools: textToolDefs))
         }

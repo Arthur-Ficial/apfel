@@ -25,6 +25,8 @@ struct ServerConfig: Sendable {
     let retryEnabled: Bool
     let retryCount: Int
     let permissive: Bool
+    /// How client tool calls are generated (#533): guided step or free text.
+    let toolCalling: ToolCallingFormat
 
     var healthRequiresAuthentication: Bool {
         token != nil && !publicHealth && !isLoopbackHost(host)

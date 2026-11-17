@@ -275,13 +275,30 @@ public struct ToolPolicy: Sendable, Equatable {
     /// `evaluate(_:)` applies (the verdict before #580).
     public func evaluate(output: String, complete: Bool = true) -> Outcome {
         let detected = ToolCallHandler.detectToolCall(in: output)
-        guard complete else { return evaluate(detected) }
+        guard complete else {
+            // A call cut off mid-arguments is not a call: deliver the text
+            // with its length finish rather than arguments that do not parse.
+            let cutOff = (detected ?? []).contains { call in
+                (try? JSONSerialization.jsonObject(with: Data(call.argumentsString.utf8))) == nil
+            }
+            return cutOff ? .content : evaluate(detected)
+        }
         if mode != .disabled, detected?.isEmpty ?? true, Self.opensToolCallEnvelope(output) {
             return .violation(Violation(
                 code: Violation.invalidCallCode,
                 message: #"the reply started a tool call that could not be read; write it as {"tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "<name>", "arguments": "<escaped_json_string>"}}]}."#))
         }
-        let outcome = evaluate(detected)
+        return checkingArguments(evaluate(detected))
+    }
+
+    /// Judge calls that are already parsed (the guided tool step, #533):
+    /// `evaluate(_:)` plus the `argumentSchemas` check of
+    /// `evaluate(output:)`.
+    public func evaluate(calls: [ParsedToolCall]) -> Outcome {
+        checkingArguments(evaluate(calls))
+    }
+
+    private func checkingArguments(_ outcome: Outcome) -> Outcome {
         guard case .toolCalls(let calls) = outcome, !argumentSchemas.isEmpty else { return outcome }
         for call in calls {
             guard let schema = argumentSchemas[call.name] else { continue }

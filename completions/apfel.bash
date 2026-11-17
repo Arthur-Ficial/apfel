@@ -12,6 +12,8 @@ _apfel() {
     case "$prev" in
         -o|--output)
             COMPREPLY=( $(compgen -W "plain json" -- "$cur") ); return 0 ;;
+        --tool-calling)
+            COMPREPLY=( $(compgen -W "guided text" -- "$cur") ); return 0 ;;
         --context-strategy)
             COMPREPLY=( $(compgen -W "newest-first oldest-first sliding-window summarize strict" -- "$cur") ); return 0 ;;
         --system-file|--mcp|-f|--file|--schema|--messages)
@@ -23,7 +25,7 @@ _apfel() {
     esac
 
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=( $(compgen -W "--allowed-origins --batch --benchmark --chat --code --context-max-turns --context-output-reserve --context-status --context-strategy --cors --count-tokens --debug --demos --file --footgun --help --host --max-concurrent --max-tokens --mcp --mcp-timeout --mcp-token --messages --model-info --no-color --no-origin-check --output --permissive --port --public-health --quiet --release --require-complete --retry --schema --seed --serve --stop --stream --strict --system --system-file --temperature --token --token-auto --top-p --update --version -f -h -o -q -s -v completions" -- "$cur") ); return 0
+        COMPREPLY=( $(compgen -W "--allowed-origins --batch --benchmark --chat --code --context-max-turns --context-output-reserve --context-status --context-strategy --cors --count-tokens --debug --demos --file --footgun --help --host --max-concurrent --max-tokens --mcp --mcp-timeout --mcp-token --messages --model-info --no-color --no-origin-check --output --permissive --port --public-health --quiet --release --require-complete --retry --schema --seed --serve --stop --stream --strict --system --system-file --temperature --token --token-auto --tool-calling --top-p --update --version -f -h -o -q -s -v completions" -- "$cur") ); return 0
     fi
     COMPREPLY=( $(compgen -f -- "$cur") ); return 0
 }

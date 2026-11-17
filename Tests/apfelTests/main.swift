@@ -124,6 +124,7 @@ suite("ApfelErrorMessageTests") { runApfelErrorMessageTests() }
 suite("TypedErrorMappingTests") { runTypedErrorMappingTests() }
 suite("ToolCallingDirectiveTests") { runToolCallingDirectiveTests() }
 suite("ToolCallingSupportTests") { runToolCallingSupportTests() }
+suite("GuidedToolStepTests") { runGuidedToolStepTests() }
 suite("OpenAIWireFormatTests") { runOpenAIWireFormatTests() }
 suite("SSEResponseHeadersTests") { runSSEResponseHeadersTests() }
 suite("ApfelCorePublicAPIUsageTests") { runApfelCorePublicAPIUsageTests() }
