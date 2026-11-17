@@ -1,0 +1,191 @@
+// ============================================================================
+// GuidedToolCalling.swift - runs the guided tool step (#533) for
+// /v1/chat/completions requests with client tools.
+//
+// The decision is generated under a JSON schema (GuidedToolStep in
+// ApfelCore): {"action": <tool name or "answer">, "arguments": {<tool>: {...}}}.
+// A tool call goes back to the client as an ordinary OpenAI `tool_calls`
+// response; when the step left the chosen tool's arguments out or they break
+// its schema, one more guided request in the same session writes them under
+// the tool's own schema. An "answer" is written by the normal text path in a
+// fresh session without tool instructions, so the reply streams as usual.
+// Out-of-band execution is unchanged (#119): apfel never runs client tools.
+// ============================================================================
+
+import Foundation
+import FoundationModels
+import Hummingbird
+import ApfelCore
+import ApfelEngine
+
+/// What the guided step decided, with the tokens it used.
+enum GuidedToolOutcome: Sendable {
+    case call(ParsedToolCall, usage: TokenUsage)
+    case answer(usage: TokenUsage)
+}
+
+/// A model error during the guided step, with the step's counted input.
+struct GuidedToolStepFailure: Error {
+    let underlying: any Error
+    let promptTokens: Int
+}
+
+/// Generate the guided step for one request and resolve it to a call or an
+/// answer. Model errors propagate to the caller unchanged.
+func runGuidedToolStep(
+    _ step: GuidedToolStep,
+    stepSchema: GenerationSchema,
+    messages: [OpenAIMessage],
+    tools: [OpenAITool],
+    toolChoice: ToolChoice?,
+    options: SessionOptions,
+    events: inout [String]
+) async throws -> GuidedToolOutcome {
+    let (session, finalPrompt, entries, pieces) = try await ContextManager.makeSession(
+        messages: messages, tools: tools, options: options, jsonMode: false,
+        toolChoice: toolChoice, responseSchema: stepSchema, toolInstructions: step.instructions)
+    // The step is an internal decision of a few tokens plus the arguments:
+    // the client's max_tokens caps the visible answer, not the step.
+    let stepOptions = SessionOptions(
+        temperature: options.temperature, topP: options.topP, maxTokens: nil, seed: options.seed,
+        permissive: options.permissive, contextConfig: options.contextConfig,
+        retryEnabled: options.retryEnabled, retryCount: options.retryCount)
+    let genOpts = makeGenerationOptions(stepOptions)
+    let retryMax = options.retryEnabled ? options.retryCount : 0
+    let prompt = makeUserPrompt(text: finalPrompt, pieces: pieces)
+    let renderer = StructuredJSONRenderer(schemaJSON: step.schemaJSON, name: "tool_step")
+
+    let first: (json: String, usage: TokenUsage?)
+    do {
+        first = try await withModelRetry(maxRetries: retryMax) { () -> (json: String, usage: TokenUsage?) in
+            let result = try await session.respond(to: prompt, schema: stepSchema, options: genOpts)
+            return (renderer.finalJSON(result.content), reportedUsage(of: result))
+        }
+    } catch {
+        // A refusal (or any failure) is reported with the step's real input
+        // size, so the client's usage stays honest.
+        let inputEntries = sessionInputEntries(
+            builtEntries: entries, finalPrompt: finalPrompt, options: options, finalPieces: pieces)
+        throw GuidedToolStepFailure(
+            underlying: error, promptTokens: await TokenCounter.shared.countInput(entries: inputEntries))
+    }
+    var usage: TokenUsage
+    if let reported = first.usage {
+        usage = reported
+    } else {
+        let inputEntries = sessionInputEntries(
+            builtEntries: entries, finalPrompt: finalPrompt, options: options, finalPieces: pieces)
+        usage = TokenUsage(
+            promptTokens: await TokenCounter.shared.countInput(entries: inputEntries),
+            completionTokens: await TokenCounter.shared.count(first.json))
+    }
+    events.append("guided tool step: \(first.json.prefix(300))")
+
+    guard let decision = step.parse(first.json) else {
+        throw ApfelError.unknown("The guided tool step returned an unreadable decision: \(first.json.prefix(200))")
+    }
+    guard case .call(let name, let stepArguments) = decision else {
+        return .answer(usage: usage)
+    }
+
+    let schema = tools.first { $0.function.name == name }?.function.parameters?.value
+    var arguments = stepArguments
+    if let current = arguments, !argumentsMatch(name: name, arguments: current, schema: schema) {
+        arguments = nil
+    }
+    if arguments == nil, let request = step.argumentsRequest(for: name) {
+        // The step chose the tool but left its arguments out or broke them:
+        // write them under the tool's own schema in the same session.
+        let argumentSchema = try SchemaConverter.generationSchema(fromJSON: request.schemaJSON, name: name)
+        let argumentRenderer = StructuredJSONRenderer(schemaJSON: request.schemaJSON, name: name)
+        let second = try await withModelRetry(maxRetries: retryMax) { () -> (json: String, usage: TokenUsage?) in
+            let result = try await session.respond(to: request.prompt, schema: argumentSchema, options: genOpts)
+            return (argumentRenderer.finalJSON(result.content), reportedUsage(of: result))
+        }
+        if let reported = second.usage {
+            usage = usage.adding(reported)
+        } else {
+            // Same convention as the repair round: the discarded step and the
+            // follow-up prompt are input to the second round.
+            usage = usage.adding(TokenUsage(
+                promptTokens: await TokenCounter.shared.count(first.json) + TokenCounter.shared.count(request.prompt),
+                completionTokens: await TokenCounter.shared.count(second.json)))
+        }
+        events.append("guided arguments request: \(name)")
+        arguments = second.json
+    }
+    let call = ParsedToolCall(
+        id: "call_\(UUID().uuidString.prefix(8).lowercased())", name: name,
+        argumentsString: arguments ?? "{}")
+    return .call(call, usage: usage)
+}
+
+/// True when `arguments` satisfy the tool's declared schema (required keys
+/// present, no undeclared keys under `additionalProperties: false`).
+private func argumentsMatch(name: String, arguments: String, schema: String?) -> Bool {
+    do {
+        try MCPProtocol.validateToolArguments(name: name, arguments: arguments, inputSchemaJSON: schema)
+        return true
+    } catch {
+        return false
+    }
+}
+
+/// The OpenAI response for a call made by the guided step: the same wire
+/// shape as a detected free-text call (non-streaming message, or role chunk,
+/// tool_calls chunk, separate finish chunk, optional usage chunk, [DONE]).
+func guidedToolCallResponse(
+    _ call: ParsedToolCall,
+    usage: TokenUsage,
+    stream: Bool,
+    includeUsage: Bool,
+    id: String,
+    created: Int,
+    requestBody: String?,
+    events: [String]
+) -> (response: Response, trace: ChatRequestTrace) {
+    let finishReason = FinishReason.toolCalls.openAIValue
+    let toolCall = ToolCall(id: call.id, type: "function",
+                            function: ToolCallFunction(name: call.name, arguments: call.argumentsString))
+    let traceEvents = events + ["tool_calls: \(call.name)", "finish_reason=\(finishReason)"]
+    if stream {
+        var chunks: [String] = [
+            sseDataLine(sseRoleChunk(id: id, created: created, includeUsage: includeUsage)),
+            sseDataLine(ChatCompletionChunk(
+                id: id, object: "chat.completion.chunk", created: created, model: modelName,
+                choices: [.init(
+                    index: 0,
+                    delta: .init(role: nil, content: nil, tool_calls: [
+                        ChatCompletionChunk.ToolCallDelta(index: 0, id: toolCall.id, type: toolCall.type, function: toolCall.function),
+                    ]),
+                    finish_reason: nil, logprobs: nil)],
+                usage: nil, includeUsageNull: includeUsage)),
+            sseDataLine(ChatCompletionChunk(
+                id: id, object: "chat.completion.chunk", created: created, model: modelName,
+                choices: [.init(index: 0, delta: .init(role: nil, content: nil, tool_calls: nil),
+                                finish_reason: finishReason, logprobs: nil)],
+                usage: nil, includeUsageNull: includeUsage)),
+        ]
+        if includeUsage {
+            chunks.append(sseDataLine(sseUsageChunk(
+                id: id, created: created, promptTokens: usage.promptTokens, completionTokens: usage.completionTokens)))
+        }
+        chunks.append(sseDone)
+        let body = chunks.joined()
+        let response = Response(status: .ok, headers: eventStreamHeaders(),
+                                body: .init(byteBuffer: ByteBuffer(string: body)))
+        return (response, ChatRequestTrace(
+            stream: true, estimatedTokens: usage.totalTokens, error: nil, requestBody: requestBody,
+            responseBody: captureTruncatedLogBody(body, enabled: serverState.config.debug), events: traceEvents))
+    }
+    let payload = ChatCompletionResponse(
+        id: id, object: "chat.completion", created: created, model: modelName,
+        choices: [.init(index: 0, message: OpenAIMessage(role: "assistant", content: nil, tool_calls: [toolCall]),
+                        finish_reason: finishReason, logprobs: nil)],
+        usage: .init(prompt_tokens: usage.promptTokens, completion_tokens: usage.completionTokens,
+                     total_tokens: usage.totalTokens))
+    let body = jsonString(payload)
+    return (jsonResponse(body), ChatRequestTrace(
+        stream: false, estimatedTokens: usage.totalTokens, error: nil, requestBody: requestBody,
+        responseBody: captureTruncatedLogBody(body, enabled: serverState.config.debug), events: traceEvents))
+}

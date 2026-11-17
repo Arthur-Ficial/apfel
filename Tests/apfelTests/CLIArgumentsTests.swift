@@ -456,6 +456,41 @@ func runCLIArgumentsTests() {
         }
     }
 
+    test("--tool-calling defaults to guided (#533)") {
+        let args = try CLIArguments.parse(["--serve"])
+        try assertEqual(args.serverToolCalling, .guided)
+    }
+
+    test("--tool-calling text selects the free-text format (#533)") {
+        let args = try CLIArguments.parse(["--serve", "--tool-calling", "text"])
+        try assertEqual(args.serverToolCalling, .text)
+    }
+
+    test("--tool-calling guided selects the guided step (#533)") {
+        let args = try CLIArguments.parse(["--serve", "--tool-calling", "guided"])
+        try assertEqual(args.serverToolCalling, .guided)
+    }
+
+    test("--tool-calling with an unknown value throws naming the choices") {
+        do {
+            _ = try CLIArguments.parse(["--serve", "--tool-calling", "native"])
+            try assertTrue(false, "should have thrown")
+        } catch let e as CLIParseError {
+            try assertTrue(e.message.contains("--tool-calling"))
+            try assertTrue(e.message.contains("guided"))
+            try assertTrue(e.message.contains("text"))
+        }
+    }
+
+    test("--tool-calling without a value throws") {
+        do {
+            _ = try CLIArguments.parse(["--serve", "--tool-calling"])
+            try assertTrue(false, "should have thrown")
+        } catch let e as CLIParseError {
+            try assertTrue(e.message.contains("--tool-calling"))
+        }
+    }
+
     test("--debug sets debug") {
         let args = try CLIArguments.parse(["--debug", "hi"])
         try assertTrue(args.debug)

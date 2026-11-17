@@ -104,6 +104,7 @@ public enum UsageText {
               --public-health        Keep /health unauthenticated on non-loopback binds
               --footgun              Disable all protections (--no-origin-check + --cors)
               --max-concurrent <n>   Max concurrent model requests [default: 5]
+              --tool-calling <f>     How the model writes client tool calls: guided|text [default: guided]
 
 
         \(style("ENVIRONMENT:"))

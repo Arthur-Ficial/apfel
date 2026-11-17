@@ -217,6 +217,93 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
         toolChoice: chatRequest.tool_choice, toolsInScope: toolPolicy.toolsInScope)
     events.append("tool policy mode=\(toolPolicy.mode) in_scope=\(toolPolicy.allowedNames.count) max_calls=\(toolPolicy.maxCalls.map(String.init) ?? "unlimited") runtime_mode=\(toolDirective?.rawValue ?? "default")")
 
+    let requestId = "chatcmpl-\(UUID().uuidString.prefix(12).lowercased())"
+    let created = Int(Date().timeIntervalSince1970)
+
+    // Guided tool step (#533): with client tools in scope, the model's
+    // decision (a tool and its arguments, or "answer") is generated under a
+    // JSON schema instead of as free-text JSON. A call is returned here; an
+    // answer continues below as a plain text request without tools, so the
+    // reply streams as usual. MCP tools (auto-executed) and json_schema
+    // requests keep their existing paths.
+    var generationTools = effectiveTools
+    var generationPolicy = toolPolicy
+    var generationDirective = toolDirective
+    var generationToolChoice = chatRequest.tool_choice
+    var guidedStepUsage: TokenUsage?
+    if serverState.config.toolCalling == .guided, toolPolicy.toolsInScope, !resolvedTools.injected,
+       structuredSchema == nil, let tools = effectiveTools, !tools.isEmpty {
+        let prepared: (step: GuidedToolStep, schema: GenerationSchema)?
+        do {
+            let step = try GuidedToolStep(
+                tools: tools.map {
+                    ToolDef(name: $0.function.name, description: $0.function.description,
+                            parametersJSON: $0.function.parameters?.value)
+                },
+                mode: toolPolicy.mode)
+            prepared = (step, try SchemaConverter.generationSchema(fromJSON: step.schemaJSON, name: "tool_step"))
+        } catch {
+            // A tool schema guided generation cannot express: free text.
+            prepared = nil
+            events.append("guided tool step unavailable, free-text format: \(error)")
+        }
+        if let prepared {
+            let outcome: GuidedToolOutcome
+            do {
+                outcome = try await runGuidedToolStep(
+                    prepared.step, stepSchema: prepared.schema, messages: chatRequest.messages,
+                    tools: tools, toolChoice: chatRequest.tool_choice, options: sessionOpts, events: &events)
+            } catch {
+                let failure = error as? GuidedToolStepFailure
+                let classified = classifyModelError(failure?.underlying ?? error)
+                if case .refusal(let explanation) = classified {
+                    let refusalEvents = events + ["refusal: \(classified.cliLabel)"]
+                    let stepPromptTokens = failure?.promptTokens ?? 0
+                    if isStreaming {
+                        return await refusalStreamingResponse(
+                            id: requestId, created: created, promptTokens: stepPromptTokens,
+                            refusal: explanation, includeUsage: includeUsage,
+                            requestBody: requestBodyString, events: refusalEvents)
+                    }
+                    return await refusalNonStreamingResponse(
+                        id: requestId, created: created, promptTokens: stepPromptTokens,
+                        refusal: explanation, requestBody: requestBodyString, events: refusalEvents)
+                }
+                return openAIFailure(
+                    status: .init(code: classified.httpStatusCode),
+                    message: classified.openAIMessage,
+                    type: classified.openAIType,
+                    stream: isStreaming,
+                    requestBody: requestBodyString,
+                    events: events,
+                    event: "guided tool step failed: \(classified.cliLabel)",
+                    retryAfterSeconds: classified.retryAfterSeconds
+                )
+            }
+            switch outcome {
+            case .call(let call, let usage):
+                switch toolPolicy.evaluate([call]) {
+                case .violation(let violation):
+                    return toolPolicyFailure(violation, stream: isStreaming, requestBody: requestBodyString, events: events)
+                case .content, .toolCalls:
+                    return guidedToolCallResponse(
+                        call, usage: usage, stream: isStreaming, includeUsage: includeUsage,
+                        id: requestId, created: created, requestBody: requestBodyString, events: events)
+                }
+            case .answer(let usage):
+                // The step chose to answer: write the reply without tool
+                // instructions, so they cannot bend it (#533).
+                generationTools = nil
+                generationToolChoice = nil
+                generationDirective = nil
+                if case .success(let disabled) = ToolPolicy.resolve(toolChoice: ToolChoice.none, toolNames: [], parallelToolCalls: nil) {
+                    generationPolicy = disabled
+                }
+                guidedStepUsage = usage
+            }
+        }
+    }
+
     // Build session + extract final prompt via ContextManager (Transcript API)
     let session: LanguageModelSession
     let finalPrompt: String
@@ -225,10 +312,10 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
     do {
         (session, finalPrompt, inputEntries, finalPieces) = try await ContextManager.makeSession(
             messages: chatRequest.messages,
-            tools: effectiveTools,
+            tools: generationTools,
             options: sessionOpts,
             jsonMode: jsonMode,
-            toolChoice: chatRequest.tool_choice,
+            toolChoice: generationToolChoice,
             // The schema's prompt overhead is part of the budget (#485).
             responseSchema: structuredSchema
         )
@@ -247,7 +334,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
     }
     events.append("context built history=\(max(0, chatRequest.messages.count - 1)) final_prompt_chars=\(finalPrompt.count)")
 
-    let genOpts = makeGenerationOptions(sessionOpts, toolCalling: toolDirective)
+    let genOpts = makeGenerationOptions(sessionOpts, toolCalling: generationDirective)
     // Prompt tokens: counted up front on macOS 26; deferred on macOS 27, where
     // the response itself reports input tokens (#510, #504). Tool schemas live
     // in instruction text (#555), so the entries price what the runtime sees.
@@ -257,8 +344,6 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
     // The respond() prompt: plain text, plus native image attachments when
     // the final turn carries images (macOS 27, #510).
     let finalUserPrompt = makeUserPrompt(text: finalPrompt, pieces: finalPieces)
-    let requestId = "chatcmpl-\(UUID().uuidString.prefix(12).lowercased())"
-    let created = Int(Date().timeIntervalSince1970)
 
     // MCP auto-execute: when tools were server-injected, run model, execute tool calls,
     // re-prompt for final answer, then deliver as JSON or SSE.
@@ -311,15 +396,17 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
                                        id: requestId, created: created,
                                        genOpts: genOpts, promptTokens: promptTokens,
                                        includeUsage: includeUsage, jsonMode: jsonMode,
-                                       policy: toolPolicy, stopSequences: stopSequences,
+                                       policy: generationPolicy, stopSequences: stopSequences,
+                                       priorUsage: guidedStepUsage,
                                        requestBody: requestBodyString, events: events)
         return (result.response, result.trace)
     } else {
         let result = try await nonStreamingResponse(session: session, prompt: finalUserPrompt,
                                                      id: requestId, created: created,
                                                      genOpts: genOpts, promptTokens: promptTokens,
-                                                     jsonMode: jsonMode, policy: toolPolicy,
+                                                     jsonMode: jsonMode, policy: generationPolicy,
                                                      stopSequences: stopSequences,
+                                                     priorUsage: guidedStepUsage,
                                                      requestBody: requestBodyString, events: events)
         return (result.response, result.trace)
     }
@@ -552,6 +639,7 @@ private func nonStreamingResponse(
     jsonMode: Bool,
     policy: ToolPolicy,
     stopSequences: [String] = [],
+    priorUsage: TokenUsage? = nil,
     requestBody: String?,
     events: [String]
 ) async throws -> (response: Response, trace: ChatRequestTrace) {
@@ -601,7 +689,7 @@ private func nonStreamingResponse(
         if case .refusal(let explanation) = classified {
             return await refusalNonStreamingResponse(
                 id: id, created: created, promptTokens: await promptTokens.resolve() + promptAdjustment,
-                completedRounds: usageRounds,
+                completedRounds: usageRounds + (priorUsage.map { [$0] } ?? []),
                 refusal: explanation, requestBody: requestBody,
                 events: events + ["refusal: \(classified.cliLabel)"]
             )
@@ -647,7 +735,7 @@ private func nonStreamingResponse(
 
     // Usage: the summed runtime-reported rounds (macOS 27+), else the counted
     // numbers (macOS 26 - unchanged on the wire).
-    let usage: TokenUsage
+    var usage: TokenUsage
     if let reported = TokenUsage.sum(usageRounds) {
         usage = reported
     } else {
@@ -655,6 +743,8 @@ private func nonStreamingResponse(
             promptTokens: await promptTokens.resolve() + promptAdjustment,
             completionTokens: await TokenCounter.shared.count(deliveredContent))
     }
+    // The guided tool step that chose to answer is part of this request (#533).
+    if let priorUsage { usage = usage.adding(priorUsage) }
     // collectStream already resolved .stop vs .length (cap-hit and output-side
     // overflow); only override here when tool calls are detected.
     let finishReason = (toolCalls != nil ? FinishReason.toolCalls : outcome.finishReason).openAIValue
@@ -697,6 +787,7 @@ private func streamingResponse(
     jsonMode: Bool,
     policy: ToolPolicy,
     stopSequences: [String] = [],
+    priorUsage: TokenUsage? = nil,
     requestBody: String?,
     events: [String]
 ) -> (response: Response, trace: ChatRequestTrace) {
@@ -893,7 +984,7 @@ private func streamingResponse(
                 }
                 // Usage: the summed runtime-reported rounds (macOS 27+), else
                 // the counted numbers (macOS 26 - unchanged on the wire).
-                let finalUsage: TokenUsage
+                var finalUsage: TokenUsage
                 // finish_reason is about the answer the client receives: the
                 // final round's tokens against max_tokens, not the sum that
                 // includes a discarded repair round (Fable review F8).
@@ -908,6 +999,8 @@ private func streamingResponse(
                         promptTokens: await promptTokens.resolve() + promptAdjustment,
                         completionTokens: completionTokens)
                 }
+                // The guided tool step that chose to answer (#533).
+                if let priorUsage { finalUsage = finalUsage.adding(priorUsage) }
                 // A matched stop sequence is a natural stop, whatever the
                 // token count of the consumed snapshots says (#483).
                 let resolved = stopMatcher?.isMatched == true ? FinishReason.stop : FinishReasonResolver.resolve(
@@ -1027,7 +1120,7 @@ private func streamingResponse(
                     }
                     // The interrupted round's last snapshot prices the content
                     // streamed before the overflow (macOS 27+), else count.
-                    let truncatedUsage: TokenUsage
+                    var truncatedUsage: TokenUsage
                     if let reported = TokenUsage.sum(usageRounds + (lastRoundUsage.map { [$0] } ?? [])) {
                         completionTokens = reported.completionTokens
                         truncatedUsage = reported
@@ -1037,6 +1130,7 @@ private func streamingResponse(
                             promptTokens: await promptTokens.resolve() + promptAdjustment,
                             completionTokens: completionTokens)
                     }
+                    if let priorUsage { truncatedUsage = truncatedUsage.adding(priorUsage) }
                     let lengthChunk = ChatCompletionChunk(
                         id: id, object: "chat.completion.chunk", created: created, model: modelName,
                         choices: [.init(
@@ -1087,7 +1181,7 @@ private func streamingResponse(
                     // and add the completed rounds' reported usage (macOS 27,
                     // a repair round before the refusal; #516).
                     let refusalUsage = TokenUsage.refusal(
-                        completedRounds: usageRounds,
+                        completedRounds: usageRounds + (priorUsage.map { [$0] } ?? []),
                         refusedRound: TokenUsage(
                             promptTokens: await promptTokens.resolve() + promptAdjustment,
                             completionTokens: await TokenCounter.shared.count(
@@ -1503,7 +1597,7 @@ func toolPolicyFailure(
 ///
 /// OpenAI wire format: `choices[0].message.refusal` populated,
 /// `choices[0].message.content: null`, `choices[0].finish_reason: "content_filter"`.
-private func refusalNonStreamingResponse(
+func refusalNonStreamingResponse(
     id: String,
     created: Int,
     promptTokens refusedPromptTokens: Int,
@@ -1553,7 +1647,7 @@ private func refusalNonStreamingResponse(
 ///
 /// SSE order: role chunk -> refusal delta -> content_filter finish chunk
 /// -> [optional usage chunk when include_usage=true] -> [DONE].
-private func refusalStreamingResponse(
+func refusalStreamingResponse(
     id: String,
     created: Int,
     promptTokens refusedPromptTokens: Int,

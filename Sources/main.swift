@@ -444,7 +444,8 @@ do {
             publicHealth: parsed.serverPublicHealth,
             retryEnabled: parsed.retryEnabled,
             retryCount: parsed.retryCount,
-            permissive: parsed.permissive
+            permissive: parsed.permissive,
+            toolCalling: parsed.serverToolCalling
         )
         try await startServer(config: config, mcpManager: mcpManager)
 

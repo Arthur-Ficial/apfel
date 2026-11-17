@@ -119,6 +119,8 @@ public struct CLIArguments: Sendable, Equatable {
     public var serverToken: String? = nil
     public var serverTokenAuto: Bool = false
     public var serverPublicHealth: Bool = false
+    /// How the server asks the model for client tool calls (#533).
+    public var serverToolCalling: ToolCallingFormat = .guided
 
     // MARK: - MCP
 
@@ -187,7 +189,7 @@ public struct CLIArguments: Sendable, Equatable {
         "--strict", "--model-info", "--update", "--demos",
         "--port", "--host", "--cors", "--max-concurrent", "--debug",
         "--allowed-origins", "--no-origin-check", "--token", "--token-auto",
-        "--public-health", "--footgun",
+        "--public-health", "--footgun", "--tool-calling",
         "--mcp", "--mcp-timeout", "--mcp-token",
         "--temperature", "--top-p", "--seed", "--max-tokens", "--permissive",
         "--stop", "--retry",
@@ -874,6 +876,13 @@ extension CLIArguments {
 
             // -- Context --
 
+            case "--tool-calling":
+                i += 1
+                guard i < args.count, let format = ToolCallingFormat(rawValue: args[i]) else {
+                    throw CLIErrors.requires("--tool-calling", "one of: guided|text")
+                }
+                result.serverToolCalling = format
+
             case "--context-strategy":
                 i += 1
                 guard i < args.count, let s = ContextStrategy(rawValue: args[i]) else {
@@ -1096,4 +1105,14 @@ extension CLIArguments {
         // server and the exit-2 message here (#479).
         error.description
     }
+}
+
+/// How `apfel --serve` asks the model for client tool calls (#533).
+public enum ToolCallingFormat: String, Sendable, Equatable, CaseIterable {
+    /// The tool decision and arguments are generated under a JSON schema
+    /// (guided generation); answers are written in a separate request.
+    case guided
+    /// The model writes the `{"tool_calls": ...}` envelope as free text,
+    /// which apfel parses (the format before 1.19.0).
+    case text
 }
