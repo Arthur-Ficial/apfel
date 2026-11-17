@@ -24,6 +24,9 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 ### Added
 
 - `apfel --serve` serves Apple's content-tagging adapter as a second model, `apple-foundationmodel-content-tagging` (`SystemLanguageModel(useCase: .contentTagging)`, macOS 26 and 27, no availability branch). Clients pick it with the `model` field of `/v1/chat/completions`, `/v1/responses` and `/v1/responses/input_tokens`; `/v1/models` lists both models; every response and stream chunk echoes the requested id. `apple-foundationmodel` stays the default and behaves as before. The adapter returns labels, not prose, and is meant for `response_format: json_schema`. It never calls a tool (probed on macOS 26.7.3), so client `tools` sent to it are a 400 and the server's `--mcp` tools are not attached to its requests; `/v1/models` advertises no tool parameters or `tool_calling` capability for it. Context-window summaries stay on the general model. An unknown model's 404 now lists every available id. ApfelCore gains `ServedModel`; `ResponsesRequestValidator.Failure` gains `toolsUnsupportedForModel` (follow-up to #170).
+### Added
+
+- `/v1/models` entries and `/health` now say which Apple Foundation Model serves requests: `"variant": {"id": "coreAdvanced3", "display_name": "AFM 3 Core Advanced"}`, and `apfel --model-info` prints a `variant:` line (#576). On macOS 27 apfel reads `SystemLanguageModel.variant` (`core3` or `coreAdvanced3`; an unknown newer variant keeps the runtime's display name as id). macOS 26 does not report a variant, so the OS version decides, following Apple's "Detecting available Apple Foundation Models": `core2_1` (AFM 2.1 Core) from 26.4, `core2` (AFM 2 Core) before. Additive: existing fields are unchanged. `ModelVariant` is new public ApfelCore API.
 
 ### Removed
 

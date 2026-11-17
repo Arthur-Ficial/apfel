@@ -73,6 +73,8 @@ func startServer(config: ServerConfig, mcpManager: MCPManager? = nil) async thro
     // so per-request reads are both safe and cheap (#192).
     let tc = TokenCounter.shared
     let cachedLangs = await tc.supportedLanguages
+    // The serving Apple Foundation Model variant (#576): fixed for the process.
+    let modelVariant = readModelVariant()
 
     // Prewarm the model so the first chat completion does not pay the
     // cold-start cost. No-op (and false) when the model is unavailable, so an
@@ -111,6 +113,7 @@ func startServer(config: ServerConfig, mcpManager: MCPManager? = nil) async thro
             "capabilities": capabilities.names,
             "capabilities_reported": capabilities.reported,
             "model_available": available,
+            "variant": modelVariant.jsonObject,
             "prewarmed": prewarmed,
             "supported_languages": cachedLangs
         ]
@@ -137,6 +140,7 @@ func startServer(config: ServerConfig, mcpManager: MCPManager? = nil) async thro
                 context_window_measured: contextWindow.isMeasured,
                 capabilities: served.capabilities(from: capabilities.names),
                 capabilities_reported: capabilities.reported,
+                variant: .init(id: modelVariant.id, display_name: modelVariant.displayName),
                 supported_parameters: served.supportedParameters,
                 unsupported_parameters: ["logprobs", "n", "presence_penalty", "frequency_penalty"],
                 notes: "\(served.notes) Supported languages: \(cachedLangs.joined(separator: ", "))"

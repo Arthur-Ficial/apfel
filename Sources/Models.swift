@@ -217,6 +217,11 @@ struct ModelsListResponse: Encodable, Sendable {
     let data: [ModelObject]
 
     struct ModelObject: Encodable, Sendable {
+        struct Variant: Encodable, Sendable {
+            let id: String
+            let display_name: String
+        }
+
         let id: String
         let object: String
         let created: Int
@@ -233,6 +238,8 @@ struct ModelsListResponse: Encodable, Sendable {
         /// (macOS 26) - mirrors `context_window_measured` so clients can
         /// feature-detect (#510).
         let capabilities_reported: Bool
+        /// The Apple Foundation Model variant serving requests (#576).
+        let variant: Variant
         let supported_parameters: [String]
         let unsupported_parameters: [String]
         let notes: String

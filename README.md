@@ -235,7 +235,7 @@ alias apfel=apfel-run                 # optional, every apfel flag still works
 | `POST /v1/responses` | Supported | OpenAI Responses API: string/message input, `instructions`, streaming (canonical event sequence), `text.format` (incl. `json_schema`), function tools (non-streaming). Stateful features (`previous_response_id`, `store: true`, `background`, `reasoning`, hosted tools) return honest 501s |
 | `POST /v1/responses/input_tokens` | Supported | Token preflight (`client.responses.input_tokens.count(...)`): exact count from Apple's tokenizer, no generation; 501 below macOS 26.4 instead of an estimate. See [docs/openai-api-compatibility.md](docs/openai-api-compatibility.md#token-preflight-v1responsesinput_tokens) |
 | `GET /v1/models` | Supported | Returns `apple-foundationmodel` (general, the default) and `apple-foundationmodel-content-tagging` (labels, not prose). See [docs/openai-api-compatibility.md](docs/openai-api-compatibility.md#content-tagging-model) |
-| `GET /health` | Supported | Model availability, context window, languages, reported model capabilities (`capabilities`, `capabilities_reported`) |
+| `GET /health` | Supported | Model availability, context window, languages, reported model capabilities (`capabilities`, `capabilities_reported`), the serving model variant (`variant`, e.g. AFM 3 Core) |
 | `GET /v1/logs`, `/v1/logs/stats` | Debug only | Requires `--debug` |
 | Tool calling | Supported | The call is written under guided generation (`--tool-calling guided`, default) or as JSON the server parses (`--tool-calling text`). See [docs/tool-calling-guide.md](docs/tool-calling-guide.md) |
 | `response_format: json_object` | Supported | System-prompt injection; markdown fences stripped from output |
