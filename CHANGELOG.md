@@ -7,6 +7,8 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.19.0] - 2026-11-17
+
 ### Added
 
 - `apfel --serve` serves Apple's content-tagging adapter as a second model, `apple-foundationmodel-content-tagging` (`SystemLanguageModel(useCase: .contentTagging)`, macOS 26 and 27, no availability branch). Clients pick it with the `model` field of `/v1/chat/completions`, `/v1/responses` and `/v1/responses/input_tokens`; `/v1/models` lists both models; every response and stream chunk echoes the requested id. `apple-foundationmodel` stays the default and behaves as before. The adapter returns labels, not prose, and is meant for `response_format: json_schema`. It never calls a tool (probed on macOS 26.7.3), so client `tools` sent to it are a 400 and the server's `--mcp` tools are not attached to its requests; `/v1/models` advertises no tool parameters or `tool_calling` capability for it. Context-window summaries stay on the general model. An unknown model's 404 now lists every available id. ApfelCore gains `ServedModel`; `ResponsesRequestValidator.Failure` gains `toolsUnsupportedForModel` (follow-up to #170).
