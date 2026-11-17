@@ -1,4 +1,4 @@
-<!-- i18n-source: 218b563163b08550cb0adc62e957ce6a40e6e1ba -->
+<!-- i18n-source: e8eb4f6c529cf64d34734df80149c4cdbd7dd262 -->
 
 > [İngilizce README](../README.md) dosyasından çevrilmiştir. Geçerli olan sürüm İngilizce sürümdür.
 
@@ -49,7 +49,7 @@ Kaynaktan derleme (macOS 27 SDK / Swift 6.3 ile Command Line Tools, Xcode yok; i
 git clone https://github.com/Arthur-Ficial/apfel.git && cd apfel && make install
 ```
 
-Nix, aynı gün tap, Mint, mise, sorun giderme: [docs/install.md](../docs/install.md).
+Aynı gün tap, Mint, mise, sorun giderme: [docs/install.md](../docs/install.md).
 
 **Languages:** [English](../README.md) | [العربية](README.ar.md) | [Беларуская](README.be.md) | [Български](README.bg.md) | [বাংলা](README.bn.md) | [Bosanski](README.bs.md) | [Català](README.ca.md) | [Čeština](README.cs.md) | [Dansk](README.da.md) | [Deutsch](README.de.md) | [Ελληνικά](README.el.md) | [Español](README.es.md) | [Eesti](README.et.md) | [فارسی](README.fa.md) | [Suomi](README.fi.md) | [Français](README.fr.md) | [ગુજરાતી](README.gu.md) | [हिन्दी](README.hi.md) | [Hrvatski](README.hr.md) | [Magyar](README.hu.md) | [Italiano](README.it.md) | [日本語](README.ja.md) | [ಕನ್ನಡ](README.kn.md) | [한국어](README.ko.md) | [Lietuvių](README.lt.md) | [Latviešu](README.lv.md) | [Македонски](README.mk.md) | [മലയാളം](README.ml.md) | [मराठी](README.mr.md) | [Norsk bokmål](README.nb.md) | [Nederlands](README.nl.md) | [Polski](README.pl.md) | [Português](README.pt.md) | [Română](README.ro.md) | [Русский](README.ru.md) | [Slovenčina](README.sk.md) | [Slovenščina](README.sl.md) | [Shqip](README.sq.md) | [Srpski](README.sr.md) | [Svenska](README.sv.md) | [தமிழ்](README.ta.md) | [తెలుగు](README.te.md) | **Türkçe** | [Українська](README.uk.md) | [اردو](README.ur.md) | [简体中文](README.zh-hans.md) | [繁體中文](README.zh-hant.md)
 
@@ -237,10 +237,10 @@ alias apfel=apfel-run                 # optional, every apfel flag still works
 | `POST /v1/chat/completions` | Destekleniyor | Streaming + streaming olmayan |
 | `POST /v1/responses` | Destekleniyor | OpenAI Responses API: string/mesaj girdisi, `instructions`, streaming (kanonik olay dizisi), `text.format` (`json_schema` dahil), fonksiyon araçları (streaming olmayan). Durum bilgisi gerektiren özellikler (`previous_response_id`, `store: true`, `background`, `reasoning`, barındırılan araçlar) dürüst 501 döndürür |
 | `POST /v1/responses/input_tokens` | Destekleniyor | Token ön denetimi (`client.responses.input_tokens.count(...)`): Apple'ın tokenizer'ından kesin sayım, üretim yok; macOS 26.4 altında tahmin yerine 501. Bkz. [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#token-preflight-v1responsesinput_tokens) |
-| `GET /v1/models` | Destekleniyor | `apple-foundationmodel` döndürür |
-| `GET /health` | Destekleniyor | Model kullanılabilirliği, bağlam penceresi, diller, bildirilen model yetenekleri (`capabilities`, `capabilities_reported`) |
+| `GET /v1/models` | Destekleniyor | `apple-foundationmodel` (genel, varsayılan) ve `apple-foundationmodel-content-tagging` (etiketler, düz metin değil) döndürür. Bkz. [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#content-tagging-model) |
+| `GET /health` | Destekleniyor | Model kullanılabilirliği, bağlam penceresi, diller, bildirilen model yetenekleri (`capabilities`, `capabilities_reported`), hizmet veren model varyantı (`variant`, ör. AFM 3 Core) |
 | `GET /v1/logs`, `/v1/logs/stats` | Yalnızca hata ayıklama | `--debug` gerektirir |
-| Tool calling | Destekleniyor | Yerel `ToolDefinition` + JSON algılama. Bkz. [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
+| Tool calling | Destekleniyor | Çağrı, güdümlü üretimle (`--tool-calling guided`, varsayılan) ya da sunucunun ayrıştırdığı JSON olarak (`--tool-calling text`) yazılır. Bkz. [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
 | `response_format: json_object` | Destekleniyor | Sistem prompt'una enjeksiyon; markdown çitleri çıktıdan temizlenir |
 | `response_format: json_schema` | Destekleniyor | FoundationModels `DynamicGenerationSchema` ile şemaya uygunluğu garanti çıktı; `stream: true` ile çalışır |
 | `temperature`, `top_p`, `max_tokens`, `seed` | Destekleniyor | `GenerationOptions`'a eşlenir. `top_p` nucleus sampling'dir; 0.001'in altındaki `temperature` (0 dahil) greedy'ye (deterministik) eşlenir. `max_tokens` verilmezse kalan bağlam penceresi kullanılır (doğrudan yerine geçen OpenAI semantiği) - bkz. [Varsayılan yanıt sınırı](../README.md#default-response-cap-max_tokens) |
@@ -316,7 +316,7 @@ apfel --serve --permissive             # every request uses permissive guardrail
 |-------|---------|
 | Bağlam penceresi | **macOS 26'da ve M1/M2 Mac'lerde 4096 token, M3 veya daha yeni çipli ve 12 GB+ belleğe sahip macOS 27'de 8192 token** (girdi + çıktı birlikte). Koda gömülü bir sabit değildir - apfel `SystemLanguageModel.contextSize` değerini çalışma zamanında okur; `apfel --model-info` güncel değeri yazdırır |
 | Platform | macOS 26+, yalnızca Apple Silicon |
-| Model | Tek model (`apple-foundationmodel`, cihaz üzerinde ~3B parametre), yapılandırılamaz |
+| Model | Cihaz üzerinde tek model (~3B parametre), `apple-foundationmodel` (genel) ve `apple-foundationmodel-content-tagging` (Apple'ın içerik etiketleme adaptörü; araç yok) olarak sunulur |
 | Guardrails | Apple'ın güvenlik sistemi zararsız prompt'ları engelleyebilir. `--permissive` yanlış pozitifleri azaltır ([docs/PERMISSIVE.md](../docs/PERMISSIVE.md)) |
 | Hız | Cihaz üzerinde, bulut ölçeğinde değil - yanıt başına birkaç saniye |
 | Embeddings yok | Cihaz üzerinde mevcut değil |

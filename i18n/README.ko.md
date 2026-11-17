@@ -1,4 +1,4 @@
-<!-- i18n-source: 218b563163b08550cb0adc62e957ce6a40e6e1ba -->
+<!-- i18n-source: e8eb4f6c529cf64d34734df80149c4cdbd7dd262 -->
 
 > [영문 README](../README.md)를 번역한 문서입니다. 영문 버전이 기준입니다.
 
@@ -49,7 +49,7 @@ brew upgrade apfel
 git clone https://github.com/Arthur-Ficial/apfel.git && cd apfel && make install
 ```
 
-Nix, 당일 반영 tap, Mint, mise, 문제 해결: [docs/install.md](../docs/install.md).
+당일 반영 tap, Mint, mise, 문제 해결: [docs/install.md](../docs/install.md).
 
 **Languages:** [English](../README.md) | [العربية](README.ar.md) | [Беларуская](README.be.md) | [Български](README.bg.md) | [বাংলা](README.bn.md) | [Bosanski](README.bs.md) | [Català](README.ca.md) | [Čeština](README.cs.md) | [Dansk](README.da.md) | [Deutsch](README.de.md) | [Ελληνικά](README.el.md) | [Español](README.es.md) | [Eesti](README.et.md) | [فارسی](README.fa.md) | [Suomi](README.fi.md) | [Français](README.fr.md) | [ગુજરાતી](README.gu.md) | [हिन्दी](README.hi.md) | [Hrvatski](README.hr.md) | [Magyar](README.hu.md) | [Italiano](README.it.md) | [日本語](README.ja.md) | [ಕನ್ನಡ](README.kn.md) | **한국어** | [Lietuvių](README.lt.md) | [Latviešu](README.lv.md) | [Македонски](README.mk.md) | [മലയാളം](README.ml.md) | [मराठी](README.mr.md) | [Norsk bokmål](README.nb.md) | [Nederlands](README.nl.md) | [Polski](README.pl.md) | [Português](README.pt.md) | [Română](README.ro.md) | [Русский](README.ru.md) | [Slovenčina](README.sk.md) | [Slovenščina](README.sl.md) | [Shqip](README.sq.md) | [Srpski](README.sr.md) | [Svenska](README.sv.md) | [தமிழ்](README.ta.md) | [తెలుగు](README.te.md) | [Türkçe](README.tr.md) | [Українська](README.uk.md) | [اردو](README.ur.md) | [简体中文](README.zh-hans.md) | [繁體中文](README.zh-hant.md)
 
@@ -237,10 +237,10 @@ alias apfel=apfel-run                 # optional, every apfel flag still works
 | `POST /v1/chat/completions` | 지원 | 스트리밍 + 비스트리밍 |
 | `POST /v1/responses` | 지원 | OpenAI Responses API: 문자열/메시지 입력, `instructions`, 스트리밍 (표준 이벤트 순서), `text.format` (`json_schema` 포함), 함수 도구 (비스트리밍). 상태 유지 기능 (`previous_response_id`, `store: true`, `background`, `reasoning`, 호스팅 도구)은 솔직하게 501을 반환합니다 |
 | `POST /v1/responses/input_tokens` | 지원 | 토큰 사전 점검 (`client.responses.input_tokens.count(...)`): Apple 토크나이저의 정확한 개수이며 생성은 하지 않습니다. macOS 26.4 미만에서는 추정값 대신 501을 반환합니다. [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#token-preflight-v1responsesinput_tokens) 참고 |
-| `GET /v1/models` | 지원 | `apple-foundationmodel`을 반환합니다 |
-| `GET /health` | 지원 | 모델 사용 가능 여부, 컨텍스트 윈도우, 언어, 보고된 모델 기능 (`capabilities`, `capabilities_reported`) |
+| `GET /v1/models` | 지원 | `apple-foundationmodel` (범용, 기본값)과 `apple-foundationmodel-content-tagging` (레이블용, 문장 아님)를 반환합니다. [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#content-tagging-model) 참고 |
+| `GET /health` | 지원 | 모델 사용 가능 여부, 컨텍스트 윈도우, 언어, 보고된 모델 기능 (`capabilities`, `capabilities_reported`), 서비스 중인 모델 변형 (`variant`, 예: AFM 3 Core) |
 | `GET /v1/logs`, `/v1/logs/stats` | 디버그 전용 | `--debug` 필요 |
-| 도구 호출 | 지원 | 네이티브 `ToolDefinition` + JSON 감지. [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) 참고 |
+| 도구 호출 | 지원 | 호출은 가이드 생성 (`--tool-calling guided`, 기본값) 또는 서버가 파싱하는 JSON (`--tool-calling text`)으로 작성됩니다. [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) 참고 |
 | `response_format: json_object` | 지원 | 시스템 프롬프트 주입, 출력에서 markdown 펜스 제거 |
 | `response_format: json_schema` | 지원 | FoundationModels `DynamicGenerationSchema`를 통해 스키마에 맞는 출력을 보장하며, `stream: true`에서도 동작 |
 | `temperature`, `top_p`, `max_tokens`, `seed` | 지원 | `GenerationOptions`에 매핑됩니다. `top_p`는 nucleus 샘플링이며, 0.001 미만 (0 포함)의 `temperature`는 greedy (결정적)로 매핑됩니다. `max_tokens`를 생략하면 남은 컨텍스트 윈도우를 사용합니다 (OpenAI와 동일한 드롭인 방식). [기본 응답 상한](../README.md#default-response-cap-max_tokens) 참고 |
@@ -316,7 +316,7 @@ apfel --serve --permissive             # every request uses permissive guardrail
 |------------|--------|
 | 컨텍스트 윈도우 | **macOS 26과 M1/M2 Mac에서는 4096 토큰, M3 이상 칩과 12 GB 이상 메모리를 갖춘 macOS 27에서는 8192 토큰** (입력 + 출력 합계). 하드코딩된 상수가 아닙니다. apfel은 런타임에 `SystemLanguageModel.contextSize`를 읽으며, `apfel --model-info`가 현재 값을 출력합니다 |
 | 플랫폼 | macOS 26 이상, Apple Silicon 전용 |
-| 모델 | 모델은 하나 (`apple-foundationmodel`, 온디바이스 약 3B 파라미터)이며 변경할 수 없습니다 |
+| 모델 | 온디바이스 모델 하나 (약 3B 파라미터)를 `apple-foundationmodel` (범용)와 `apple-foundationmodel-content-tagging` (Apple의 콘텐츠 태깅 어댑터, 도구 없음)로 제공합니다 |
 | 가드레일 | Apple의 안전 시스템이 무해한 프롬프트를 막을 수 있습니다. `--permissive`로 오탐을 줄일 수 있습니다 ([docs/PERMISSIVE.md](../docs/PERMISSIVE.md)) |
 | 속도 | 온디바이스이며 클라우드 규모가 아니므로 응답당 몇 초가 걸립니다 |
 | 임베딩 없음 | 온디바이스에서 사용할 수 없음 |

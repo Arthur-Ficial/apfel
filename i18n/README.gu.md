@@ -1,4 +1,4 @@
-<!-- i18n-source: 218b563163b08550cb0adc62e957ce6a40e6e1ba -->
+<!-- i18n-source: e8eb4f6c529cf64d34734df80149c4cdbd7dd262 -->
 
 > [અંગ્રેજી README](../README.md) પરથી અનુવાદિત. અંગ્રેજી આવૃત્તિ જ અધિકૃત છે.
 
@@ -49,7 +49,7 @@ brew upgrade apfel
 git clone https://github.com/Arthur-Ficial/apfel.git && cd apfel && make install
 ```
 
-Nix, same-day tap, Mint, mise, ટ્રબલશૂટિંગ: [docs/install.md](../docs/install.md).
+Same-day tap, Mint, mise, ટ્રબલશૂટિંગ: [docs/install.md](../docs/install.md).
 
 **Languages:** [English](../README.md) | [العربية](README.ar.md) | [Беларуская](README.be.md) | [Български](README.bg.md) | [বাংলা](README.bn.md) | [Bosanski](README.bs.md) | [Català](README.ca.md) | [Čeština](README.cs.md) | [Dansk](README.da.md) | [Deutsch](README.de.md) | [Ελληνικά](README.el.md) | [Español](README.es.md) | [Eesti](README.et.md) | [فارسی](README.fa.md) | [Suomi](README.fi.md) | [Français](README.fr.md) | **ગુજરાતી** | [हिन्दी](README.hi.md) | [Hrvatski](README.hr.md) | [Magyar](README.hu.md) | [Italiano](README.it.md) | [日本語](README.ja.md) | [ಕನ್ನಡ](README.kn.md) | [한국어](README.ko.md) | [Lietuvių](README.lt.md) | [Latviešu](README.lv.md) | [Македонски](README.mk.md) | [മലയാളം](README.ml.md) | [मराठी](README.mr.md) | [Norsk bokmål](README.nb.md) | [Nederlands](README.nl.md) | [Polski](README.pl.md) | [Português](README.pt.md) | [Română](README.ro.md) | [Русский](README.ru.md) | [Slovenčina](README.sk.md) | [Slovenščina](README.sl.md) | [Shqip](README.sq.md) | [Srpski](README.sr.md) | [Svenska](README.sv.md) | [தமிழ்](README.ta.md) | [తెలుగు](README.te.md) | [Türkçe](README.tr.md) | [Українська](README.uk.md) | [اردو](README.ur.md) | [简体中文](README.zh-hans.md) | [繁體中文](README.zh-hant.md)
 
@@ -237,10 +237,10 @@ alias apfel=apfel-run                 # optional, every apfel flag still works
 | `POST /v1/chat/completions` | સપોર્ટેડ | સ્ટ્રીમિંગ + નૉન-સ્ટ્રીમિંગ |
 | `POST /v1/responses` | સપોર્ટેડ | OpenAI Responses API: string/message ઇનપુટ, `instructions`, સ્ટ્રીમિંગ (canonical event sequence), `text.format` (`json_schema` સહિત), ફંક્શન ટૂલ (નૉન-સ્ટ્રીમિંગ). સ્ટેટફુલ સુવિધાઓ (`previous_response_id`, `store: true`, `background`, `reasoning`, hosted tools) પ્રામાણિક 501 આપે છે |
 | `POST /v1/responses/input_tokens` | સપોર્ટેડ | ટોકન પ્રીફ્લાઇટ (`client.responses.input_tokens.count(...)`): Appleના ટોકનાઇઝર પરથી ચોક્કસ ગણતરી, કોઈ જનરેશન નહીં; macOS 26.4 થી નીચે અંદાજને બદલે 501. જુઓ [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#token-preflight-v1responsesinput_tokens) |
-| `GET /v1/models` | સપોર્ટેડ | `apple-foundationmodel` પાછું આપે છે |
-| `GET /health` | સપોર્ટેડ | મૉડલની ઉપલબ્ધતા, કોન્ટેક્સ્ટ વિન્ડો, ભાષાઓ, જાણ કરાયેલી મૉડલ ક્ષમતાઓ (`capabilities`, `capabilities_reported`) |
+| `GET /v1/models` | સપોર્ટેડ | `apple-foundationmodel` (સામાન્ય, ડિફૉલ્ટ) અને `apple-foundationmodel-content-tagging` (લેબલ, ગદ્ય નહીં) પાછાં આપે છે. જુઓ [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#content-tagging-model) |
+| `GET /health` | સપોર્ટેડ | મૉડલની ઉપલબ્ધતા, કોન્ટેક્સ્ટ વિન્ડો, ભાષાઓ, જાણ કરાયેલી મૉડલ ક્ષમતાઓ (`capabilities`, `capabilities_reported`), સર્વ કરતું મૉડલ વેરિઅન્ટ (`variant`, દા.ત. AFM 3 Core) |
 | `GET /v1/logs`, `/v1/logs/stats` | ફક્ત ડીબગ | `--debug` જરૂરી |
-| ટૂલ કૉલિંગ | સપોર્ટેડ | નેટિવ `ToolDefinition` + JSON ડિટેક્શન. જુઓ [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
+| ટૂલ કૉલિંગ | સપોર્ટેડ | કૉલ ગાઇડેડ જનરેશન દ્વારા (`--tool-calling guided`, ડિફૉલ્ટ) અથવા સર્વર પાર્સ કરે તેવા JSON તરીકે (`--tool-calling text`) લખાય છે. જુઓ [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
 | `response_format: json_object` | સપોર્ટેડ | સિસ્ટમ-પ્રોમ્પ્ટ ઇન્જેક્શન; આઉટપુટમાંથી markdown ફેન્સ દૂર કરાય છે |
 | `response_format: json_schema` | સપોર્ટેડ | FoundationModels `DynamicGenerationSchema` દ્વારા સ્કીમાને અનુરૂપ આઉટપુટની ખાતરી; `stream: true` સાથે કામ કરે છે |
 | `temperature`, `top_p`, `max_tokens`, `seed` | સપોર્ટેડ | `GenerationOptions` સાથે મેપ કરાય છે. `top_p` એ nucleus sampling છે; 0.001 થી નીચેનું `temperature` (0 સહિત) greedy (નિર્ધારિત) માં મેપ થાય છે. `max_tokens` છોડી દેવાથી બાકીની કોન્ટેક્સ્ટ વિન્ડો વપરાય છે (OpenAI જેવી જ સિમેન્ટિક્સ) - જુઓ [ડિફૉલ્ટ રિસ્પોન્સ મર્યાદા](../README.md#default-response-cap-max_tokens) |
@@ -316,7 +316,7 @@ apfel --serve --permissive             # every request uses permissive guardrail
 |------------|--------|
 | કોન્ટેક્સ્ટ વિન્ડો | **macOS 26 પર અને M1/M2 Mac પર 4096 ટોકન, M3 કે નવી ચિપ અને 12 GB+ સાથે macOS 27 પર 8192 ટોકન** (ઇનપુટ + આઉટપુટ ભેગા). હાર્ડકોડેડ કૉન્સ્ટન્ટ નથી - apfel રનટાઇમ પર `SystemLanguageModel.contextSize` વાંચે છે; `apfel --model-info` વર્તમાન વેલ્યુ છાપે છે |
 | પ્લૅટફૉર્મ | macOS 26+, ફક્ત Apple Silicon |
-| મૉડલ | એક જ મૉડલ (`apple-foundationmodel`, ઓન-ડિવાઇસ ~3B પેરામીટર), બદલી શકાતું નથી |
+| મૉડલ | એક જ ઓન-ડિવાઇસ મૉડલ (~3B પેરામીટર), `apple-foundationmodel` (સામાન્ય) અને `apple-foundationmodel-content-tagging` (Appleનું કન્ટેન્ટ-ટૅગિંગ ઍડેપ્ટર; ટૂલ નહીં) તરીકે ઉપલબ્ધ |
 | ગાર્ડરેલ | Appleની સુરક્ષા સિસ્ટમ નિર્દોષ prompt પણ અટકાવી શકે છે. `--permissive` ખોટા પોઝિટિવ ઘટાડે છે ([docs/PERMISSIVE.md](../docs/PERMISSIVE.md)) |
 | ઝડપ | ઓન-ડિવાઇસ, ક્લાઉડ-સ્કેલ નહીં - દરેક જવાબ માટે થોડી સેકન્ડ |
 | કોઈ એમ્બેડિંગ નહીં | ઓન-ડિવાઇસ ઉપલબ્ધ નથી |

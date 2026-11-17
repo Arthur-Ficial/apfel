@@ -1,4 +1,4 @@
-<!-- i18n-source: 218b563163b08550cb0adc62e957ce6a40e6e1ba -->
+<!-- i18n-source: e8eb4f6c529cf64d34734df80149c4cdbd7dd262 -->
 
 > Tõlgitud [ingliskeelsest README-st](../README.md). Ingliskeelne versioon on määrav.
 
@@ -49,7 +49,7 @@ Ehitamine lähtekoodist (Command Line Tools koos macOS 27 SDK / Swift 6.3-ga, il
 git clone https://github.com/Arthur-Ficial/apfel.git && cd apfel && make install
 ```
 
-Nix, same-day tap, Mint, mise, veaotsing: [docs/install.md](../docs/install.md).
+Same-day tap, Mint, mise, veaotsing: [docs/install.md](../docs/install.md).
 
 **Languages:** [English](../README.md) | [العربية](README.ar.md) | [Беларуская](README.be.md) | [Български](README.bg.md) | [বাংলা](README.bn.md) | [Bosanski](README.bs.md) | [Català](README.ca.md) | [Čeština](README.cs.md) | [Dansk](README.da.md) | [Deutsch](README.de.md) | [Ελληνικά](README.el.md) | [Español](README.es.md) | **Eesti** | [فارسی](README.fa.md) | [Suomi](README.fi.md) | [Français](README.fr.md) | [ગુજરાતી](README.gu.md) | [हिन्दी](README.hi.md) | [Hrvatski](README.hr.md) | [Magyar](README.hu.md) | [Italiano](README.it.md) | [日本語](README.ja.md) | [ಕನ್ನಡ](README.kn.md) | [한국어](README.ko.md) | [Lietuvių](README.lt.md) | [Latviešu](README.lv.md) | [Македонски](README.mk.md) | [മലയാളം](README.ml.md) | [मराठी](README.mr.md) | [Norsk bokmål](README.nb.md) | [Nederlands](README.nl.md) | [Polski](README.pl.md) | [Português](README.pt.md) | [Română](README.ro.md) | [Русский](README.ru.md) | [Slovenčina](README.sk.md) | [Slovenščina](README.sl.md) | [Shqip](README.sq.md) | [Srpski](README.sr.md) | [Svenska](README.sv.md) | [தமிழ்](README.ta.md) | [తెలుగు](README.te.md) | [Türkçe](README.tr.md) | [Українська](README.uk.md) | [اردو](README.ur.md) | [简体中文](README.zh-hans.md) | [繁體中文](README.zh-hant.md)
 
@@ -237,10 +237,10 @@ alias apfel=apfel-run                 # optional, every apfel flag still works
 | `POST /v1/chat/completions` | Toetatud | Streaming + ilma streamingita |
 | `POST /v1/responses` | Toetatud | OpenAI Responses API: stringi-/sõnumisisend, `instructions`, streaming (kanooniline sündmuste jada), `text.format` (sh `json_schema`), funktsioonitööriistad (ilma streamingita). Olekupõhised funktsioonid (`previous_response_id`, `store: true`, `background`, `reasoning`, hostitud tööriistad) tagastavad ausa 501 |
 | `POST /v1/responses/input_tokens` | Toetatud | Tokenite eelkontroll (`client.responses.input_tokens.count(...)`): täpne arv Apple'i tokeniseerijalt, genereerimist ei toimu; 501 macOS 26.4-st vanemal hinnangu asemel. Vaata [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#token-preflight-v1responsesinput_tokens) |
-| `GET /v1/models` | Toetatud | Tagastab `apple-foundationmodel` |
-| `GET /health` | Toetatud | Mudeli saadavus, kontekstiaken, keeled, teatatud mudeli võimekused (`capabilities`, `capabilities_reported`) |
+| `GET /v1/models` | Toetatud | Tagastab `apple-foundationmodel` (üldine, vaikimisi) ja `apple-foundationmodel-content-tagging` (sildid, mitte proosa). Vaata [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#content-tagging-model) |
+| `GET /health` | Toetatud | Mudeli saadavus, kontekstiaken, keeled, teatatud mudeli võimekused (`capabilities`, `capabilities_reported`), teenindav mudelivariant (`variant`, nt AFM 3 Core) |
 | `GET /v1/logs`, `/v1/logs/stats` | Ainult silumine | Nõuab `--debug` |
-| Tööriistakutsed | Toetatud | Natiivne `ToolDefinition` + JSON-tuvastus. Vaata [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
+| Tööriistakutsed | Toetatud | Kutse kirjutatakse juhitud genereerimisega (`--tool-calling guided`, vaikimisi) või JSON-ina, mille server parsib (`--tool-calling text`). Vaata [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
 | `response_format: json_object` | Toetatud | Süsteemiprompti süst; markdown-aiad eemaldatakse väljundist |
 | `response_format: json_schema` | Toetatud | Garanteeritult skeemile vastav väljund FoundationModelsi `DynamicGenerationSchema` kaudu; töötab koos `stream: true` |
 | `temperature`, `top_p`, `max_tokens`, `seed` | Toetatud | Seotud `GenerationOptions`iga. `top_p` on nucleus sampling; `temperature` alla 0.001 (0 kaasa arvatud) vastab greedy-režiimile (deterministlik). `max_tokens` väljajätmisel kasutatakse kontekstiakna ülejäänud osa (OpenAI semantika drop-in-asendajana) - vaata [Vaikimisi vastuse piir](../README.md#default-response-cap-max_tokens) |
@@ -316,7 +316,7 @@ apfel --serve --permissive             # every request uses permissive guardrail
 |------------|--------|
 | Kontekstiaken | **4096 tokenit macOS 26-l ja M1/M2 Macidel, 8192 tokenit macOS 27-l M3 või uuema kiibi ja vähemalt 12 GB-ga** (sisend + väljund kokku). Pole kõvakodeeritud konstant - apfel loeb `SystemLanguageModel.contextSize` käitusajal; `apfel --model-info` prindib tegeliku väärtuse |
 | Platvorm | macOS 26+, ainult Apple Silicon |
-| Mudel | Üks mudel (`apple-foundationmodel`, ~3B parameetrit seadmes), pole seadistatav |
+| Mudel | Üks seadmesisene mudel (~3B parameetrit), pakutud kui `apple-foundationmodel` (üldine) ja `apple-foundationmodel-content-tagging` (Apple'i sisu sildistamise adapter; tööriistadeta) |
 | Guardrailid | Apple'i turvasüsteem võib blokeerida kahjutuid prompte. `--permissive` vähendab valepositiivseid ([docs/PERMISSIVE.md](../docs/PERMISSIVE.md)) |
 | Kiirus | Seadmes, mitte pilvemastaabis - paar sekundit vastuse kohta |
 | Embeddinguid pole | Pole seadmes saadaval |

@@ -1,4 +1,4 @@
-<!-- i18n-source: 218b563163b08550cb0adc62e957ce6a40e6e1ba -->
+<!-- i18n-source: e8eb4f6c529cf64d34734df80149c4cdbd7dd262 -->
 
 > Tulkots no [angļu valodas README](../README.md). Angļu valodas versija ir noteicošā.
 
@@ -49,7 +49,7 @@ Būvēšana no pirmkoda (Command Line Tools ar macOS 27 SDK / Swift 6.3, bez Xco
 git clone https://github.com/Arthur-Ficial/apfel.git && cd apfel && make install
 ```
 
-Nix, same-day tap, Mint, mise, problēmu novēršana: [docs/install.md](../docs/install.md).
+Same-day tap, Mint, mise, problēmu novēršana: [docs/install.md](../docs/install.md).
 
 **Languages:** [English](../README.md) | [العربية](README.ar.md) | [Беларуская](README.be.md) | [Български](README.bg.md) | [বাংলা](README.bn.md) | [Bosanski](README.bs.md) | [Català](README.ca.md) | [Čeština](README.cs.md) | [Dansk](README.da.md) | [Deutsch](README.de.md) | [Ελληνικά](README.el.md) | [Español](README.es.md) | [Eesti](README.et.md) | [فارسی](README.fa.md) | [Suomi](README.fi.md) | [Français](README.fr.md) | [ગુજરાતી](README.gu.md) | [हिन्दी](README.hi.md) | [Hrvatski](README.hr.md) | [Magyar](README.hu.md) | [Italiano](README.it.md) | [日本語](README.ja.md) | [ಕನ್ನಡ](README.kn.md) | [한국어](README.ko.md) | [Lietuvių](README.lt.md) | **Latviešu** | [Македонски](README.mk.md) | [മലയാളം](README.ml.md) | [मराठी](README.mr.md) | [Norsk bokmål](README.nb.md) | [Nederlands](README.nl.md) | [Polski](README.pl.md) | [Português](README.pt.md) | [Română](README.ro.md) | [Русский](README.ru.md) | [Slovenčina](README.sk.md) | [Slovenščina](README.sl.md) | [Shqip](README.sq.md) | [Srpski](README.sr.md) | [Svenska](README.sv.md) | [தமிழ்](README.ta.md) | [తెలుగు](README.te.md) | [Türkçe](README.tr.md) | [Українська](README.uk.md) | [اردو](README.ur.md) | [简体中文](README.zh-hans.md) | [繁體中文](README.zh-hant.md)
 
@@ -237,10 +237,10 @@ alias apfel=apfel-run                 # optional, every apfel flag still works
 | `POST /v1/chat/completions` | Atbalstīts | Streaming + bez streaming |
 | `POST /v1/responses` | Atbalstīts | OpenAI Responses API: virknes/ziņojumu ievade, `instructions`, streaming (kanoniskā notikumu secība), `text.format` (t. sk. `json_schema`), funkciju rīki (bez streaming). Stāvokli saglabājošas funkcijas (`previous_response_id`, `store: true`, `background`, `reasoning`, hostētie rīki) atgriež godīgu 501 |
 | `POST /v1/responses/input_tokens` | Atbalstīts | Tokenu priekšpārbaude (`client.responses.input_tokens.count(...)`): precīzs skaits no Apple tokenizētāja, bez ģenerēšanas; 501 zem macOS 26.4 aplēses vietā. Skat. [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#token-preflight-v1responsesinput_tokens) |
-| `GET /v1/models` | Atbalstīts | Atgriež `apple-foundationmodel` |
-| `GET /health` | Atbalstīts | Modeļa pieejamība, konteksta logs, valodas, paziņotās modeļa spējas (`capabilities`, `capabilities_reported`) |
+| `GET /v1/models` | Atbalstīts | Atgriež `apple-foundationmodel` (vispārīgais, noklusējuma) un `apple-foundationmodel-content-tagging` (birkas, nevis proza). Skat. [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#content-tagging-model) |
+| `GET /health` | Atbalstīts | Modeļa pieejamība, konteksta logs, valodas, paziņotās modeļa spējas (`capabilities`, `capabilities_reported`), apkalpojošā modeļa variants (`variant`, piem., AFM 3 Core) |
 | `GET /v1/logs`, `/v1/logs/stats` | Tikai atkļūdošanai | Nepieciešams `--debug` |
-| Rīku izsaukšana | Atbalstīts | Native `ToolDefinition` + JSON noteikšana. Skat. [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
+| Rīku izsaukšana | Atbalstīts | Izsaukums tiek rakstīts ar vadītu ģenerēšanu (`--tool-calling guided`, noklusējums) vai kā JSON, ko parsē serveris (`--tool-calling text`). Skat. [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
 | `response_format: json_object` | Atbalstīts | Sistēmas prompta injekcija; markdown žogi tiek noņemti no izvades |
 | `response_format: json_schema` | Atbalstīts | Garantēti shēmai atbilstoša izvade, izmantojot FoundationModels `DynamicGenerationSchema`; darbojas ar `stream: true` |
 | `temperature`, `top_p`, `max_tokens`, `seed` | Atbalstīts | Attēloti uz `GenerationOptions`. `top_p` ir nucleus sampling; `temperature` zem 0.001 (ieskaitot 0) attēlojas uz greedy (deterministisks). Izlaižot `max_tokens`, tiek izmantots atlikušais konteksta logs (OpenAI semantika kā tiešs aizstājējs) - skat. [Noklusējuma atbildes limits](../README.md#default-response-cap-max_tokens) |
@@ -316,7 +316,7 @@ apfel --serve --permissive             # every request uses permissive guardrail
 |------------|--------|
 | Konteksta logs | **4096 tokeni macOS 26 un M1/M2 Mac datoros, 8192 tokeni macOS 27 ar M3 vai jaunāku mikroshēmu un vismaz 12 GB** (ievade + izvade kopā). Nav iekodēta konstante - apfel izpildlaikā nolasa `SystemLanguageModel.contextSize`; `apfel --model-info` izdrukā aktuālo vērtību |
 | Platforma | macOS 26+, tikai Apple Silicon |
-| Modelis | Viens modelis (`apple-foundationmodel`, ~3B parametru ierīcē), nav konfigurējams |
+| Modelis | Viens ierīcē darbināms modelis (~3B parametru), pieejams kā `apple-foundationmodel` (vispārīgais) un `apple-foundationmodel-content-tagging` (Apple satura marķēšanas adapteris; bez rīkiem) |
 | Guardrails | Apple drošības sistēma var bloķēt nekaitīgus promptus. `--permissive` samazina viltus pozitīvos ([docs/PERMISSIVE.md](../docs/PERMISSIVE.md)) |
 | Ātrums | Ierīcē, nevis mākoņa mērogā - dažas sekundes uz atbildi |
 | Nav embeddings | Nav pieejami ierīcē |

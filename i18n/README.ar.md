@@ -1,4 +1,4 @@
-<!-- i18n-source: 218b563163b08550cb0adc62e957ce6a40e6e1ba -->
+<!-- i18n-source: e8eb4f6c529cf64d34734df80149c4cdbd7dd262 -->
 
 > تمت الترجمة من [README الإنجليزي](../README.md). النسخة الإنجليزية هي المرجع المعتمد.
 
@@ -49,7 +49,7 @@ brew upgrade apfel
 git clone https://github.com/Arthur-Ficial/apfel.git && cd apfel && make install
 ```
 
-Nix، وtap في اليوم نفسه، وMint، وmise، وحل المشكلات: [docs/install.md](../docs/install.md).
+tap في اليوم نفسه، وMint، وmise، وحل المشكلات: [docs/install.md](../docs/install.md).
 
 **Languages:** [English](../README.md) | **العربية** | [Беларуская](README.be.md) | [Български](README.bg.md) | [বাংলা](README.bn.md) | [Bosanski](README.bs.md) | [Català](README.ca.md) | [Čeština](README.cs.md) | [Dansk](README.da.md) | [Deutsch](README.de.md) | [Ελληνικά](README.el.md) | [Español](README.es.md) | [Eesti](README.et.md) | [فارسی](README.fa.md) | [Suomi](README.fi.md) | [Français](README.fr.md) | [ગુજરાતી](README.gu.md) | [हिन्दी](README.hi.md) | [Hrvatski](README.hr.md) | [Magyar](README.hu.md) | [Italiano](README.it.md) | [日本語](README.ja.md) | [ಕನ್ನಡ](README.kn.md) | [한국어](README.ko.md) | [Lietuvių](README.lt.md) | [Latviešu](README.lv.md) | [Македонски](README.mk.md) | [മലയാളം](README.ml.md) | [मराठी](README.mr.md) | [Norsk bokmål](README.nb.md) | [Nederlands](README.nl.md) | [Polski](README.pl.md) | [Português](README.pt.md) | [Română](README.ro.md) | [Русский](README.ru.md) | [Slovenčina](README.sk.md) | [Slovenščina](README.sl.md) | [Shqip](README.sq.md) | [Srpski](README.sr.md) | [Svenska](README.sv.md) | [தமிழ்](README.ta.md) | [తెలుగు](README.te.md) | [Türkçe](README.tr.md) | [Українська](README.uk.md) | [اردو](README.ur.md) | [简体中文](README.zh-hans.md) | [繁體中文](README.zh-hant.md)
 
@@ -237,10 +237,10 @@ alias apfel=apfel-run                 # optional, every apfel flag still works
 | `POST /v1/chat/completions` | مدعومة | مع streaming وبدونه |
 | `POST /v1/responses` | مدعومة | واجهة OpenAI Responses API: مدخلات نصية/رسائل، و`instructions`، وstreaming (تسلسل الأحداث القياسي)، و`text.format` (بما فيه `json_schema`)، وأدوات الدوال (بدون streaming). الميزات ذات الحالة (`previous_response_id` و`store: true` و`background` و`reasoning` والأدوات المستضافة) تعيد 501 صريحة |
 | `POST /v1/responses/input_tokens` | مدعومة | فحص مسبق للـ tokens ‏(`client.responses.input_tokens.count(...)`): عدّ دقيق من tokenizer الخاص بـ Apple، دون توليد؛ وتعيد 501 على إصدارات أقدم من macOS 26.4 بدل تقدير تقريبي. راجع [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#token-preflight-v1responsesinput_tokens) |
-| `GET /v1/models` | مدعومة | تعيد `apple-foundationmodel` |
-| `GET /health` | مدعومة | توفر النموذج، ونافذة السياق، واللغات، وقدرات النموذج المُبلَّغ عنها (`capabilities` و`capabilities_reported`) |
+| `GET /v1/models` | مدعومة | تعيد `apple-foundationmodel` (عام، الافتراضي) و`apple-foundationmodel-content-tagging` (تسميات، لا نصوص نثرية). راجع [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#content-tagging-model) |
+| `GET /health` | مدعومة | توفر النموذج، ونافذة السياق، واللغات، وقدرات النموذج المُبلَّغ عنها (`capabilities` و`capabilities_reported`)، ومتغير النموذج المُشغَّل (`variant`، مثل AFM 3 Core) |
 | `GET /v1/logs`, `/v1/logs/stats` | للتصحيح فقط | تتطلب `--debug` |
-| Tool calling | مدعومة | `ToolDefinition` أصلي + كشف JSON. راجع [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
+| Tool calling | مدعومة | يُكتب الاستدعاء عبر التوليد الموجَّه (`--tool-calling guided`، الافتراضي) أو بصيغة JSON يحللها الخادم (`--tool-calling text`). راجع [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
 | `response_format: json_object` | مدعومة | حقن في system prompt؛ تُزال أسوار markdown من المخرجات |
 | `response_format: json_schema` | مدعومة | مخرجات مضمونة المطابقة للمخطط عبر `DynamicGenerationSchema` في FoundationModels؛ تعمل مع `stream: true` |
 | `temperature`, `top_p`, `max_tokens`, `seed` | مدعومة | تُربط بـ `GenerationOptions`. ‏`top_p` هو nucleus sampling؛ وقيمة `temperature` الأقل من 0.001 (ومنها 0) تُربط بالوضع greedy (حتمي). عند حذف `max_tokens` تُستخدم نافذة السياق المتبقية (دلالات OpenAI كبديل مباشر) - راجع [الحد الافتراضي للرد](../README.md#default-response-cap-max_tokens) |
@@ -316,7 +316,7 @@ apfel --serve --permissive             # every request uses permissive guardrail
 |-------|----------|
 | نافذة السياق | **4096 token على macOS 26 وعلى أجهزة M1/M2، و8192 token على macOS 27 مع شريحة M3 أو أحدث وذاكرة 12 GB+** (المدخلات + المخرجات معاً). ليست ثابتاً مكتوباً في الشيفرة - يقرأ apfel القيمة `SystemLanguageModel.contextSize` وقت التشغيل؛ ويطبع `apfel --model-info` القيمة الحالية |
 | المنصة | macOS 26+، وApple Silicon فقط |
-| النموذج | نموذج واحد (`apple-foundationmodel`، نحو 3B معامل على الجهاز)، غير قابل للتهيئة |
+| النموذج | نموذج واحد على الجهاز (نحو 3B معامل)، يُقدَّم باسم `apple-foundationmodel` (عام) و`apple-foundationmodel-content-tagging` (محوّل وسم المحتوى من Apple؛ بلا أدوات) |
 | Guardrails | قد يحجب نظام الأمان من Apple prompts سليمة. يقلل `--permissive` الإيجابيات الكاذبة ([docs/PERMISSIVE.md](../docs/PERMISSIVE.md)) |
 | السرعة | على الجهاز وليس بمقياس السحابة - بضع ثوانٍ لكل رد |
 | لا embeddings | غير متاحة على الجهاز |

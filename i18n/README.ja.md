@@ -1,4 +1,4 @@
-<!-- i18n-source: 218b563163b08550cb0adc62e957ce6a40e6e1ba -->
+<!-- i18n-source: e8eb4f6c529cf64d34734df80149c4cdbd7dd262 -->
 
 > [英語版 README](../README.md) からの翻訳です。英語版が正本です。
 
@@ -49,7 +49,7 @@ brew upgrade apfel
 git clone https://github.com/Arthur-Ficial/apfel.git && cd apfel && make install
 ```
 
-Nix、同日公開の tap、Mint、mise、トラブルシューティング: [docs/install.md](../docs/install.md)。
+同日公開の tap、Mint、mise、トラブルシューティング: [docs/install.md](../docs/install.md)。
 
 **Languages:** [English](../README.md) | [العربية](README.ar.md) | [Беларуская](README.be.md) | [Български](README.bg.md) | [বাংলা](README.bn.md) | [Bosanski](README.bs.md) | [Català](README.ca.md) | [Čeština](README.cs.md) | [Dansk](README.da.md) | [Deutsch](README.de.md) | [Ελληνικά](README.el.md) | [Español](README.es.md) | [Eesti](README.et.md) | [فارسی](README.fa.md) | [Suomi](README.fi.md) | [Français](README.fr.md) | [ગુજરાતી](README.gu.md) | [हिन्दी](README.hi.md) | [Hrvatski](README.hr.md) | [Magyar](README.hu.md) | [Italiano](README.it.md) | **日本語** | [ಕನ್ನಡ](README.kn.md) | [한국어](README.ko.md) | [Lietuvių](README.lt.md) | [Latviešu](README.lv.md) | [Македонски](README.mk.md) | [മലയാളം](README.ml.md) | [मराठी](README.mr.md) | [Norsk bokmål](README.nb.md) | [Nederlands](README.nl.md) | [Polski](README.pl.md) | [Português](README.pt.md) | [Română](README.ro.md) | [Русский](README.ru.md) | [Slovenčina](README.sk.md) | [Slovenščina](README.sl.md) | [Shqip](README.sq.md) | [Srpski](README.sr.md) | [Svenska](README.sv.md) | [தமிழ்](README.ta.md) | [తెలుగు](README.te.md) | [Türkçe](README.tr.md) | [Українська](README.uk.md) | [اردو](README.ur.md) | [简体中文](README.zh-hans.md) | [繁體中文](README.zh-hant.md)
 
@@ -237,10 +237,10 @@ alias apfel=apfel-run                 # optional, every apfel flag still works
 | `POST /v1/chat/completions` | 対応 | ストリーミング・非ストリーミング |
 | `POST /v1/responses` | 対応 | OpenAI Responses API: 文字列/メッセージ入力、`instructions`、ストリーミング (標準のイベントシーケンス)、`text.format` (`json_schema` を含む)、関数ツール (非ストリーミング)。ステートフルな機能 (`previous_response_id`、`store: true`、`background`、`reasoning`、ホスト型ツール) は正直に 501 を返します |
 | `POST /v1/responses/input_tokens` | 対応 | トークンの事前確認 (`client.responses.input_tokens.count(...)`): Apple のトークナイザーによる正確な数で、生成は行いません。macOS 26.4 未満では推定値ではなく 501 を返します。[docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#token-preflight-v1responsesinput_tokens) を参照 |
-| `GET /v1/models` | 対応 | `apple-foundationmodel` を返します |
-| `GET /health` | 対応 | モデルの利用可否、コンテキストウィンドウ、言語、報告されたモデル機能 (`capabilities`、`capabilities_reported`) |
+| `GET /v1/models` | 対応 | `apple-foundationmodel` (汎用、デフォルト) と `apple-foundationmodel-content-tagging` (ラベル用、文章ではない) を返します。[docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#content-tagging-model) を参照 |
+| `GET /health` | 対応 | モデルの利用可否、コンテキストウィンドウ、言語、報告されたモデル機能 (`capabilities`、`capabilities_reported`)、提供中のモデルバリアント (`variant`、例: AFM 3 Core) |
 | `GET /v1/logs`, `/v1/logs/stats` | デバッグ専用 | `--debug` が必要 |
-| ツール呼び出し | 対応 | ネイティブの `ToolDefinition` + JSON 検出。[docs/tool-calling-guide.md](../docs/tool-calling-guide.md) を参照 |
+| ツール呼び出し | 対応 | 呼び出しはガイド付き生成 (`--tool-calling guided`、デフォルト) か、サーバーが解析する JSON (`--tool-calling text`) として書かれます。[docs/tool-calling-guide.md](../docs/tool-calling-guide.md) を参照 |
 | `response_format: json_object` | 対応 | システムプロンプトへの注入。出力から markdown のフェンスを除去 |
 | `response_format: json_schema` | 対応 | FoundationModels の `DynamicGenerationSchema` により、スキーマに適合する出力を保証。`stream: true` でも動作 |
 | `temperature`, `top_p`, `max_tokens`, `seed` | 対応 | `GenerationOptions` にマップされます。`top_p` は nucleus サンプリング。0.001 未満 (0 を含む) の `temperature` は greedy (決定的) になります。`max_tokens` を省略すると残りのコンテキストウィンドウを使います (OpenAI と同じ、そのまま差し替え可能な動作)。[デフォルトのレスポンス上限](../README.md#default-response-cap-max_tokens) を参照 |
@@ -316,7 +316,7 @@ apfel --serve --permissive             # every request uses permissive guardrail
 |------------|--------|
 | コンテキストウィンドウ | **macOS 26 および M1/M2 の Mac では 4096 トークン、macOS 27 で M3 以降のチップと 12 GB 以上のメモリがある場合は 8192 トークン** (入力と出力の合計)。ハードコードされた定数ではありません。apfel は実行時に `SystemLanguageModel.contextSize` を読み取り、`apfel --model-info` が現在の値を表示します |
 | プラットフォーム | macOS 26 以降、Apple Silicon のみ |
-| モデル | モデルは 1 つ (`apple-foundationmodel`、オンデバイスで約 3B パラメータ)、変更できません |
+| モデル | オンデバイスモデルは 1 つ (約 3B パラメータ) で、`apple-foundationmodel` (汎用) と `apple-foundationmodel-content-tagging` (Apple のコンテンツタグ付けアダプター、ツールなし) として提供されます |
 | ガードレール | Apple の安全性システムが無害なプロンプトをブロックすることがあります。`--permissive` で誤検知を減らせます ([docs/PERMISSIVE.md](../docs/PERMISSIVE.md)) |
 | 速度 | オンデバイスでありクラウド規模ではないため、1 回の応答に数秒かかります |
 | 埋め込みなし | オンデバイスでは利用できません |

@@ -1,4 +1,4 @@
-<!-- i18n-source: 218b563163b08550cb0adc62e957ce6a40e6e1ba -->
+<!-- i18n-source: e8eb4f6c529cf64d34734df80149c4cdbd7dd262 -->
 
 > Preložené z [anglického README](../README.md). Záväzná je anglická verzia.
 
@@ -49,7 +49,7 @@ Zostavenie zo zdrojov (Command Line Tools so SDK macOS 27 / Swift 6.3, bez Xcode
 git clone https://github.com/Arthur-Ficial/apfel.git && cd apfel && make install
 ```
 
-Nix, tap so zmenami toho istého dňa, Mint, mise, riešenie problémov: [docs/install.md](../docs/install.md).
+Tap so zmenami toho istého dňa, Mint, mise, riešenie problémov: [docs/install.md](../docs/install.md).
 
 **Languages:** [English](../README.md) | [العربية](README.ar.md) | [Беларуская](README.be.md) | [Български](README.bg.md) | [বাংলা](README.bn.md) | [Bosanski](README.bs.md) | [Català](README.ca.md) | [Čeština](README.cs.md) | [Dansk](README.da.md) | [Deutsch](README.de.md) | [Ελληνικά](README.el.md) | [Español](README.es.md) | [Eesti](README.et.md) | [فارسی](README.fa.md) | [Suomi](README.fi.md) | [Français](README.fr.md) | [ગુજરાતી](README.gu.md) | [हिन्दी](README.hi.md) | [Hrvatski](README.hr.md) | [Magyar](README.hu.md) | [Italiano](README.it.md) | [日本語](README.ja.md) | [ಕನ್ನಡ](README.kn.md) | [한국어](README.ko.md) | [Lietuvių](README.lt.md) | [Latviešu](README.lv.md) | [Македонски](README.mk.md) | [മലയാളം](README.ml.md) | [मराठी](README.mr.md) | [Norsk bokmål](README.nb.md) | [Nederlands](README.nl.md) | [Polski](README.pl.md) | [Português](README.pt.md) | [Română](README.ro.md) | [Русский](README.ru.md) | **Slovenčina** | [Slovenščina](README.sl.md) | [Shqip](README.sq.md) | [Srpski](README.sr.md) | [Svenska](README.sv.md) | [தமிழ்](README.ta.md) | [తెలుగు](README.te.md) | [Türkçe](README.tr.md) | [Українська](README.uk.md) | [اردو](README.ur.md) | [简体中文](README.zh-hans.md) | [繁體中文](README.zh-hant.md)
 
@@ -237,10 +237,10 @@ alias apfel=apfel-run                 # optional, every apfel flag still works
 | `POST /v1/chat/completions` | Podporované | Streaming aj bez streamingu |
 | `POST /v1/responses` | Podporované | OpenAI Responses API: vstup ako string/správa, `instructions`, streaming (kanonická postupnosť udalostí), `text.format` (vrátane `json_schema`), funkčné nástroje (bez streamingu). Stavové funkcie (`previous_response_id`, `store: true`, `background`, `reasoning`, hostované nástroje) vracajú úprimné 501 |
 | `POST /v1/responses/input_tokens` | Podporované | Predbežný počet tokenov (`client.responses.input_tokens.count(...)`): presný počet z tokenizéra Apple, bez generovania; pod macOS 26.4 vracia 501 namiesto odhadu. Pozri [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#token-preflight-v1responsesinput_tokens) |
-| `GET /v1/models` | Podporované | Vracia `apple-foundationmodel` |
-| `GET /health` | Podporované | Dostupnosť modelu, kontextové okno, jazyky, hlásené schopnosti modelu (`capabilities`, `capabilities_reported`) |
+| `GET /v1/models` | Podporované | Vracia `apple-foundationmodel` (všeobecný, predvolený) a `apple-foundationmodel-content-tagging` (štítky, nie súvislý text). Pozri [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#content-tagging-model) |
+| `GET /health` | Podporované | Dostupnosť modelu, kontextové okno, jazyky, hlásené schopnosti modelu (`capabilities`, `capabilities_reported`), varianta obsluhujúceho modelu (`variant`, napr. AFM 3 Core) |
 | `GET /v1/logs`, `/v1/logs/stats` | Iba ladenie | Vyžaduje `--debug` |
-| Volanie nástrojov | Podporované | Natívny `ToolDefinition` + detekcia JSON. Pozri [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
+| Volanie nástrojov | Podporované | Volanie sa zapisuje riadeným generovaním (`--tool-calling guided`, predvolené) alebo ako JSON, ktorý parsuje server (`--tool-calling text`). Pozri [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
 | `response_format: json_object` | Podporované | Vloženie do systémového promptu; ohrady markdownu sa z výstupu odstránia |
 | `response_format: json_schema` | Podporované | Zaručený výstup zodpovedajúci schéme cez FoundationModels `DynamicGenerationSchema`; funguje so `stream: true` |
 | `temperature`, `top_p`, `max_tokens`, `seed` | Podporované | Mapované na `GenerationOptions`. `top_p` je nucleus sampling; `temperature` pod 0.001 (vrátane 0) sa mapuje na greedy (deterministické) vzorkovanie. Vynechanie `max_tokens` použije zostávajúce kontextové okno (sémantika priamej náhrady OpenAI) - pozri [Predvolený limit odpovede](../README.md#default-response-cap-max_tokens) |
@@ -316,7 +316,7 @@ apfel --serve --permissive             # every request uses permissive guardrail
 |------------|-------------|
 | Kontextové okno | **4096 tokenov na macOS 26 a na Macoch M1/M2, 8192 tokenov na macOS 27 s čipom M3 alebo novším a 12 GB+** (vstup + výstup dokopy). Nie je to pevne zadaná konštanta - apfel číta `SystemLanguageModel.contextSize` za behu; `apfel --model-info` vypíše aktuálnu hodnotu |
 | Platforma | macOS 26+, iba Apple Silicon |
-| Model | Jeden model (`apple-foundationmodel`, ~3 mld parametrov na zariadení), nedá sa konfigurovať |
+| Model | Jeden model na zariadení (~3 mld parametrov), poskytovaný ako `apple-foundationmodel` (všeobecný) a `apple-foundationmodel-content-tagging` (adaptér Apple na štítkovanie obsahu; bez nástrojov) |
 | Guardrails | Bezpečnostný systém Apple môže blokovať neškodné prompty. `--permissive` znižuje počet falošných poplachov ([docs/PERMISSIVE.md](../docs/PERMISSIVE.md)) |
 | Rýchlosť | Na zariadení, nie v mierke cloudu - niekoľko sekúnd na odpoveď |
 | Žiadne embeddingy | Na zariadení nie sú k dispozícii |

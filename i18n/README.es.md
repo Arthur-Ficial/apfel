@@ -1,4 +1,4 @@
-<!-- i18n-source: 218b563163b08550cb0adc62e957ce6a40e6e1ba -->
+<!-- i18n-source: e8eb4f6c529cf64d34734df80149c4cdbd7dd262 -->
 
 > Traducido del [README en inglés](../README.md). La versión en inglés es la que prevalece.
 
@@ -49,7 +49,7 @@ Compilar desde el código fuente (Command Line Tools con el SDK de macOS 27 / Sw
 git clone https://github.com/Arthur-Ficial/apfel.git && cd apfel && make install
 ```
 
-Nix, tap del mismo día, Mint, mise, solución de problemas: [docs/install.md](../docs/install.md).
+Tap del mismo día, Mint, mise, solución de problemas: [docs/install.md](../docs/install.md).
 
 **Languages:** [English](../README.md) | [العربية](README.ar.md) | [Беларуская](README.be.md) | [Български](README.bg.md) | [বাংলা](README.bn.md) | [Bosanski](README.bs.md) | [Català](README.ca.md) | [Čeština](README.cs.md) | [Dansk](README.da.md) | [Deutsch](README.de.md) | [Ελληνικά](README.el.md) | **Español** | [Eesti](README.et.md) | [فارسی](README.fa.md) | [Suomi](README.fi.md) | [Français](README.fr.md) | [ગુજરાતી](README.gu.md) | [हिन्दी](README.hi.md) | [Hrvatski](README.hr.md) | [Magyar](README.hu.md) | [Italiano](README.it.md) | [日本語](README.ja.md) | [ಕನ್ನಡ](README.kn.md) | [한국어](README.ko.md) | [Lietuvių](README.lt.md) | [Latviešu](README.lv.md) | [Македонски](README.mk.md) | [മലയാളം](README.ml.md) | [मराठी](README.mr.md) | [Norsk bokmål](README.nb.md) | [Nederlands](README.nl.md) | [Polski](README.pl.md) | [Português](README.pt.md) | [Română](README.ro.md) | [Русский](README.ru.md) | [Slovenčina](README.sk.md) | [Slovenščina](README.sl.md) | [Shqip](README.sq.md) | [Srpski](README.sr.md) | [Svenska](README.sv.md) | [தமிழ்](README.ta.md) | [తెలుగు](README.te.md) | [Türkçe](README.tr.md) | [Українська](README.uk.md) | [اردو](README.ur.md) | [简体中文](README.zh-hans.md) | [繁體中文](README.zh-hant.md)
 
@@ -237,10 +237,10 @@ alias apfel=apfel-run                 # optional, every apfel flag still works
 | `POST /v1/chat/completions` | Compatible | Streaming + non-streaming |
 | `POST /v1/responses` | Compatible | API OpenAI Responses: entrada de cadena/mensaje, `instructions`, streaming (secuencia de eventos canónica), `text.format` (incl. `json_schema`), function tools (non-streaming). Las funciones con estado (`previous_response_id`, `store: true`, `background`, `reasoning`, herramientas alojadas) devuelven 501 explícitos |
 | `POST /v1/responses/input_tokens` | Compatible | Preevaluación de tokens (`client.responses.input_tokens.count(...)`): recuento exacto del tokenizador de Apple, sin generación; 501 por debajo de macOS 26.4 en lugar de una estimación. Ver [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#token-preflight-v1responsesinput_tokens) |
-| `GET /v1/models` | Compatible | Devuelve `apple-foundationmodel` |
-| `GET /health` | Compatible | Disponibilidad del modelo, ventana de contexto, idiomas, capacidades declaradas del modelo (`capabilities`, `capabilities_reported`) |
+| `GET /v1/models` | Compatible | Devuelve `apple-foundationmodel` (general, el predeterminado) y `apple-foundationmodel-content-tagging` (etiquetas, no prosa). Ver [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#content-tagging-model) |
+| `GET /health` | Compatible | Disponibilidad del modelo, ventana de contexto, idiomas, capacidades declaradas del modelo (`capabilities`, `capabilities_reported`), la variante del modelo que sirve (`variant`, p. ej. AFM 3 Core) |
 | `GET /v1/logs`, `/v1/logs/stats` | Solo debug | Requiere `--debug` |
-| Llamada a herramientas | Compatible | `ToolDefinition` nativo + detección JSON. Ver [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
+| Llamada a herramientas | Compatible | La llamada se escribe con generación guiada (`--tool-calling guided`, predeterminado) o como JSON que el servidor analiza (`--tool-calling text`). Ver [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
 | `response_format: json_object` | Compatible | Inyección en el prompt del sistema; se eliminan los bloques markdown de la salida |
 | `response_format: json_schema` | Compatible | Salida conforme al esquema garantizada mediante `DynamicGenerationSchema` de FoundationModels; funciona con `stream: true` |
 | `temperature`, `top_p`, `max_tokens`, `seed` | Compatible | Se asignan a `GenerationOptions`. `top_p` es muestreo nucleus; `temperature` por debajo de 0.001 (incluido 0) equivale a greedy (determinista). Omitir `max_tokens` usa el resto de la ventana de contexto (semántica OpenAI) - ver [Límite de respuesta por defecto](../README.md#default-response-cap-max_tokens) |
@@ -316,7 +316,7 @@ apfel --serve --permissive             # every request uses permissive guardrail
 |------------|--------|
 | Ventana de contexto | **4096 tokens en macOS 26 y en los Mac M1/M2, 8192 tokens en macOS 27 con un chip M3 o más reciente y 12 GB+** (entrada + salida combinadas). No es una constante fija en el código - apfel lee `SystemLanguageModel.contextSize` en tiempo de ejecución; `apfel --model-info` imprime el valor real |
 | Plataforma | macOS 26+, solo Apple Silicon |
-| Modelo | Un solo modelo (`apple-foundationmodel`, ~3 mil millones de parámetros en el dispositivo), no configurable |
+| Modelo | Un solo modelo en el dispositivo (~3 mil millones de parámetros), servido como `apple-foundationmodel` (general) y `apple-foundationmodel-content-tagging` (el adaptador de etiquetado de contenido de Apple; sin herramientas) |
 | Guardarraíles | El sistema de seguridad de Apple puede bloquear prompts inocuos. `--permissive` reduce los falsos positivos ([docs/PERMISSIVE.md](../docs/PERMISSIVE.md)) |
 | Velocidad | En el dispositivo, no a escala de nube - unos segundos por respuesta |
 | Sin embeddings | No disponibles en el dispositivo |

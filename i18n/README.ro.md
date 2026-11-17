@@ -1,4 +1,4 @@
-<!-- i18n-source: 218b563163b08550cb0adc62e957ce6a40e6e1ba -->
+<!-- i18n-source: e8eb4f6c529cf64d34734df80149c4cdbd7dd262 -->
 
 > Tradus din [README-ul în engleză](../README.md). Versiunea în engleză are prioritate.
 
@@ -49,7 +49,7 @@ Compilare din sursă (Command Line Tools cu SDK-ul macOS 27 / Swift 6.3, fără 
 git clone https://github.com/Arthur-Ficial/apfel.git && cd apfel && make install
 ```
 
-Nix, same-day tap, Mint, mise, depanare: [docs/install.md](../docs/install.md).
+Same-day tap, Mint, mise, depanare: [docs/install.md](../docs/install.md).
 
 **Languages:** [English](../README.md) | [العربية](README.ar.md) | [Беларуская](README.be.md) | [Български](README.bg.md) | [বাংলা](README.bn.md) | [Bosanski](README.bs.md) | [Català](README.ca.md) | [Čeština](README.cs.md) | [Dansk](README.da.md) | [Deutsch](README.de.md) | [Ελληνικά](README.el.md) | [Español](README.es.md) | [Eesti](README.et.md) | [فارسی](README.fa.md) | [Suomi](README.fi.md) | [Français](README.fr.md) | [ગુજરાતી](README.gu.md) | [हिन्दी](README.hi.md) | [Hrvatski](README.hr.md) | [Magyar](README.hu.md) | [Italiano](README.it.md) | [日本語](README.ja.md) | [ಕನ್ನಡ](README.kn.md) | [한국어](README.ko.md) | [Lietuvių](README.lt.md) | [Latviešu](README.lv.md) | [Македонски](README.mk.md) | [മലയാളം](README.ml.md) | [मराठी](README.mr.md) | [Norsk bokmål](README.nb.md) | [Nederlands](README.nl.md) | [Polski](README.pl.md) | [Português](README.pt.md) | **Română** | [Русский](README.ru.md) | [Slovenčina](README.sk.md) | [Slovenščina](README.sl.md) | [Shqip](README.sq.md) | [Srpski](README.sr.md) | [Svenska](README.sv.md) | [தமிழ்](README.ta.md) | [తెలుగు](README.te.md) | [Türkçe](README.tr.md) | [Українська](README.uk.md) | [اردو](README.ur.md) | [简体中文](README.zh-hans.md) | [繁體中文](README.zh-hant.md)
 
@@ -237,10 +237,10 @@ alias apfel=apfel-run                 # optional, every apfel flag still works
 | `POST /v1/chat/completions` | Suportat | Cu și fără streaming |
 | `POST /v1/responses` | Suportat | OpenAI Responses API: intrare string/mesaj, `instructions`, streaming (secvență canonică de evenimente), `text.format` (inclusiv `json_schema`), function tools (fără streaming). Funcțiile cu stare (`previous_response_id`, `store: true`, `background`, `reasoning`, hosted tools) returnează 501 sincere |
 | `POST /v1/responses/input_tokens` | Suportat | Verificare prealabilă a tokenilor (`client.responses.input_tokens.count(...)`): număr exact de la tokenizer-ul Apple, fără generare; 501 sub macOS 26.4 în loc de o estimare. Vezi [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#token-preflight-v1responsesinput_tokens) |
-| `GET /v1/models` | Suportat | Returnează `apple-foundationmodel` |
-| `GET /health` | Suportat | Disponibilitatea modelului, fereastra de context, limbi, capabilitățile raportate ale modelului (`capabilities`, `capabilities_reported`) |
+| `GET /v1/models` | Suportat | Returnează `apple-foundationmodel` (general, implicit) și `apple-foundationmodel-content-tagging` (etichete, nu proză). Vezi [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#content-tagging-model) |
+| `GET /health` | Suportat | Disponibilitatea modelului, fereastra de context, limbi, capabilitățile raportate ale modelului (`capabilities`, `capabilities_reported`), varianta de model care servește (`variant`, de ex. AFM 3 Core) |
 | `GET /v1/logs`, `/v1/logs/stats` | Doar pentru debug | Necesită `--debug` |
-| Apelare de instrumente | Suportat | `ToolDefinition` nativ + detecție JSON. Vezi [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
+| Apelare de instrumente | Suportat | Apelul este scris prin generare ghidată (`--tool-calling guided`, implicit) sau ca JSON pe care serverul îl parsează (`--tool-calling text`). Vezi [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
 | `response_format: json_object` | Suportat | Injecție în system prompt; blocurile markdown sunt eliminate din ieșire |
 | `response_format: json_schema` | Suportat | Ieșire garantat conformă cu schema prin FoundationModels `DynamicGenerationSchema`; funcționează cu `stream: true` |
 | `temperature`, `top_p`, `max_tokens`, `seed` | Suportat | Mapate la `GenerationOptions`. `top_p` este nucleus sampling; `temperature` sub 0.001 (inclusiv 0) se mapează la greedy (determinist). Dacă `max_tokens` este omis, se folosește restul ferestrei de context (semantică OpenAI de înlocuire directă) - vezi [Limita implicită a răspunsului](../README.md#default-response-cap-max_tokens) |
@@ -316,7 +316,7 @@ apfel --serve --permissive             # every request uses permissive guardrail
 |------------|--------|
 | Fereastra de context | **4096 de tokeni pe macOS 26 și pe Mac-uri M1/M2, 8192 de tokeni pe macOS 27 cu un cip M3 sau mai nou și 12 GB+** (intrare + ieșire la un loc). Nu este o constantă scrisă în cod - apfel citește `SystemLanguageModel.contextSize` la runtime; `apfel --model-info` afișează valoarea curentă |
 | Platformă | macOS 26+, doar Apple Silicon |
-| Model | Un singur model (`apple-foundationmodel`, ~3B parametri pe dispozitiv), nu poate fi configurat |
+| Model | Un singur model pe dispozitiv (~3B parametri), servit ca `apple-foundationmodel` (general) și `apple-foundationmodel-content-tagging` (adaptorul Apple de etichetare a conținutului; fără instrumente) |
 | Guardrails | Sistemul de siguranță al Apple poate bloca prompturi inofensive. `--permissive` reduce fals pozitivele ([docs/PERMISSIVE.md](../docs/PERMISSIVE.md)) |
 | Viteză | Pe dispozitiv, nu la scară cloud - câteva secunde per răspuns |
 | Fără embeddings | Nu sunt disponibile pe dispozitiv |

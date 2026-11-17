@@ -1,4 +1,4 @@
-<!-- i18n-source: 218b563163b08550cb0adc62e957ce6a40e6e1ba -->
+<!-- i18n-source: e8eb4f6c529cf64d34734df80149c4cdbd7dd262 -->
 
 > Prevedeno iz [angleškega README](../README.md). Angleška različica je merodajna.
 
@@ -49,7 +49,7 @@ Gradnja iz izvorne kode (Command Line Tools z macOS 27 SDK / Swift 6.3, brez Xco
 git clone https://github.com/Arthur-Ficial/apfel.git && cd apfel && make install
 ```
 
-Nix, same-day tap, Mint, mise, odpravljanje težav: [docs/install.md](../docs/install.md).
+Same-day tap, Mint, mise, odpravljanje težav: [docs/install.md](../docs/install.md).
 
 **Languages:** [English](../README.md) | [العربية](README.ar.md) | [Беларуская](README.be.md) | [Български](README.bg.md) | [বাংলা](README.bn.md) | [Bosanski](README.bs.md) | [Català](README.ca.md) | [Čeština](README.cs.md) | [Dansk](README.da.md) | [Deutsch](README.de.md) | [Ελληνικά](README.el.md) | [Español](README.es.md) | [Eesti](README.et.md) | [فارسی](README.fa.md) | [Suomi](README.fi.md) | [Français](README.fr.md) | [ગુજરાતી](README.gu.md) | [हिन्दी](README.hi.md) | [Hrvatski](README.hr.md) | [Magyar](README.hu.md) | [Italiano](README.it.md) | [日本語](README.ja.md) | [ಕನ್ನಡ](README.kn.md) | [한국어](README.ko.md) | [Lietuvių](README.lt.md) | [Latviešu](README.lv.md) | [Македонски](README.mk.md) | [മലയാളം](README.ml.md) | [मराठी](README.mr.md) | [Norsk bokmål](README.nb.md) | [Nederlands](README.nl.md) | [Polski](README.pl.md) | [Português](README.pt.md) | [Română](README.ro.md) | [Русский](README.ru.md) | [Slovenčina](README.sk.md) | **Slovenščina** | [Shqip](README.sq.md) | [Srpski](README.sr.md) | [Svenska](README.sv.md) | [தமிழ்](README.ta.md) | [తెలుగు](README.te.md) | [Türkçe](README.tr.md) | [Українська](README.uk.md) | [اردو](README.ur.md) | [简体中文](README.zh-hans.md) | [繁體中文](README.zh-hant.md)
 
@@ -237,10 +237,10 @@ alias apfel=apfel-run                 # optional, every apfel flag still works
 | `POST /v1/chat/completions` | Podprto | Pretočno + nepretočno |
 | `POST /v1/responses` | Podprto | OpenAI Responses API: vnos kot niz/sporočilo, `instructions`, pretakanje (kanonično zaporedje dogodkov), `text.format` (vklj. `json_schema`), funkcijska orodja (nepretočno). Funkcije s stanjem (`previous_response_id`, `store: true`, `background`, `reasoning`, gostovana orodja) vrnejo pošten 501 |
 | `POST /v1/responses/input_tokens` | Podprto | Predhodni izračun tokenov (`client.responses.input_tokens.count(...)`): natančno štetje z Applovim tokenizatorjem, brez generiranja; 501 pod macOS 26.4 namesto ocene. Glejte [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#token-preflight-v1responsesinput_tokens) |
-| `GET /v1/models` | Podprto | Vrne `apple-foundationmodel` |
-| `GET /health` | Podprto | Razpoložljivost modela, okno konteksta, jeziki, sporočene zmožnosti modela (`capabilities`, `capabilities_reported`) |
+| `GET /v1/models` | Podprto | Vrne `apple-foundationmodel` (splošni, privzeti) in `apple-foundationmodel-content-tagging` (oznake, ne proza). Glejte [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#content-tagging-model) |
+| `GET /health` | Podprto | Razpoložljivost modela, okno konteksta, jeziki, sporočene zmožnosti modela (`capabilities`, `capabilities_reported`), različica modela, ki streže (`variant`, npr. AFM 3 Core) |
 | `GET /v1/logs`, `/v1/logs/stats` | Samo za razhroščevanje | Zahteva `--debug` |
-| Klicanje orodij | Podprto | Izvorni `ToolDefinition` + zaznavanje JSON. Glejte [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
+| Klicanje orodij | Podprto | Klic se zapiše z vodenim generiranjem (`--tool-calling guided`, privzeto) ali kot JSON, ki ga razčleni strežnik (`--tool-calling text`). Glejte [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
 | `response_format: json_object` | Podprto | Vstavljanje v sistemski poziv; markdown ograje se iz izpisa odstranijo |
 | `response_format: json_schema` | Podprto | Zagotovljen izpis, skladen s shemo, prek FoundationModels `DynamicGenerationSchema`; deluje s `stream: true` |
 | `temperature`, `top_p`, `max_tokens`, `seed` | Podprto | Preslikano v `GenerationOptions`. `top_p` je nucleus sampling; `temperature` pod 0.001 (vključno z 0) se preslika v greedy (deterministično). Če `max_tokens` izpustite, se uporabi preostalo okno konteksta (semantika kot pri OpenAI) - glejte [Privzeta omejitev odgovora](../README.md#default-response-cap-max_tokens) |
@@ -316,7 +316,7 @@ apfel --serve --permissive             # every request uses permissive guardrail
 |------------|--------|
 | Okno konteksta | **4096 tokenov na macOS 26 in na računalnikih Mac z M1/M2, 8192 tokenov na macOS 27 s čipom M3 ali novejšim in 12 GB+** (vhod + izhod skupaj). Ni trdo zakodirana konstanta - apfel med izvajanjem prebere `SystemLanguageModel.contextSize`; `apfel --model-info` izpiše trenutno vrednost |
 | Platforma | Samo macOS 26+, Apple Silicon |
-| Model | En model (`apple-foundationmodel`, ~3B parametrov na napravi), ni nastavljiv |
+| Model | En model na napravi (~3B parametrov), na voljo kot `apple-foundationmodel` (splošni) in `apple-foundationmodel-content-tagging` (Applov adapter za označevanje vsebine; brez orodij) |
 | Zaščitne ograje | Applov varnostni sistem lahko blokira neškodljive pozive. `--permissive` zmanjša lažne pozitivne zadetke ([docs/PERMISSIVE.md](../docs/PERMISSIVE.md)) |
 | Hitrost | Na napravi, ne v obsegu oblaka - nekaj sekund na odgovor |
 | Brez embeddings | Na napravi niso na voljo |

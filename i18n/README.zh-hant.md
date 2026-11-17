@@ -1,4 +1,4 @@
-<!-- i18n-source: 218b563163b08550cb0adc62e957ce6a40e6e1ba -->
+<!-- i18n-source: e8eb4f6c529cf64d34734df80149c4cdbd7dd262 -->
 
 > 譯自[英文 README](../README.md)。以英文版為準。
 
@@ -49,7 +49,7 @@ brew upgrade apfel
 git clone https://github.com/Arthur-Ficial/apfel.git && cd apfel && make install
 ```
 
-Nix、當日更新的 tap、Mint、mise、疑難排解:[docs/install.md](../docs/install.md)。
+當日更新的 tap、Mint、mise、疑難排解:[docs/install.md](../docs/install.md)。
 
 **Languages:** [English](../README.md) | [العربية](README.ar.md) | [Беларуская](README.be.md) | [Български](README.bg.md) | [বাংলা](README.bn.md) | [Bosanski](README.bs.md) | [Català](README.ca.md) | [Čeština](README.cs.md) | [Dansk](README.da.md) | [Deutsch](README.de.md) | [Ελληνικά](README.el.md) | [Español](README.es.md) | [Eesti](README.et.md) | [فارسی](README.fa.md) | [Suomi](README.fi.md) | [Français](README.fr.md) | [ગુજરાતી](README.gu.md) | [हिन्दी](README.hi.md) | [Hrvatski](README.hr.md) | [Magyar](README.hu.md) | [Italiano](README.it.md) | [日本語](README.ja.md) | [ಕನ್ನಡ](README.kn.md) | [한국어](README.ko.md) | [Lietuvių](README.lt.md) | [Latviešu](README.lv.md) | [Македонски](README.mk.md) | [മലയാളം](README.ml.md) | [मराठी](README.mr.md) | [Norsk bokmål](README.nb.md) | [Nederlands](README.nl.md) | [Polski](README.pl.md) | [Português](README.pt.md) | [Română](README.ro.md) | [Русский](README.ru.md) | [Slovenčina](README.sk.md) | [Slovenščina](README.sl.md) | [Shqip](README.sq.md) | [Srpski](README.sr.md) | [Svenska](README.sv.md) | [தமிழ்](README.ta.md) | [తెలుగు](README.te.md) | [Türkçe](README.tr.md) | [Українська](README.uk.md) | [اردو](README.ur.md) | [简体中文](README.zh-hans.md) | **繁體中文**
 
@@ -237,10 +237,10 @@ alias apfel=apfel-run                 # optional, every apfel flag still works
 | `POST /v1/chat/completions` | 支援 | 串流 + 非串流 |
 | `POST /v1/responses` | 支援 | OpenAI Responses API:字串/訊息輸入、`instructions`、串流(標準事件序列)、`text.format`(包含 `json_schema`)、函式工具(非串流)。有狀態的功能(`previous_response_id`、`store: true`、`background`、`reasoning`、代管工具)會如實回傳 501 |
 | `POST /v1/responses/input_tokens` | 支援 | Token 預檢(`client.responses.input_tokens.count(...)`):由 Apple 的分詞器給出精確計數,不進行生成;低於 macOS 26.4 時回傳 501,而不是給出估算值。參見 [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#token-preflight-v1responsesinput_tokens) |
-| `GET /v1/models` | 支援 | 回傳 `apple-foundationmodel` |
-| `GET /health` | 支援 | 模型可用性、上下文視窗、語言、回報的模型能力(`capabilities`、`capabilities_reported`) |
+| `GET /v1/models` | 支援 | 回傳 `apple-foundationmodel`(通用,預設)和 `apple-foundationmodel-content-tagging`(標籤,非散文)。參見 [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#content-tagging-model) |
+| `GET /health` | 支援 | 模型可用性、上下文視窗、語言、回報的模型能力(`capabilities`、`capabilities_reported`)、目前服務的模型變體(`variant`,例如 AFM 3 Core) |
 | `GET /v1/logs`, `/v1/logs/stats` | 僅限除錯 | 需要 `--debug` |
-| 工具呼叫 | 支援 | 原生 `ToolDefinition` + JSON 偵測。參見 [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
+| 工具呼叫 | 支援 | 呼叫透過引導式生成寫出(`--tool-calling guided`,預設),或以伺服器解析的 JSON 形式寫出(`--tool-calling text`)。參見 [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
 | `response_format: json_object` | 支援 | 透過注入 system prompt 實現;輸出中的 markdown 程式碼圍欄會被移除 |
 | `response_format: json_schema` | 支援 | 透過 FoundationModels `DynamicGenerationSchema` 保證輸出符合 schema;可與 `stream: true` 搭配使用 |
 | `temperature`, `top_p`, `max_tokens`, `seed` | 支援 | 對應到 `GenerationOptions`。`top_p` 為核採樣;`temperature` 低於 0.001(含 0)時對應為貪婪解碼(確定性)。省略 `max_tokens` 時使用剩餘的上下文視窗(與 OpenAI 的語意完全一致)- 參見[預設回應上限](../README.md#default-response-cap-max_tokens) |
@@ -316,7 +316,7 @@ apfel --serve --permissive             # every request uses permissive guardrail
 |------------|--------|
 | 上下文視窗 | **macOS 26 以及 M1/M2 Mac 上為 4096 個 token,搭載 M3 或更新晶片且記憶體 12 GB 以上、執行 macOS 27 的 Mac 上為 8192 個 token**(輸入 + 輸出合計)。並非寫死的常數 - apfel 在執行階段讀取 `SystemLanguageModel.contextSize`;`apfel --model-info` 會印出目前的實際值 |
 | 平台 | 僅限 macOS 26+ 與 Apple Silicon |
-| 模型 | 只有一個模型(`apple-foundationmodel`,裝置端約 3B 參數),不可設定 |
+| 模型 | 一個裝置端模型(約 3B 參數),以 `apple-foundationmodel`(通用)與 `apple-foundationmodel-content-tagging`(Apple 的內容標記轉接器;不支援工具)兩種身分提供 |
 | 安全護欄 | Apple 的安全系統可能會攔截無害的 prompt。`--permissive` 可減少誤判([docs/PERMISSIVE.md](../docs/PERMISSIVE.md)) |
 | 速度 | 在裝置端執行,不是雲端規模 - 每次回應需要幾秒鐘 |
 | 無 embeddings | 裝置端不提供 |

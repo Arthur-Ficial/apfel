@@ -1,4 +1,4 @@
-<!-- i18n-source: 218b563163b08550cb0adc62e957ce6a40e6e1ba -->
+<!-- i18n-source: e8eb4f6c529cf64d34734df80149c4cdbd7dd262 -->
 
 > Përkthyer nga [README në anglisht](../README.md). Versioni anglisht është autoritativ.
 
@@ -49,7 +49,7 @@ Ndërtimi nga burimi (Command Line Tools me SDK-në e macOS 27 / Swift 6.3, pa X
 git clone https://github.com/Arthur-Ficial/apfel.git && cd apfel && make install
 ```
 
-Nix, tap i së njëjtës ditë, Mint, mise, zgjidhja e problemeve: [docs/install.md](../docs/install.md).
+Tap i së njëjtës ditë, Mint, mise, zgjidhja e problemeve: [docs/install.md](../docs/install.md).
 
 **Languages:** [English](../README.md) | [العربية](README.ar.md) | [Беларуская](README.be.md) | [Български](README.bg.md) | [বাংলা](README.bn.md) | [Bosanski](README.bs.md) | [Català](README.ca.md) | [Čeština](README.cs.md) | [Dansk](README.da.md) | [Deutsch](README.de.md) | [Ελληνικά](README.el.md) | [Español](README.es.md) | [Eesti](README.et.md) | [فارسی](README.fa.md) | [Suomi](README.fi.md) | [Français](README.fr.md) | [ગુજરાતી](README.gu.md) | [हिन्दी](README.hi.md) | [Hrvatski](README.hr.md) | [Magyar](README.hu.md) | [Italiano](README.it.md) | [日本語](README.ja.md) | [ಕನ್ನಡ](README.kn.md) | [한국어](README.ko.md) | [Lietuvių](README.lt.md) | [Latviešu](README.lv.md) | [Македонски](README.mk.md) | [മലയാളം](README.ml.md) | [मराठी](README.mr.md) | [Norsk bokmål](README.nb.md) | [Nederlands](README.nl.md) | [Polski](README.pl.md) | [Português](README.pt.md) | [Română](README.ro.md) | [Русский](README.ru.md) | [Slovenčina](README.sk.md) | [Slovenščina](README.sl.md) | **Shqip** | [Srpski](README.sr.md) | [Svenska](README.sv.md) | [தமிழ்](README.ta.md) | [తెలుగు](README.te.md) | [Türkçe](README.tr.md) | [Українська](README.uk.md) | [اردو](README.ur.md) | [简体中文](README.zh-hans.md) | [繁體中文](README.zh-hant.md)
 
@@ -237,10 +237,10 @@ alias apfel=apfel-run                 # optional, every apfel flag still works
 | `POST /v1/chat/completions` | I mbështetur | Me streaming dhe pa streaming |
 | `POST /v1/responses` | I mbështetur | API Responses e OpenAI: hyrje string/mesazh, `instructions`, streaming (sekuencë kanonike ngjarjesh), `text.format` (përfshirë `json_schema`), mjete funksioni (pa streaming). Veçoritë me gjendje (`previous_response_id`, `store: true`, `background`, `reasoning`, mjete të hostuara) kthejnë 501 të sinqerta |
 | `POST /v1/responses/input_tokens` | I mbështetur | Parallogaritje tokenësh (`client.responses.input_tokens.count(...)`): numërim i saktë nga tokenizuesi i Apple, pa gjenerim; 501 nën macOS 26.4 në vend të një vlerësimi. Shih [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#token-preflight-v1responsesinput_tokens) |
-| `GET /v1/models` | I mbështetur | Kthen `apple-foundationmodel` |
-| `GET /health` | I mbështetur | Disponueshmëria e modelit, dritarja e kontekstit, gjuhët, aftësitë e raportuara të modelit (`capabilities`, `capabilities_reported`) |
+| `GET /v1/models` | I mbështetur | Kthen `apple-foundationmodel` (i përgjithshëm, i parazgjedhuri) dhe `apple-foundationmodel-content-tagging` (etiketa, jo prozë). Shih [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#content-tagging-model) |
+| `GET /health` | I mbështetur | Disponueshmëria e modelit, dritarja e kontekstit, gjuhët, aftësitë e raportuara të modelit (`capabilities`, `capabilities_reported`), varianti i modelit që shërben (`variant`, p.sh. AFM 3 Core) |
 | `GET /v1/logs`, `/v1/logs/stats` | Vetëm për debug | Kërkon `--debug` |
-| Tool calling | I mbështetur | `ToolDefinition` natyral + zbulim JSON. Shih [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
+| Tool calling | I mbështetur | Thirrja shkruhet përmes gjenerimit të drejtuar (`--tool-calling guided`, parazgjedhje) ose si JSON që serveri e analizon (`--tool-calling text`). Shih [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
 | `response_format: json_object` | I mbështetur | Injektim në system prompt; fence-t markdown hiqen nga dalja |
 | `response_format: json_schema` | I mbështetur | Dalje e garantuar në përputhje me skemën përmes `DynamicGenerationSchema` të FoundationModels; funksionon me `stream: true` |
 | `temperature`, `top_p`, `max_tokens`, `seed` | I mbështetur | Përputhen me `GenerationOptions`. `top_p` është nucleus sampling; `temperature` nën 0.001 (përfshirë 0) përputhet me greedy (deterministik). Nëse `max_tokens` lihet pa vënë, përdoret dritarja e mbetur e kontekstit (semantikë OpenAI si zëvendësim i drejtpërdrejtë) - shih [Kufiri i parazgjedhur i përgjigjes](../README.md#default-response-cap-max_tokens) |
@@ -316,7 +316,7 @@ apfel --serve --permissive             # every request uses permissive guardrail
 |---------|--------|
 | Dritarja e kontekstit | **4096 tokenë në macOS 26 dhe në Mac-et M1/M2, 8192 tokenë në macOS 27 me çip M3 ose më të ri dhe 12 GB+** (hyrje + dalje së bashku). Nuk është konstante e fiksuar në kod - apfel lexon `SystemLanguageModel.contextSize` gjatë ekzekutimit; `apfel --model-info` shfaq vlerën aktuale |
 | Platforma | macOS 26+, vetëm Apple Silicon |
-| Modeli | Një model i vetëm (`apple-foundationmodel`, ~3B parametra në pajisje), i pakonfigurueshëm |
+| Modeli | Një model i vetëm në pajisje (~3B parametra), i ofruar si `apple-foundationmodel` (i përgjithshëm) dhe `apple-foundationmodel-content-tagging` (adaptori i Apple për etiketimin e përmbajtjes; pa mjete) |
 | Guardrails | Sistemi i sigurisë i Apple mund të bllokojë prompt-e të padëmshme. `--permissive` ul rastet e rreme pozitive ([docs/PERMISSIVE.md](../docs/PERMISSIVE.md)) |
 | Shpejtësia | Në pajisje, jo në shkallë cloud - disa sekonda për përgjigje |
 | Pa embeddings | Nuk disponohen në pajisje |

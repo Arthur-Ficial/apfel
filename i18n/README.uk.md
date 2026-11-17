@@ -1,4 +1,4 @@
-<!-- i18n-source: 218b563163b08550cb0adc62e957ce6a40e6e1ba -->
+<!-- i18n-source: e8eb4f6c529cf64d34734df80149c4cdbd7dd262 -->
 
 > Переклад [англійського README](../README.md). Англійська версія є головною.
 
@@ -49,7 +49,7 @@ brew upgrade apfel
 git clone https://github.com/Arthur-Ficial/apfel.git && cd apfel && make install
 ```
 
-Nix, same-day tap, Mint, mise, усунення несправностей: [docs/install.md](../docs/install.md).
+Same-day tap, Mint, mise, усунення несправностей: [docs/install.md](../docs/install.md).
 
 **Languages:** [English](../README.md) | [العربية](README.ar.md) | [Беларуская](README.be.md) | [Български](README.bg.md) | [বাংলা](README.bn.md) | [Bosanski](README.bs.md) | [Català](README.ca.md) | [Čeština](README.cs.md) | [Dansk](README.da.md) | [Deutsch](README.de.md) | [Ελληνικά](README.el.md) | [Español](README.es.md) | [Eesti](README.et.md) | [فارسی](README.fa.md) | [Suomi](README.fi.md) | [Français](README.fr.md) | [ગુજરાતી](README.gu.md) | [हिन्दी](README.hi.md) | [Hrvatski](README.hr.md) | [Magyar](README.hu.md) | [Italiano](README.it.md) | [日本語](README.ja.md) | [ಕನ್ನಡ](README.kn.md) | [한국어](README.ko.md) | [Lietuvių](README.lt.md) | [Latviešu](README.lv.md) | [Македонски](README.mk.md) | [മലയാളം](README.ml.md) | [मराठी](README.mr.md) | [Norsk bokmål](README.nb.md) | [Nederlands](README.nl.md) | [Polski](README.pl.md) | [Português](README.pt.md) | [Română](README.ro.md) | [Русский](README.ru.md) | [Slovenčina](README.sk.md) | [Slovenščina](README.sl.md) | [Shqip](README.sq.md) | [Srpski](README.sr.md) | [Svenska](README.sv.md) | [தமிழ்](README.ta.md) | [తెలుగు](README.te.md) | [Türkçe](README.tr.md) | **Українська** | [اردو](README.ur.md) | [简体中文](README.zh-hans.md) | [繁體中文](README.zh-hant.md)
 
@@ -237,10 +237,10 @@ alias apfel=apfel-run                 # optional, every apfel flag still works
 | `POST /v1/chat/completions` | Підтримується | Streaming і без streaming |
 | `POST /v1/responses` | Підтримується | OpenAI Responses API: рядок/повідомлення на вході, `instructions`, streaming (канонічна послідовність подій), `text.format` (зокрема `json_schema`), function tools (без streaming). Функції зі станом (`previous_response_id`, `store: true`, `background`, `reasoning`, hosted tools) повертають чесні 501 |
 | `POST /v1/responses/input_tokens` | Підтримується | Попередня перевірка токенів (`client.responses.input_tokens.count(...)`): точний підрахунок токенізатором Apple, без генерації; 501 на macOS нижче 26.4 замість оцінки. Дивіться [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#token-preflight-v1responsesinput_tokens) |
-| `GET /v1/models` | Підтримується | Повертає `apple-foundationmodel` |
-| `GET /health` | Підтримується | Доступність моделі, контекстне вікно, мови, заявлені можливості моделі (`capabilities`, `capabilities_reported`) |
+| `GET /v1/models` | Підтримується | Повертає `apple-foundationmodel` (загальна, за замовчуванням) і `apple-foundationmodel-content-tagging` (мітки, не зв'язний текст). Дивіться [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#content-tagging-model) |
+| `GET /health` | Підтримується | Доступність моделі, контекстне вікно, мови, заявлені можливості моделі (`capabilities`, `capabilities_reported`), варіант моделі, що обслуговує запити (`variant`, напр. AFM 3 Core) |
 | `GET /v1/logs`, `/v1/logs/stats` | Лише для налагодження | Потрібен `--debug` |
-| Виклик інструментів | Підтримується | Нативний `ToolDefinition` + виявлення JSON. Дивіться [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
+| Виклик інструментів | Підтримується | Виклик формується через керовану генерацію (`--tool-calling guided`, за замовчуванням) або як JSON, який розбирає сервер (`--tool-calling text`). Дивіться [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
 | `response_format: json_object` | Підтримується | Ін'єкція в системний prompt; markdown-блоки видаляються з виводу |
 | `response_format: json_schema` | Підтримується | Гарантований вивід, що відповідає схемі, через FoundationModels `DynamicGenerationSchema`; працює з `stream: true` |
 | `temperature`, `top_p`, `max_tokens`, `seed` | Підтримується | Відображаються на `GenerationOptions`. `top_p` - це nucleus sampling; `temperature` нижче 0.001 (включно з 0) відповідає greedy (детермінований режим). Якщо `max_tokens` не вказано, використовується решта контекстного вікна (семантика OpenAI) - дивіться [Типовий ліміт відповіді](../README.md#default-response-cap-max_tokens) |
@@ -316,7 +316,7 @@ apfel --serve --permissive             # every request uses permissive guardrail
 |------------|--------|
 | Контекстне вікно | **4096 токенів на macOS 26 і на Mac з M1/M2, 8192 токени на macOS 27 з чипом M3 або новішим і 12 GB+** (вхід + вихід разом). Не жорстко закодована константа - apfel читає `SystemLanguageModel.contextSize` під час виконання; `apfel --model-info` виводить актуальне значення |
 | Платформа | macOS 26+, лише Apple Silicon |
-| Модель | Одна модель (`apple-foundationmodel`, ~3B параметрів на пристрої), не налаштовується |
+| Модель | Одна модель на пристрої (~3B параметрів), доступна як `apple-foundationmodel` (загальна) і `apple-foundationmodel-content-tagging` (адаптер Apple для тегування контенту; без інструментів) |
 | Guardrails | Система безпеки Apple може блокувати нешкідливі prompt-и. `--permissive` зменшує хибні спрацювання ([docs/PERMISSIVE.md](../docs/PERMISSIVE.md)) |
 | Швидкість | На пристрої, а не в масштабі хмари - кілька секунд на відповідь |
 | Без embeddings | Недоступні на пристрої |

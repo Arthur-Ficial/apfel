@@ -1,4 +1,4 @@
-<!-- i18n-source: 218b563163b08550cb0adc62e957ce6a40e6e1ba -->
+<!-- i18n-source: e8eb4f6c529cf64d34734df80149c4cdbd7dd262 -->
 
 > Išversta iš [angliško README](../README.md). Autoritetinga yra angliška versija.
 
@@ -49,7 +49,7 @@ Kompiliavimas iš šaltinio (Command Line Tools su macOS 27 SDK / Swift 6.3, be 
 git clone https://github.com/Arthur-Ficial/apfel.git && cd apfel && make install
 ```
 
-Nix, tą pačią dieną atnaujinamas tap, Mint, mise, trikčių šalinimas: [docs/install.md](../docs/install.md).
+Tą pačią dieną atnaujinamas tap, Mint, mise, trikčių šalinimas: [docs/install.md](../docs/install.md).
 
 **Languages:** [English](../README.md) | [العربية](README.ar.md) | [Беларуская](README.be.md) | [Български](README.bg.md) | [বাংলা](README.bn.md) | [Bosanski](README.bs.md) | [Català](README.ca.md) | [Čeština](README.cs.md) | [Dansk](README.da.md) | [Deutsch](README.de.md) | [Ελληνικά](README.el.md) | [Español](README.es.md) | [Eesti](README.et.md) | [فارسی](README.fa.md) | [Suomi](README.fi.md) | [Français](README.fr.md) | [ગુજરાતી](README.gu.md) | [हिन्दी](README.hi.md) | [Hrvatski](README.hr.md) | [Magyar](README.hu.md) | [Italiano](README.it.md) | [日本語](README.ja.md) | [ಕನ್ನಡ](README.kn.md) | [한국어](README.ko.md) | **Lietuvių** | [Latviešu](README.lv.md) | [Македонски](README.mk.md) | [മലയാളം](README.ml.md) | [मराठी](README.mr.md) | [Norsk bokmål](README.nb.md) | [Nederlands](README.nl.md) | [Polski](README.pl.md) | [Português](README.pt.md) | [Română](README.ro.md) | [Русский](README.ru.md) | [Slovenčina](README.sk.md) | [Slovenščina](README.sl.md) | [Shqip](README.sq.md) | [Srpski](README.sr.md) | [Svenska](README.sv.md) | [தமிழ்](README.ta.md) | [తెలుగు](README.te.md) | [Türkçe](README.tr.md) | [Українська](README.uk.md) | [اردو](README.ur.md) | [简体中文](README.zh-hans.md) | [繁體中文](README.zh-hant.md)
 
@@ -237,10 +237,10 @@ alias apfel=apfel-run                 # optional, every apfel flag still works
 | `POST /v1/chat/completions` | Palaikoma | Su srautiniu perdavimu ir be jo |
 | `POST /v1/responses` | Palaikoma | OpenAI Responses API: įvestis kaip string/žinutė, `instructions`, srautinis perdavimas (kanoninė įvykių seka), `text.format` (įskaitant `json_schema`), funkciniai įrankiai (be srauto). Būsenos funkcijos (`previous_response_id`, `store: true`, `background`, `reasoning`, talpinami įrankiai) grąžina sąžiningą 501 |
 | `POST /v1/responses/input_tokens` | Palaikoma | Išankstinis žetonų skaičiavimas (`client.responses.input_tokens.count(...)`): tikslus skaičius iš Apple tokenizatoriaus, be generavimo; žemiau macOS 26.4 grąžina 501, o ne įvertį. Žr. [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#token-preflight-v1responsesinput_tokens) |
-| `GET /v1/models` | Palaikoma | Grąžina `apple-foundationmodel` |
-| `GET /health` | Palaikoma | Modelio prieinamumas, konteksto langas, kalbos, pranešamos modelio galimybės (`capabilities`, `capabilities_reported`) |
+| `GET /v1/models` | Palaikoma | Grąžina `apple-foundationmodel` (bendrasis, numatytasis) ir `apple-foundationmodel-content-tagging` (žymės, ne rišlus tekstas). Žr. [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#content-tagging-model) |
+| `GET /health` | Palaikoma | Modelio prieinamumas, konteksto langas, kalbos, pranešamos modelio galimybės (`capabilities`, `capabilities_reported`), aptarnaujantis modelio variantas (`variant`, pvz., AFM 3 Core) |
 | `GET /v1/logs`, `/v1/logs/stats` | Tik derinimui | Reikia `--debug` |
-| Įrankių iškvietimas | Palaikoma | Natyvus `ToolDefinition` + JSON aptikimas. Žr. [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
+| Įrankių iškvietimas | Palaikoma | Iškvietimas rašomas valdomu generavimu (`--tool-calling guided`, numatytasis) arba kaip JSON, kurį išanalizuoja serveris (`--tool-calling text`). Žr. [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
 | `response_format: json_object` | Palaikoma | Įterpimas į sistemos promptą; markdown tvoros iš išvesties pašalinamos |
 | `response_format: json_schema` | Palaikoma | Garantuota schemą atitinkanti išvestis per FoundationModels `DynamicGenerationSchema`; veikia su `stream: true` |
 | `temperature`, `top_p`, `max_tokens`, `seed` | Palaikoma | Susiejama su `GenerationOptions`. `top_p` yra nucleus sampling; `temperature` žemiau 0.001 (įskaitant 0) susiejama su greedy (deterministiniu) mėginiu. Praleidus `max_tokens`, naudojamas likęs konteksto langas (tiesioginio OpenAI pakaitalo semantika) - žr. [Numatytasis atsakymo limitas](../README.md#default-response-cap-max_tokens) |
@@ -316,7 +316,7 @@ apfel --serve --permissive             # every request uses permissive guardrail
 |-------------|---------|
 | Konteksto langas | **4096 žetonai macOS 26 ir M1/M2 Mac kompiuteriuose, 8192 žetonai macOS 27 su M3 ar naujesniu lustu ir 12 GB+** (įvestis + išvestis kartu). Tai ne užkoduota konstanta - apfel nuskaito `SystemLanguageModel.contextSize` vykdymo metu; `apfel --model-info` parodo dabartinę reikšmę |
 | Platforma | macOS 26+, tik Apple Silicon |
-| Modelis | Vienas modelis (`apple-foundationmodel`, ~3 mlrd. parametrų įrenginyje), nekonfigūruojamas |
+| Modelis | Vienas įrenginyje veikiantis modelis (~3 mlrd. parametrų), teikiamas kaip `apple-foundationmodel` (bendrasis) ir `apple-foundationmodel-content-tagging` (Apple turinio žymėjimo adapteris; be įrankių) |
 | Guardrails | Apple saugumo sistema gali blokuoti nekenksmingus promptus. `--permissive` sumažina klaidingų aliarmų ([docs/PERMISSIVE.md](../docs/PERMISSIVE.md)) |
 | Greitis | Įrenginyje, ne debesies mastu - keletas sekundžių vienam atsakymui |
 | Jokių embeddings | Įrenginyje nepasiekiama |

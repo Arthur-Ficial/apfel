@@ -1,4 +1,4 @@
-<!-- i18n-source: 218b563163b08550cb0adc62e957ce6a40e6e1ba -->
+<!-- i18n-source: e8eb4f6c529cf64d34734df80149c4cdbd7dd262 -->
 
 > Az [angol README](../README.md) fordítása. Az angol változat a mérvadó.
 
@@ -49,7 +49,7 @@ Fordítás forráskódból (Command Line Tools a macOS 27 SDK-val / Swift 6.3, X
 git clone https://github.com/Arthur-Ficial/apfel.git && cd apfel && make install
 ```
 
-Nix, same-day tap, Mint, mise, hibaelhárítás: [docs/install.md](../docs/install.md).
+Same-day tap, Mint, mise, hibaelhárítás: [docs/install.md](../docs/install.md).
 
 **Languages:** [English](../README.md) | [العربية](README.ar.md) | [Беларуская](README.be.md) | [Български](README.bg.md) | [বাংলা](README.bn.md) | [Bosanski](README.bs.md) | [Català](README.ca.md) | [Čeština](README.cs.md) | [Dansk](README.da.md) | [Deutsch](README.de.md) | [Ελληνικά](README.el.md) | [Español](README.es.md) | [Eesti](README.et.md) | [فارسی](README.fa.md) | [Suomi](README.fi.md) | [Français](README.fr.md) | [ગુજરાતી](README.gu.md) | [हिन्दी](README.hi.md) | [Hrvatski](README.hr.md) | **Magyar** | [Italiano](README.it.md) | [日本語](README.ja.md) | [ಕನ್ನಡ](README.kn.md) | [한국어](README.ko.md) | [Lietuvių](README.lt.md) | [Latviešu](README.lv.md) | [Македонски](README.mk.md) | [മലയാളം](README.ml.md) | [मराठी](README.mr.md) | [Norsk bokmål](README.nb.md) | [Nederlands](README.nl.md) | [Polski](README.pl.md) | [Português](README.pt.md) | [Română](README.ro.md) | [Русский](README.ru.md) | [Slovenčina](README.sk.md) | [Slovenščina](README.sl.md) | [Shqip](README.sq.md) | [Srpski](README.sr.md) | [Svenska](README.sv.md) | [தமிழ்](README.ta.md) | [తెలుగు](README.te.md) | [Türkçe](README.tr.md) | [Українська](README.uk.md) | [اردو](README.ur.md) | [简体中文](README.zh-hans.md) | [繁體中文](README.zh-hant.md)
 
@@ -237,10 +237,10 @@ alias apfel=apfel-run                 # optional, every apfel flag still works
 | `POST /v1/chat/completions` | Támogatott | Streaminggel és anélkül |
 | `POST /v1/responses` | Támogatott | OpenAI Responses API: string/üzenet bemenet, `instructions`, streaming (kanonikus eseménysorrend), `text.format` (beleértve a `json_schema`-t), function tools (streaming nélkül). Az állapotfüggő funkciók (`previous_response_id`, `store: true`, `background`, `reasoning`, hosted tools) őszinte 501-et adnak vissza |
 | `POST /v1/responses/input_tokens` | Támogatott | Token-előellenőrzés (`client.responses.input_tokens.count(...)`): pontos szám az Apple tokenizeréből, generálás nélkül; macOS 26.4 alatt 501 becslés helyett. Lásd [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#token-preflight-v1responsesinput_tokens) |
-| `GET /v1/models` | Támogatott | `apple-foundationmodel`-t ad vissza |
-| `GET /health` | Támogatott | Modell-elérhetőség, kontextusablak, nyelvek, a modell jelentett képességei (`capabilities`, `capabilities_reported`) |
+| `GET /v1/models` | Támogatott | Az `apple-foundationmodel` (általános, alapértelmezett) és a `apple-foundationmodel-content-tagging` (címkék, nem folyó szöveg) modellt adja vissza. Lásd [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#content-tagging-model) |
+| `GET /health` | Támogatott | Modell-elérhetőség, kontextusablak, nyelvek, a modell jelentett képességei (`capabilities`, `capabilities_reported`), a kiszolgáló modellváltozat (`variant`, pl. AFM 3 Core) |
 | `GET /v1/logs`, `/v1/logs/stats` | Csak debug | `--debug` szükséges |
-| Eszközhívás | Támogatott | Natív `ToolDefinition` + JSON-felismerés. Lásd [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
+| Eszközhívás | Támogatott | A hívás irányított generálással (`--tool-calling guided`, alapértelmezett) vagy a szerver által feldolgozott JSON-ként (`--tool-calling text`) készül. Lásd [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
 | `response_format: json_object` | Támogatott | System prompt-beillesztés; a markdown kódblokk-keretek lekerülnek a kimenetről |
 | `response_format: json_schema` | Támogatott | Garantáltan sémának megfelelő kimenet a FoundationModels `DynamicGenerationSchema`-n keresztül; működik `stream: true`-val |
 | `temperature`, `top_p`, `max_tokens`, `seed` | Támogatott | A `GenerationOptions`-ra képezve. A `top_p` nucleus sampling; a 0.001 alatti `temperature` (a 0 is) greedy-re (determinisztikusra) képeződik. A `max_tokens` elhagyása a kontextusablak hátralévő részét használja (OpenAI-szemantika, közvetlen csere) - lásd [Alapértelmezett válaszkorlát](../README.md#default-response-cap-max_tokens) |
@@ -316,7 +316,7 @@ apfel --serve --permissive             # every request uses permissive guardrail
 |------------|--------|
 | Kontextusablak | **4096 token macOS 26-on és M1/M2 Mac-eken, 8192 token macOS 27-en M3-as vagy újabb chippel és 12 GB+ memóriával** (bemenet + kimenet együtt). Nem bekódolt konstans - az apfel futásidőben olvassa a `SystemLanguageModel.contextSize`-t; az `apfel --model-info` kiírja az aktuális értéket |
 | Platform | macOS 26+, csak Apple Silicon |
-| Modell | Egyetlen modell (`apple-foundationmodel`, ~3B paraméter az eszközön), nem konfigurálható |
+| Modell | Egyetlen eszközön futó modell (~3B paraméter), `apple-foundationmodel` (általános) és `apple-foundationmodel-content-tagging` (az Apple tartalomcímkéző adaptere; eszközök nélkül) néven érhető el |
 | Guardrails | Az Apple biztonsági rendszere ártalmatlan prompt-okat is blokkolhat. A `--permissive` csökkenti a téves riasztásokat ([docs/PERMISSIVE.md](../docs/PERMISSIVE.md)) |
 | Sebesség | Az eszközön fut, nem felhőléptékű - néhány másodperc válaszonként |
 | Nincs embeddings | Az eszközön nem érhető el |

@@ -1,4 +1,4 @@
-<!-- i18n-source: 218b563163b08550cb0adc62e957ce6a40e6e1ba -->
+<!-- i18n-source: e8eb4f6c529cf64d34734df80149c4cdbd7dd262 -->
 
 > Μετάφραση του [αγγλικού README](../README.md). Η αγγλική έκδοση είναι η επίσημη.
 
@@ -49,7 +49,7 @@ brew upgrade apfel
 git clone https://github.com/Arthur-Ficial/apfel.git && cd apfel && make install
 ```
 
-Nix, same-day tap, Mint, mise, αντιμετώπιση προβλημάτων: [docs/install.md](../docs/install.md).
+Same-day tap, Mint, mise, αντιμετώπιση προβλημάτων: [docs/install.md](../docs/install.md).
 
 **Languages:** [English](../README.md) | [العربية](README.ar.md) | [Беларуская](README.be.md) | [Български](README.bg.md) | [বাংলা](README.bn.md) | [Bosanski](README.bs.md) | [Català](README.ca.md) | [Čeština](README.cs.md) | [Dansk](README.da.md) | [Deutsch](README.de.md) | **Ελληνικά** | [Español](README.es.md) | [Eesti](README.et.md) | [فارسی](README.fa.md) | [Suomi](README.fi.md) | [Français](README.fr.md) | [ગુજરાતી](README.gu.md) | [हिन्दी](README.hi.md) | [Hrvatski](README.hr.md) | [Magyar](README.hu.md) | [Italiano](README.it.md) | [日本語](README.ja.md) | [ಕನ್ನಡ](README.kn.md) | [한국어](README.ko.md) | [Lietuvių](README.lt.md) | [Latviešu](README.lv.md) | [Македонски](README.mk.md) | [മലയാളം](README.ml.md) | [मराठी](README.mr.md) | [Norsk bokmål](README.nb.md) | [Nederlands](README.nl.md) | [Polski](README.pl.md) | [Português](README.pt.md) | [Română](README.ro.md) | [Русский](README.ru.md) | [Slovenčina](README.sk.md) | [Slovenščina](README.sl.md) | [Shqip](README.sq.md) | [Srpski](README.sr.md) | [Svenska](README.sv.md) | [தமிழ்](README.ta.md) | [తెలుగు](README.te.md) | [Türkçe](README.tr.md) | [Українська](README.uk.md) | [اردو](README.ur.md) | [简体中文](README.zh-hans.md) | [繁體中文](README.zh-hant.md)
 
@@ -237,10 +237,10 @@ alias apfel=apfel-run                 # optional, every apfel flag still works
 | `POST /v1/chat/completions` | Υποστηρίζεται | Με streaming και χωρίς |
 | `POST /v1/responses` | Υποστηρίζεται | OpenAI Responses API: είσοδος string/μηνύματος, `instructions`, streaming (κανονική ακολουθία συμβάντων), `text.format` (συμπεριλαμβανομένου του `json_schema`), function tools (χωρίς streaming). Τα stateful χαρακτηριστικά (`previous_response_id`, `store: true`, `background`, `reasoning`, hosted tools) επιστρέφουν ειλικρινή 501 |
 | `POST /v1/responses/input_tokens` | Υποστηρίζεται | Προέλεγχος tokens (`client.responses.input_tokens.count(...)`): ακριβής μέτρηση από τον tokenizer της Apple, χωρίς παραγωγή· 501 κάτω από macOS 26.4 αντί για εκτίμηση. Δείτε [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#token-preflight-v1responsesinput_tokens) |
-| `GET /v1/models` | Υποστηρίζεται | Επιστρέφει `apple-foundationmodel` |
-| `GET /health` | Υποστηρίζεται | Διαθεσιμότητα μοντέλου, παράθυρο context, γλώσσες, δηλωμένες δυνατότητες του μοντέλου (`capabilities`, `capabilities_reported`) |
+| `GET /v1/models` | Υποστηρίζεται | Επιστρέφει `apple-foundationmodel` (γενικό, το προεπιλεγμένο) και `apple-foundationmodel-content-tagging` (ετικέτες, όχι πεζό κείμενο). Δείτε [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#content-tagging-model) |
+| `GET /health` | Υποστηρίζεται | Διαθεσιμότητα μοντέλου, παράθυρο context, γλώσσες, δηλωμένες δυνατότητες του μοντέλου (`capabilities`, `capabilities_reported`), η παραλλαγή του μοντέλου που εξυπηρετεί (`variant`, π.χ. AFM 3 Core) |
 | `GET /v1/logs`, `/v1/logs/stats` | Μόνο για debug | Απαιτεί `--debug` |
-| Κλήση εργαλείων | Υποστηρίζεται | Native `ToolDefinition` + ανίχνευση JSON. Δείτε [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
+| Κλήση εργαλείων | Υποστηρίζεται | Η κλήση γράφεται μέσω καθοδηγούμενης παραγωγής (`--tool-calling guided`, προεπιλογή) ή ως JSON που αναλύει ο διακομιστής (`--tool-calling text`). Δείτε [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
 | `response_format: json_object` | Υποστηρίζεται | Έγχυση στο system prompt· τα markdown fences αφαιρούνται από την έξοδο |
 | `response_format: json_schema` | Υποστηρίζεται | Εγγυημένη έξοδος σύμφωνη με το schema μέσω του FoundationModels `DynamicGenerationSchema`· λειτουργεί με `stream: true` |
 | `temperature`, `top_p`, `max_tokens`, `seed` | Υποστηρίζεται | Αντιστοιχίζονται στο `GenerationOptions`. Το `top_p` είναι nucleus sampling· το `temperature` κάτω από 0.001 (το 0 περιλαμβάνεται) αντιστοιχεί σε greedy (ντετερμινιστικό). Αν παραλειφθεί το `max_tokens`, χρησιμοποιείται το υπόλοιπο παράθυρο context (σημασιολογία OpenAI για άμεση αντικατάσταση) - δείτε [Προεπιλεγμένο όριο απάντησης](../README.md#default-response-cap-max_tokens) |
@@ -316,7 +316,7 @@ apfel --serve --permissive             # every request uses permissive guardrail
 |------------|--------|
 | Παράθυρο context | **4096 tokens σε macOS 26 και σε Mac M1/M2, 8192 tokens σε macOS 27 με τσιπ M3 ή νεότερο και 12 GB+** (είσοδος + έξοδος μαζί). Δεν είναι σκληροκωδικοποιημένη σταθερά - το apfel διαβάζει το `SystemLanguageModel.contextSize` κατά το runtime· το `apfel --model-info` εμφανίζει την τρέχουσα τιμή |
 | Πλατφόρμα | macOS 26+, μόνο Apple Silicon |
-| Μοντέλο | Ένα μοντέλο (`apple-foundationmodel`, ~3B παράμετροι στη συσκευή), μη ρυθμιζόμενο |
+| Μοντέλο | Ένα μοντέλο στη συσκευή (~3B παράμετροι), διαθέσιμο ως `apple-foundationmodel` (γενικό) και `apple-foundationmodel-content-tagging` (ο προσαρμογέας επισήμανσης περιεχομένου της Apple· χωρίς εργαλεία) |
 | Guardrails | Το σύστημα ασφαλείας της Apple μπορεί να μπλοκάρει αθώα prompts. Το `--permissive` μειώνει τα ψευδώς θετικά ([docs/PERMISSIVE.md](../docs/PERMISSIVE.md)) |
 | Ταχύτητα | Στη συσκευή, όχι κλίμακας cloud - μερικά δευτερόλεπτα ανά απάντηση |
 | Χωρίς embeddings | Δεν είναι διαθέσιμα στη συσκευή |

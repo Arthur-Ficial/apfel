@@ -1,4 +1,4 @@
-<!-- i18n-source: 218b563163b08550cb0adc62e957ce6a40e6e1ba -->
+<!-- i18n-source: e8eb4f6c529cf64d34734df80149c4cdbd7dd262 -->
 
 > [ஆங்கில README](../README.md) இலிருந்து மொழிபெயர்க்கப்பட்டது. ஆங்கிலப் பதிப்பே அதிகாரபூர்வமானது.
 
@@ -49,7 +49,7 @@ brew upgrade apfel
 git clone https://github.com/Arthur-Ficial/apfel.git && cd apfel && make install
 ```
 
-Nix, அதே நாள் tap, Mint, mise, சிக்கல் தீர்வு: [docs/install.md](../docs/install.md).
+அதே நாள் tap, Mint, mise, சிக்கல் தீர்வு: [docs/install.md](../docs/install.md).
 
 **Languages:** [English](../README.md) | [العربية](README.ar.md) | [Беларуская](README.be.md) | [Български](README.bg.md) | [বাংলা](README.bn.md) | [Bosanski](README.bs.md) | [Català](README.ca.md) | [Čeština](README.cs.md) | [Dansk](README.da.md) | [Deutsch](README.de.md) | [Ελληνικά](README.el.md) | [Español](README.es.md) | [Eesti](README.et.md) | [فارسی](README.fa.md) | [Suomi](README.fi.md) | [Français](README.fr.md) | [ગુજરાતી](README.gu.md) | [हिन्दी](README.hi.md) | [Hrvatski](README.hr.md) | [Magyar](README.hu.md) | [Italiano](README.it.md) | [日本語](README.ja.md) | [ಕನ್ನಡ](README.kn.md) | [한국어](README.ko.md) | [Lietuvių](README.lt.md) | [Latviešu](README.lv.md) | [Македонски](README.mk.md) | [മലയാളം](README.ml.md) | [मराठी](README.mr.md) | [Norsk bokmål](README.nb.md) | [Nederlands](README.nl.md) | [Polski](README.pl.md) | [Português](README.pt.md) | [Română](README.ro.md) | [Русский](README.ru.md) | [Slovenčina](README.sk.md) | [Slovenščina](README.sl.md) | [Shqip](README.sq.md) | [Srpski](README.sr.md) | [Svenska](README.sv.md) | **தமிழ்** | [తెలుగు](README.te.md) | [Türkçe](README.tr.md) | [Українська](README.uk.md) | [اردو](README.ur.md) | [简体中文](README.zh-hans.md) | [繁體中文](README.zh-hant.md)
 
@@ -237,10 +237,10 @@ alias apfel=apfel-run                 # optional, every apfel flag still works
 | `POST /v1/chat/completions` | ஆதரவு உண்டு | Streaming + non-streaming |
 | `POST /v1/responses` | ஆதரவு உண்டு | OpenAI Responses API: string/message உள்ளீடு, `instructions`, streaming (நிலையான நிகழ்வு வரிசை), `text.format` (`json_schema` உட்பட), function tools (non-streaming). நிலை சார்ந்த அம்சங்கள் (`previous_response_id`, `store: true`, `background`, `reasoning`, hosted tools) நேர்மையாக 501 தரும் |
 | `POST /v1/responses/input_tokens` | ஆதரவு உண்டு | Token முன்சோதனை (`client.responses.input_tokens.count(...)`): Apple-இன் tokenizer தரும் துல்லியமான எண்ணிக்கை, உருவாக்கம் இல்லை; macOS 26.4-க்குக் கீழ் மதிப்பீட்டுக்குப் பதிலாக 501. [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#token-preflight-v1responsesinput_tokens) பாருங்கள் |
-| `GET /v1/models` | ஆதரவு உண்டு | `apple-foundationmodel` ஐத் தரும் |
-| `GET /health` | ஆதரவு உண்டு | மாதிரி கிடைப்பு, சூழல் சாளரம், மொழிகள், தெரிவிக்கப்பட்ட மாதிரித் திறன்கள் (`capabilities`, `capabilities_reported`) |
+| `GET /v1/models` | ஆதரவு உண்டு | `apple-foundationmodel` (பொது, இயல்புநிலை) மற்றும் `apple-foundationmodel-content-tagging` (லேபிள்கள், உரைநடை அல்ல) ஐத் தரும். [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#content-tagging-model) பாருங்கள் |
+| `GET /health` | ஆதரவு உண்டு | மாதிரி கிடைப்பு, சூழல் சாளரம், மொழிகள், தெரிவிக்கப்பட்ட மாதிரித் திறன்கள் (`capabilities`, `capabilities_reported`), சேவை செய்யும் மாதிரி வகை (`variant`, எ.கா. AFM 3 Core) |
 | `GET /v1/logs`, `/v1/logs/stats` | பிழைதிருத்தம் மட்டும் | `--debug` தேவை |
-| கருவி அழைப்பு | ஆதரவு உண்டு | இயல்பான `ToolDefinition` + JSON கண்டறிதல். [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) பாருங்கள் |
+| கருவி அழைப்பு | ஆதரவு உண்டு | அழைப்பு வழிகாட்டப்பட்ட உருவாக்கம் மூலம் (`--tool-calling guided`, இயல்புநிலை) அல்லது சேவையகம் பகுப்பாய்வு செய்யும் JSON ஆக (`--tool-calling text`) எழுதப்படும். [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) பாருங்கள் |
 | `response_format: json_object` | ஆதரவு உண்டு | System-prompt உட்செலுத்துதல்; வெளியீட்டிலிருந்து markdown வேலிகள் நீக்கப்படும் |
 | `response_format: json_schema` | ஆதரவு உண்டு | FoundationModels `DynamicGenerationSchema` மூலம் schema-க்குப் பொருந்தும் வெளியீட்டிற்கு உத்தரவாதம்; `stream: true`-உடனும் வேலை செய்யும் |
 | `temperature`, `top_p`, `max_tokens`, `seed` | ஆதரவு உண்டு | `GenerationOptions`-க்கு இணைக்கப்படும். `top_p` என்பது nucleus sampling; 0.001-க்குக் கீழுள்ள `temperature` (0 உட்பட) greedy (நிர்ணயமான) முறைக்கு இணைக்கப்படும். `max_tokens` தவிர்த்தால் மீதமுள்ள சூழல் சாளரம் பயன்படுத்தப்படும் (OpenAI-இன் அதே மாற்று நடத்தை) - [இயல்புநிலை பதில் வரம்பு](../README.md#default-response-cap-max_tokens) பாருங்கள் |
@@ -316,7 +316,7 @@ apfel --serve --permissive             # every request uses permissive guardrail
 |------------|--------|
 | சூழல் சாளரம் | **macOS 26-இலும் M1/M2 Mac-களிலும் 4096 டோக்கன்கள், M3 அல்லது புதிய சிப்பும் 12 GB+ நினைவகமும் உள்ள macOS 27-இல் 8192 டோக்கன்கள்** (உள்ளீடு + வெளியீடு சேர்த்து). கடினமாகக் குறியிடப்பட்ட மாறிலி அல்ல - apfel runtime-இல் `SystemLanguageModel.contextSize` ஐப் படிக்கிறது; `apfel --model-info` தற்போதைய மதிப்பை அச்சிடும் |
 | தளம் | macOS 26+, Apple Silicon மட்டும் |
-| மாதிரி | ஒரே ஒரு மாதிரி (`apple-foundationmodel`, சாதனத்தில் ~3B அளவுருக்கள்), மாற்ற முடியாது |
+| மாதிரி | சாதனத்தில் இயங்கும் ஒரே மாதிரி (~3B அளவுருக்கள்), `apple-foundationmodel` (பொது) மற்றும் `apple-foundationmodel-content-tagging` (Apple-இன் உள்ளடக்கக் குறியிடல் அடாப்டர்; கருவிகள் இல்லை) ஆக வழங்கப்படுகிறது |
 | Guardrails | Apple-இன் பாதுகாப்பு அமைப்பு பாதிப்பற்ற prompt-களையும் தடுக்கலாம். `--permissive` தவறான எச்சரிக்கைகளைக் குறைக்கும் ([docs/PERMISSIVE.md](../docs/PERMISSIVE.md)) |
 | வேகம் | சாதனத்திலேயே இயங்குவதால், கிளவுட் அளவில் அல்ல - ஒரு பதிலுக்குச் சில வினாடிகள் ஆகும் |
 | Embeddings இல்லை | சாதனத்தில் கிடைக்காது |

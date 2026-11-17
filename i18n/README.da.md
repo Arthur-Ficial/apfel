@@ -1,4 +1,4 @@
-<!-- i18n-source: 218b563163b08550cb0adc62e957ce6a40e6e1ba -->
+<!-- i18n-source: e8eb4f6c529cf64d34734df80149c4cdbd7dd262 -->
 
 > Oversat fra den [engelske README](../README.md). Den engelske version er den gældende.
 
@@ -49,7 +49,7 @@ Byg fra kildekode (Command Line Tools med macOS 27 SDK / Swift 6.3, ingen Xcode;
 git clone https://github.com/Arthur-Ficial/apfel.git && cd apfel && make install
 ```
 
-Nix, same-day tap, Mint, mise, fejlfinding: [docs/install.md](../docs/install.md).
+Same-day tap, Mint, mise, fejlfinding: [docs/install.md](../docs/install.md).
 
 **Languages:** [English](../README.md) | [العربية](README.ar.md) | [Беларуская](README.be.md) | [Български](README.bg.md) | [বাংলা](README.bn.md) | [Bosanski](README.bs.md) | [Català](README.ca.md) | [Čeština](README.cs.md) | **Dansk** | [Deutsch](README.de.md) | [Ελληνικά](README.el.md) | [Español](README.es.md) | [Eesti](README.et.md) | [فارسی](README.fa.md) | [Suomi](README.fi.md) | [Français](README.fr.md) | [ગુજરાતી](README.gu.md) | [हिन्दी](README.hi.md) | [Hrvatski](README.hr.md) | [Magyar](README.hu.md) | [Italiano](README.it.md) | [日本語](README.ja.md) | [ಕನ್ನಡ](README.kn.md) | [한국어](README.ko.md) | [Lietuvių](README.lt.md) | [Latviešu](README.lv.md) | [Македонски](README.mk.md) | [മലയാളം](README.ml.md) | [मराठी](README.mr.md) | [Norsk bokmål](README.nb.md) | [Nederlands](README.nl.md) | [Polski](README.pl.md) | [Português](README.pt.md) | [Română](README.ro.md) | [Русский](README.ru.md) | [Slovenčina](README.sk.md) | [Slovenščina](README.sl.md) | [Shqip](README.sq.md) | [Srpski](README.sr.md) | [Svenska](README.sv.md) | [தமிழ்](README.ta.md) | [తెలుగు](README.te.md) | [Türkçe](README.tr.md) | [Українська](README.uk.md) | [اردو](README.ur.md) | [简体中文](README.zh-hans.md) | [繁體中文](README.zh-hant.md)
 
@@ -237,10 +237,10 @@ alias apfel=apfel-run                 # optional, every apfel flag still works
 | `POST /v1/chat/completions` | Understøttet | Streaming + ikke-streaming |
 | `POST /v1/responses` | Understøttet | OpenAI Responses API: string-/message-input, `instructions`, streaming (kanonisk eventrækkefølge), `text.format` (inkl. `json_schema`), function tools (ikke-streaming). Tilstandsfulde funktioner (`previous_response_id`, `store: true`, `background`, `reasoning`, hostede værktøjer) returnerer ærlige 501'ere |
 | `POST /v1/responses/input_tokens` | Understøttet | Token-preflight (`client.responses.input_tokens.count(...)`): præcis optælling med Apples tokenizer, uden generering; 501 under macOS 26.4 i stedet for et estimat. Se [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#token-preflight-v1responsesinput_tokens) |
-| `GET /v1/models` | Understøttet | Returnerer `apple-foundationmodel` |
-| `GET /health` | Understøttet | Modeltilgængelighed, kontekstvindue, sprog, rapporterede modelegenskaber (`capabilities`, `capabilities_reported`) |
+| `GET /v1/models` | Understøttet | Returnerer `apple-foundationmodel` (generel, standard) og `apple-foundationmodel-content-tagging` (etiketter, ikke prosa). Se [docs/openai-api-compatibility.md](../docs/openai-api-compatibility.md#content-tagging-model) |
+| `GET /health` | Understøttet | Modeltilgængelighed, kontekstvindue, sprog, rapporterede modelegenskaber (`capabilities`, `capabilities_reported`), den betjenende modelvariant (`variant`, f.eks. AFM 3 Core) |
 | `GET /v1/logs`, `/v1/logs/stats` | Kun debug | Kræver `--debug` |
-| Tool calling | Understøttet | Native `ToolDefinition` + JSON-detektion. Se [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
+| Tool calling | Understøttet | Kaldet skrives med guidet generering (`--tool-calling guided`, standard) eller som JSON, som serveren parser (`--tool-calling text`). Se [docs/tool-calling-guide.md](../docs/tool-calling-guide.md) |
 | `response_format: json_object` | Understøttet | Injektion via systemprompten; markdown-fences fjernes fra outputtet |
 | `response_format: json_schema` | Understøttet | Garanteret skemakonformt output via FoundationModels `DynamicGenerationSchema`; virker med `stream: true` |
 | `temperature`, `top_p`, `max_tokens`, `seed` | Understøttet | Mappet til `GenerationOptions`. `top_p` er nucleus sampling; `temperature` under 0.001 (0 inkluderet) mappes til greedy (deterministisk). Udelades `max_tokens`, bruges det resterende kontekstvindue (drop-in OpenAI-semantik) - se [Standardgrænse for svar](../README.md#default-response-cap-max_tokens) |
@@ -316,7 +316,7 @@ apfel --serve --permissive             # every request uses permissive guardrail
 |------------|--------|
 | Kontekstvindue | **4096 tokens på macOS 26 og på M1/M2-Macs, 8192 tokens på macOS 27 med en M3 eller nyere chip og 12 GB+** (input + output tilsammen). Ikke en hårdkodet konstant - apfel læser `SystemLanguageModel.contextSize` ved kørsel; `apfel --model-info` udskriver den aktuelle værdi |
 | Platform | macOS 26+, kun Apple Silicon |
-| Model | Én model (`apple-foundationmodel`, ~3B parametre on-device), kan ikke konfigureres |
+| Model | Én on-device-model (~3B parametre), udstillet som `apple-foundationmodel` (generel) og `apple-foundationmodel-content-tagging` (Apples content-tagging-adapter; ingen værktøjer) |
 | Guardrails | Apples sikkerhedssystem kan blokere harmløse prompts. `--permissive` reducerer falske positiver ([docs/PERMISSIVE.md](../docs/PERMISSIVE.md)) |
 | Hastighed | On-device, ikke cloud-skala - nogle sekunder pr. svar |
 | Ingen embeddings | Ikke tilgængelige on-device |
