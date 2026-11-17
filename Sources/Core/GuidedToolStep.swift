@@ -183,7 +183,7 @@ package struct GuidedToolStep: Sendable {
         "dependentRequired", "dependentSchemas", "dependencies",
         // Prose and annotations: the instruction list already says them in
         // words, and in the schema they would cost the context window twice
-        // (on macOS 26.1 the six-tool step overflowed the 4096-token window).
+        // (on macOS 26.1 the six-tool step overflowed the context window).
         "description", "title", "examples", "default", "$comment", "$schema", "$id",
         "deprecated", "readOnly", "writeOnly",
     ]

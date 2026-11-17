@@ -203,6 +203,9 @@ apfel --serve --no-origin-check
 # --max-concurrent
 apfel --serve --max-concurrent 2
 
+# --tool-calling (guided is the default; text restores the free-text tool-call format)
+apfel --serve --tool-calling text
+
 # --benchmark, --model-info, --update, --release, --version, --help
 apfel --benchmark -o json | jq '.benchmarks[] | {name, speedup_ratio}'
 apfel --model-info
