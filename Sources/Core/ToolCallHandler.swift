@@ -488,26 +488,67 @@ public enum ToolCallHandler {
         if trimmed.isEmpty { return "{}" }
         // Already a JSON object or array
         if trimmed.hasPrefix("{") || trimmed.hasPrefix("[") {
-            // Parse as-is, or repair structurally incomplete JSON first (#193).
-            var parsed = try? JSONSerialization.jsonObject(with: Data(trimmed.utf8))
-            if parsed == nil, let repaired = repairUnclosedContainers(trimmed) {
-                parsed = try? JSONSerialization.jsonObject(with: Data(repaired.utf8))
-            }
-            guard let obj = parsed else { return s }
-            // Re-serialize: Foundation's parser accepts raw control characters
-            // (0x09 tab, 0x0a newline, ...) inside strings; its serializer
-            // writes proper \t / \n / \r escapes.  Without this round-trip a
-            // model-written \times in arguments reaches the client as raw 0x09
-            // + "imes", which is not valid JSON (#578).
-            if let data = try? JSONSerialization.data(
-                   withJSONObject: obj, options: [.sortedKeys, .withoutEscapingSlashes]),
-               let clean = String(data: data, encoding: .utf8) {
-                return clean
+            if parsesAsJSON(trimmed) { return s }
+            // A model-written LaTeX `\times` inside the arguments string of
+            // the envelope decodes to a raw tab + "imes" (likewise `\beta`,
+            // `\frac`, `\neq`, `\rho` -> backspace, form feed, newline,
+            // carriage return). A raw control character inside a JSON string
+            // is invalid JSON, so strict clients reject the arguments (#578).
+            // Escape exactly those characters and keep every other byte.
+            let escaped = escapingControlCharactersInStrings(trimmed)
+            if escaped != trimmed, parsesAsJSON(escaped) { return escaped }
+            // On macOS 27 the model deterministically drops the final escaped
+            // `}` inside the arguments string when retrying a rejected tool
+            // call: the outer tool_calls JSON parses, so the truncated object
+            // lands here as-is. Repair unclosed strings/braces/brackets when
+            // (and only when) the repaired text parses; anything else is
+            // returned unchanged so #241 still fails loud (#193).
+            if let repaired = repairUnclosedContainers(escaped) {
+                return repaired
             }
             return s
         }
         // Plain string — wrap as {"value": "..."} using the JSON encoder for escaping.
         return jsonObjectString(["value": trimmed]) ?? "{}"
+    }
+
+    private static func parsesAsJSON(_ text: String) -> Bool {
+        (try? JSONSerialization.jsonObject(with: Data(text.utf8), options: [.fragmentsAllowed])) != nil
+    }
+
+    /// Replace raw U+0000-U+001F characters inside JSON string literals with
+    /// their escapes (`\t`, `\n`, `\r`, `\b`, `\f`, else `\u00XX`). Text
+    /// outside strings is untouched (whitespace there is legal JSON).
+    private static func escapingControlCharactersInStrings(_ json: String) -> String {
+        var out = ""
+        out.reserveCapacity(json.utf8.count)
+        var inString = false
+        var escaped = false
+        for scalar in json.unicodeScalars {
+            if inString {
+                if escaped {
+                    escaped = false
+                } else if scalar == "\\" {
+                    escaped = true
+                } else if scalar == "\"" {
+                    inString = false
+                } else if scalar.value < 0x20 {
+                    switch scalar.value {
+                    case 0x09: out += "\\t"
+                    case 0x0A: out += "\\n"
+                    case 0x0D: out += "\\r"
+                    case 0x08: out += "\\b"
+                    case 0x0C: out += "\\f"
+                    default: out += String(format: "\\u%04x", scalar.value)
+                    }
+                    continue
+                }
+            } else if scalar == "\"" {
+                inString = true
+            }
+            out.unicodeScalars.append(scalar)
+        }
+        return out
     }
 
     /// Close an unterminated trailing string and any unclosed `{`/`[`
