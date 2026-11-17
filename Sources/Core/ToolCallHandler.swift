@@ -326,7 +326,8 @@ public enum ToolCallHandler {
                 } else if ch == "}" || ch == "]" {
                     depth -= 1
                     if depth == 0, open == "{" || open == "[" { end = scan; break }
-                } else if open != "{", open != "[", ch == "," || ch == "}" {
+                    if open != "{", open != "[", open != "\"", depth < 0 { break }
+                } else if open != "{", open != "[", ch == "," {
                     break
                 }
                 scan = rest.index(after: scan)
@@ -731,7 +732,9 @@ public enum ToolCallHandler {
                 rawArguments = call["arguments"] ?? collectSiblingArguments(from: call)
             } else if let fnName = call["name"] as? String {
                 name = fnName
-                rawArguments = call["arguments"] ?? collectSiblingArguments(from: call)
+                rawArguments = call["arguments"]
+                    ?? (call["function"] as? [String: Any])?["arguments"]
+                    ?? collectSiblingArguments(from: call)
             } else if let typeName = call["type"] as? String, typeName != "function" {
                 name = typeName
                 rawArguments = call["arguments"] ?? collectSiblingArguments(from: call)

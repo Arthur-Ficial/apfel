@@ -7,6 +7,11 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Salvage scanner recovers the tool name after a bare `arguments` value (`null`, a number) instead of losing it to the depth counter (#590 item 4). `removingArgumentValues` now breaks on a closing brace when depth goes negative for a non-container value.
+- `parseToolCallJSON` reads arguments from `function.arguments` when the call carries both `name` and a `function` dict without its own `name` key (#590 item 5). Previously the `{"name": "x", "function": {"arguments": {...}}}` shape lost its arguments to `{}`.
+
 ## [1.19.0] - 2026-11-17
 
 ### Added
