@@ -150,7 +150,8 @@ func handleResponses(_ request: Request, context: some RequestContext) async thr
         parallelToolCalls: nil
     ) {
     case .success(let policy):
-        toolPolicy = policy
+        // Calls are held to the request tools' parameter schemas (#580).
+        toolPolicy = policy.withArgumentSchemas(ToolPolicy.parameterSchemas(of: tools))
     case .failure(let scopeError):
         return openAIFailure(
             status: .badRequest,
@@ -264,13 +265,13 @@ private func responsesNonStreamingResponse(
             if let roundUsage = outcome.usage { usageRounds.append(roundUsage) }
             // Hold detected calls to the request's tool contract (#480), with
             // one bounded repair round before a violation becomes an error.
-            var verdict = policy.evaluate(ToolCallHandler.detectToolCall(in: outcome.content))
+            var verdict = policy.evaluate(output: outcome.content)
             if case .violation(let violation) = verdict {
                 outcome = try await withModelRetry(maxRetries: retryMax) {
                     try await collectStream(session, prompt: policy.repairPrompt(for: violation), options: genOpts)
                 }
                 if let roundUsage = outcome.usage { usageRounds.append(roundUsage) }
-                verdict = policy.evaluate(ToolCallHandler.detectToolCall(in: outcome.content))
+                verdict = policy.evaluate(output: outcome.content)
             }
             let judged: [ParsedToolCall]?
             switch verdict {

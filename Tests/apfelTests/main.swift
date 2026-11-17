@@ -123,6 +123,7 @@ suite("DebugFlagBaselineTests") { runDebugFlagBaselineTests() }
 suite("ApfelErrorMessageTests") { runApfelErrorMessageTests() }
 suite("TypedErrorMappingTests") { runTypedErrorMappingTests() }
 suite("ToolCallingDirectiveTests") { runToolCallingDirectiveTests() }
+suite("ToolCallingSupportTests") { runToolCallingSupportTests() }
 suite("OpenAIWireFormatTests") { runOpenAIWireFormatTests() }
 suite("SSEResponseHeadersTests") { runSSEResponseHeadersTests() }
 suite("ApfelCorePublicAPIUsageTests") { runApfelCorePublicAPIUsageTests() }

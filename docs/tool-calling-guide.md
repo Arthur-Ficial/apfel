@@ -55,8 +55,9 @@ before it reaches the client or an MCP server (#480):
 | `tool_choice: "required"` | 400 when nothing is in scope | Plain text is a 500 with `code: "tool_choice_not_satisfied"` |
 | `{"type":"function","function":{"name":"X"}}` | 400 when `X` is neither a client tool nor an attached MCP tool; only `X` is presented to the model | Plain text or a call to another function is a 500 with `code: "tool_choice_not_satisfied"` |
 | `parallel_tool_calls: false` | - | Only the first returned call is exposed or executed |
+| any client `tools` (auto, required, named) | - | A call whose `arguments` break the tool's `parameters` schema (not valid JSON, a missing `required` argument, or an undeclared one under `additionalProperties: false`) is a 500 with `code: "invalid_tool_arguments"`; text that starts the `{"tool_calls"` envelope but cannot be read as a call is a 500 with `code: "invalid_tool_call"`, never `content` (#580) |
 
-The violation errors carry `type: "server_error"` and `param: "tool_choice"`; on `stream: true` the
+Every violation first gets one bounded repair round in the same session: apfel tells the model what was wrong (for arguments, the validator's message, e.g. `missing required parameter(s): time`) and judges the second reply the same way. Only a second violation becomes the error. The violation errors carry `type: "server_error"` and `param: "tool_choice"`; on `stream: true` the
 stream ends with the same error object followed by `[DONE]`. A named or required choice buffers the
 whole response before deciding, so no partial text streams out ahead of a violation. A 500 here means
 the model did not do what the request demanded - retry (a different seed changes the trajectory) or
@@ -65,9 +66,11 @@ name an MCP tool attached with `--mcp` without repeating its definition.
 
 ### macOS 27: the runtime hears about `tool_choice` too
 
-On macOS 27 apfel additionally sets `GenerationOptions.ToolCallingMode` for the request: `auto`
-(or an omitted `tool_choice` with tools in scope) becomes `.allowed` and `none` becomes
-`.disallowed`, a runtime-side backstop on top of the table above. Two honest limitations,
+On macOS 27 apfel sets `GenerationOptions.ToolCallingMode` to `.disallowed` for `tool_choice: "none"`,
+a runtime-side backstop on top of the table above. For `auto` (or an omitted `tool_choice` with
+tools in scope) the mode is left unset: set to `.allowed`, the runtime tried to parse the model's
+own tool-call tokens and failed 5 of 120 tool requests with "Failed to parse generated content"
+(macOS 27.0.1, M2, 2026-11-17); left unset, 0 of 420 did. Two more limitations,
 measured on macOS 27.0.1: the SDK has no per-tool mode, so a named function keeps apfel's
 prompt steering plus the name check above; and the SDK's `.required` mode is deliberately not
 used, because with apfel's out-of-band tool calling (tool definitions in the transcript, no

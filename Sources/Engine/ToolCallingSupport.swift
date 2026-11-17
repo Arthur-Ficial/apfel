@@ -21,14 +21,20 @@ import FoundationModels
 import ApfelCore
 
 /// Apply a resolved tool-calling directive to the generation options.
-/// No-op on macOS 26 and for directive-free (tool-free) requests, so those
-/// options stay byte-identical to today's.
+/// No-op on macOS 26, for directive-free (tool-free) requests and for
+/// `.allowed`; only `tool_choice: none` (`.disallowed`) sets the mode.
 package func applyToolCallingDirective(_ directive: ToolCallingDirective?, to options: inout GenerationOptions) {
     guard let directive else { return }
     if #available(macOS 27, *) {
         switch directive {
         case .allowed:
-            options.toolCallingMode = .allowed
+            // Left unset on purpose. apfel registers no FoundationModels.Tool
+            // (out-of-band calling, #119); with .allowed set explicitly the
+            // macOS 27 runtime parses the model's own tool-call tokens and
+            // throws "Failed to parse generated content" (5 of 120 tool
+            // requests on 27.0.1, M2, 2026-11-17; 0 of 420 left unset). The
+            // model may call tools either way: apfel steers it in the prompt.
+            break
         case .disallowed:
             options.toolCallingMode = .disallowed
         }
