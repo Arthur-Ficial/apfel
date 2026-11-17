@@ -965,4 +965,34 @@ func runToolCallHandlerTests() {
         let parsed = try JSONSerialization.jsonObject(with: Data(result.utf8)) as? [String: Any]
         try assertEqual(parsed?["x"] as? String, "a\\\u{09}b")
     }
+
+    // MARK: - Salvage edge cases (#590)
+
+    test("salvage recovers name after bare null arguments value (#590 item 4)") {
+        // The } after null closes the first object; the name sits in a
+        // second object. Without the fix, removingArgumentValues's depth
+        // counter consumes the } and the regex never sees the name.
+        let response = #"{"tool_calls": [{"arguments": null} {"name": "f"}]"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "f")
+    }
+
+    test("salvage recovers name after bare number arguments value (#590 item 4)") {
+        let response = #"{"tool_calls": [{"arguments": 42} {"name": "ping"}]"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "ping")
+    }
+
+    test("name key with function.arguments nested shape recovers arguments (#590 item 5)") {
+        let response = #"{"tool_calls": [{"name": "calc", "function": {"arguments": {"a": 1, "b": 2}}}]}"#
+        let result = ToolCallHandler.detectToolCall(in: response)
+        try assertNotNil(result)
+        try assertEqual(result!.first?.name, "calc")
+        let parsed = try JSONSerialization.jsonObject(with: Data(result!.first!.argumentsString.utf8)) as? [String: Any]
+        try assertNotNil(parsed)
+        try assertEqual(parsed?["a"] as? Int, 1)
+        try assertEqual(parsed?["b"] as? Int, 2)
+    }
 }
