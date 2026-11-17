@@ -289,6 +289,11 @@ func runToolPolicyTests() {
         try assertEqual(try violationCode(policy.evaluate(calls: [unknown])), ToolPolicy.Violation.notAllowedCode)
     }
 
+    test("evaluate(output:complete: false) never returns a cut-off call whose arguments are not JSON") {
+        let cut = #"{"tool_calls": [{"id": "c", "type": "function", "function": {"name": "convert_time", "arguments": "{\"time\":\n\t\t\t"}}]}"#
+        try assertEqual(try checked().evaluate(output: cut, complete: false), .content)
+    }
+
     test("evaluate(output:) keeps plain text as content under auto") {
         try assertEqual(try checked().evaluate(output: "It is 14:30 in Tokyo."), .content)
     }

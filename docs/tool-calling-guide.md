@@ -18,19 +18,79 @@ and apfel's OpenAI-compatible tool calling implementation.
 ## How It Works
 
 apfel describes every OpenAI-format tool to the model in its instructions, as a
-plain-language list placed before the call format (#555):
+plain-language list (#555, #581):
 
 ```
 Available functions:
 - add: Add two numbers. Arguments: a (number, required); b (number, required)
-- tag: Tag a file. Arguments: tags (array, required): labels; schema {"items":{"type":"string"},"type":"array"}
+- search: Search the web. Arguments: query (string, required, min length 1): what to find; limit (integer, default 10, minimum 1)
+- tag: Tag a file. Arguments: tags (array, required): labels [schema: {"items":{"type":"string"}}]
 ```
 
-Scalar arguments are written as `name (type, required) one of ...: description`;
-anything nested (arrays, objects, unions, bounds) is appended as compact JSON so no
-constraint is lost. The model is then told to answer a call with a specific JSON
-format, which apfel detects post-hoc via `ToolCallHandler.detectToolCall()` and
-executes out-of-band (#119).
+Scalar arguments are written as `name (type, required, constraints): description`;
+simple constraints (`default`, `minimum`, `maxLength`, ...) are words, annotation-only
+keys (`title`, `examples`) are left out, and nested structure (array items, objects,
+unions) is kept as compact JSON in brackets so it cannot read as one more argument.
+apfel never runs client tools: it returns the call as OpenAI `tool_calls` and the
+client executes it (#119).
+
+### The guided tool step (default since 1.19.0, `--tool-calling guided`)
+
+For `/v1/chat/completions` requests with client `tools`, the model does not write the
+call as free text. Its decision is generated under a JSON schema (#533):
+
+```
+{"action": "<one of the tool names, or answer>",
+ "arguments": {"<tool name>": {<that tool's parameters>}}}
+```
+
+- A tool action becomes a normal `tool_calls` response. Argument names come from the
+  tool's schema, so the model cannot invent keys, break the escaping or drop required
+  arguments. If it leaves the chosen tool's arguments out, one more guided request in the
+  same session writes them under that tool's own schema; the result is still checked
+  against the original schema.
+- `answer` means: reply in plain text. That reply is written by a second, ordinary
+  request without tool instructions, so it streams as usual and the tool list cannot
+  bend it. Its `usage` includes the decision step.
+- `tool_choice: "required"` removes `answer` from the choices; a named function leaves
+  only that function.
+- Schema keywords guided generation cannot enforce (`minLength`, `pattern`,
+  `multipleOf`, ...) are dropped from the step's copy of the schema, not from the check.
+  A tool whose parameters guided generation cannot express at all (a map with
+  schema-valued `additionalProperties` or `patternProperties`, a root `$ref` or union)
+  makes the request use the free-text format below; `--debug` logs why.
+- `max_tokens` caps the answer, not the decision step or a call's arguments.
+- Not covered yet: tools attached with `--mcp` (auto-executed), `/v1/responses`, and the
+  CLI use the free-text format.
+
+Measured 2026-11-17 with the tool sets from #580/#581 (time tools, web search/fetch,
+calculator, a location + weather pair), 20 runs per prompt, streamed and non-streamed,
+same binary in both modes. A run counts as good when the reply is a call to the right
+tool with arguments that match its schema, or a plain answer where no tool is needed:
+
+| | `--tool-calling guided` | `--tool-calling text` |
+|---|---|---|
+| macOS 27.0.1, M2 (AFM 3 Core) | **360/360** | 231/360 |
+| macOS 26.1, M5 (AFM 2 Core) | **241/360** | 183/360 |
+
+Where text loses: escaping and argument errors (`series`, and on macOS 26.1 the
+calculator 4/80), and tool calls for prompts that need none (`hello`, a short story).
+Where guided still loses on macOS 26.1: the older model picks a tool for a greeting or
+a story far more often (hello 16/40 vs 40/40 in text mode, story 0/40 vs 27/40). Use
+`--tool-calling text` if that matters more to you than correct calls. Cost: an answer
+takes one extra request (on macOS 27, e.g. 2.3 s for "Hello" with six tools in scope);
+a call is usually one request, and often faster than the free-text envelope (web search
+on macOS 27: 2.8 s vs 5.0 s) because only the arguments are generated. The table was
+measured before the step schema dropped its duplicated descriptions (about 20% fewer
+tokens); six of the prompts were re-run on both OSes after that change.
+
+### The free-text format (`--tool-calling text`)
+
+The model is told to answer a call with a specific JSON envelope, which apfel detects
+post-hoc via `ToolCallHandler.detectToolCall()`. Detection handles clean JSON,
+markdown-wrapped ```` ```json ``` ```` blocks, JSON after preamble text, and the variant
+shapes the model writes (name under `type`, `function_name` or `name`, arguments as
+sibling keys, #580). Calls are then held to the tool's schema (see the next section).
 
 Why text and not FoundationModels' `Transcript.ToolDefinition`: the macOS 26 and 27
 runtimes ignore transcript-only tool definitions when no tool is registered with the
@@ -38,9 +98,6 @@ session, so the model only ever saw the tool names (measured: correct argument n
 0/10 with definitions, 10/10 with the list). A list rather than JSON schema text,
 because on macOS 26.1 JSON schema text made Apple's guardrail block a plain
 arithmetic question with the calculator tools, and the list is cheaper.
-
-Detection handles: clean JSON, markdown-wrapped ```` ```json ``` ```` blocks, and JSON
-after preamble text.
 
 ## `tool_choice` and `parallel_tool_calls` are enforced
 

@@ -60,6 +60,7 @@ SERVER (--serve)
   --public-health                         Keep /health unauthenticated
   --footgun                               Disable all protections
   --max-concurrent <n>                    Max concurrent requests (default: 5)
+  --tool-calling <f>                      guided (default) or text: how the model writes client tool calls
 
 META
   -v, --version                           Print version

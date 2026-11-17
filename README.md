@@ -237,7 +237,7 @@ alias apfel=apfel-run                 # optional, every apfel flag still works
 | `GET /v1/models` | Supported | Returns `apple-foundationmodel` |
 | `GET /health` | Supported | Model availability, context window, languages, reported model capabilities (`capabilities`, `capabilities_reported`) |
 | `GET /v1/logs`, `/v1/logs/stats` | Debug only | Requires `--debug` |
-| Tool calling | Supported | Native `ToolDefinition` + JSON detection. See [docs/tool-calling-guide.md](docs/tool-calling-guide.md) |
+| Tool calling | Supported | The call is written under guided generation (`--tool-calling guided`, default) or as JSON the server parses (`--tool-calling text`). See [docs/tool-calling-guide.md](docs/tool-calling-guide.md) |
 | `response_format: json_object` | Supported | System-prompt injection; markdown fences stripped from output |
 | `response_format: json_schema` | Supported | Guaranteed schema-conforming output via FoundationModels `DynamicGenerationSchema`; works with `stream: true` |
 | `temperature`, `top_p`, `max_tokens`, `seed` | Supported | Mapped to `GenerationOptions`. `top_p` is nucleus sampling; `temperature` below 0.001 (0 included) maps to greedy (deterministic). Omitting `max_tokens` uses the remaining context window (drop-in OpenAI semantics) - see [Default response cap](#default-response-cap-max_tokens) |

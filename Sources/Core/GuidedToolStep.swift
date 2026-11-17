@@ -181,6 +181,11 @@ package struct GuidedToolStep: Sendable {
         "uniqueItems", "contains", "minContains", "maxContains", "prefixItems", "additionalItems",
         "minProperties", "maxProperties", "propertyNames",
         "dependentRequired", "dependentSchemas", "dependencies",
+        // Prose and annotations: the instruction list already says them in
+        // words, and in the schema they would cost the context window twice
+        // (on macOS 26.1 the six-tool step overflowed the 4096-token window).
+        "description", "title", "examples", "default", "$comment", "$schema", "$id",
+        "deprecated", "readOnly", "writeOnly",
     ]
 
     /// A copy of a JSON Schema object without the keywords guided generation

@@ -275,7 +275,14 @@ public struct ToolPolicy: Sendable, Equatable {
     /// `evaluate(_:)` applies (the verdict before #580).
     public func evaluate(output: String, complete: Bool = true) -> Outcome {
         let detected = ToolCallHandler.detectToolCall(in: output)
-        guard complete else { return evaluate(detected) }
+        guard complete else {
+            // A call cut off mid-arguments is not a call: deliver the text
+            // with its length finish rather than arguments that do not parse.
+            let cutOff = (detected ?? []).contains { call in
+                (try? JSONSerialization.jsonObject(with: Data(call.argumentsString.utf8))) == nil
+            }
+            return cutOff ? .content : evaluate(detected)
+        }
         if mode != .disabled, detected?.isEmpty ?? true, Self.opensToolCallEnvelope(output) {
             return .violation(Violation(
                 code: Violation.invalidCallCode,

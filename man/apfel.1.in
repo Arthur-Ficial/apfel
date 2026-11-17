@@ -524,6 +524,14 @@ Intended for local development only.
 Maximum number of concurrent model requests. Default
 .BR 5 .
 Additional requests are queued.
+.TP
+.BI \-\-tool-calling " format"
+How the model writes client tool calls on
+.BR /v1/chat/completions :
+.B guided
+(default) generates the decision and arguments under a JSON schema;
+.B text
+uses the free-text JSON envelope that apfel parses.
 .SH ENVIRONMENT
 .TP
 .B APFEL_SYSTEM_PROMPT

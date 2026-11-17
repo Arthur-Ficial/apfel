@@ -32,6 +32,21 @@ func runGuidedToolStepTests() {
         try assertEqual(lenient["required"] as? [String], ["query"])
     }
 
+    test("lenientSchema drops prose and annotations the instruction list already carries") {
+        let raw = #"{"type":"object","title":"T","properties":{"q":{"type":"string","title":"Q","description":"The query.","default":"x","examples":["a"]}},"required":["q"]}"#
+        let lenient = try object(GuidedToolStep.lenientSchemaJSON(raw)!)
+        try assertNil(lenient["title"])
+        let q = (lenient["properties"] as? [String: [String: Any]])?["q"]
+        try assertEqual(q?.keys.sorted(), ["type"])
+        try assertEqual(lenient["required"] as? [String], ["q"])
+    }
+
+    test("lenientSchema keeps a parameter that is named description or title") {
+        let raw = #"{"type":"object","properties":{"description":{"type":"string"},"title":{"type":"string"}},"required":["title"]}"#
+        let lenient = try object(GuidedToolStep.lenientSchemaJSON(raw)!)
+        try assertEqual((lenient["properties"] as? [String: Any])?.keys.sorted(), ["description", "title"])
+    }
+
     test("lenientSchema drops non-string enums") {
         let raw = #"{"type":"object","properties":{"mode":{"type":"integer","enum":[1,2]}}}"#
         let lenient = try object(GuidedToolStep.lenientSchemaJSON(raw)!)
