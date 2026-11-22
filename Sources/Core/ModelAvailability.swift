@@ -67,9 +67,23 @@ public enum ModelAvailability: Sendable, Equatable, Hashable, CustomStringConver
             return """
                 This Mac is not eligible for Apple Intelligence.
 
-                Apple Intelligence requires an Apple Silicon Mac (M1 or later).
-                Intel Macs are not supported - this is a hard Apple requirement,
-                not an apfel limitation.
+                Common causes (this is not an apfel limitation - Apple's
+                FoundationModels framework reports the device as ineligible):
+
+                  - Intel Mac: Apple Intelligence requires Apple Silicon (M1+)
+                  - Regional restriction: Apple Intelligence may not yet be
+                    available in your region, or requires a macOS update that
+                    lifts the restriction. Check for a macOS update that enables
+                    Apple Intelligence for your device and region.
+                  - Insufficient memory or other hardware limitation
+
+                Fix:
+                  1. Open System Settings > General > Software Update and
+                     install any available macOS update
+                  2. Open System Settings > Apple Intelligence & Siri and
+                     check whether Apple Intelligence can be enabled
+                  3. Ensure your device language and Siri language are set to
+                     a supported language
 
                 Details: https://support.apple.com/en-us/121115
                 """

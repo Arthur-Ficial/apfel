@@ -11,6 +11,7 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 - Salvage scanner recovers the tool name after a bare `arguments` value (`null`, a number) instead of losing it to the depth counter (#590 item 4). `removingArgumentValues` now breaks on a closing brace when depth goes negative for a non-container value.
 - `parseToolCallJSON` reads arguments from `function.arguments` when the call carries both `name` and a `function` dict without its own `name` key (#590 item 5). Previously the `{"name": "x", "function": {"arguments": {...}}}` shape lost its arguments to `{}`.
+- `--model-info` remediation for "device not eligible" no longer assumes the only cause is an Intel Mac (#592). The text now covers regional restrictions (e.g. Apple Intelligence newly available in China via macOS 27.3) and suggests checking for macOS updates.
 
 ## [1.19.0] - 2026-11-17
 

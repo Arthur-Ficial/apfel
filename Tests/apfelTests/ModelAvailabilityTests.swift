@@ -73,15 +73,24 @@ func runModelAvailabilityTests() {
         try assertTrue(r.contains("https://support.apple.com/en-us/121115"))
     }
 
-    test("remediation for .deviceNotEligible says Apple Silicon M1+") {
+    test("remediation for .deviceNotEligible mentions Apple Silicon requirement") {
         let r = ModelAvailability.deviceNotEligible.remediation
         try assertTrue(r.contains("Apple Silicon"))
-        try assertTrue(r.contains("M1"))
     }
 
     test("remediation for .deviceNotEligible explains it is not an apfel limitation") {
         let r = ModelAvailability.deviceNotEligible.remediation
         try assertTrue(r.contains("not an apfel limitation"))
+    }
+
+    test("remediation for .deviceNotEligible mentions regional restrictions") {
+        let r = ModelAvailability.deviceNotEligible.remediation
+        try assertTrue(r.contains("region"))
+    }
+
+    test("remediation for .deviceNotEligible suggests checking macOS updates") {
+        let r = ModelAvailability.deviceNotEligible.remediation
+        try assertTrue(r.contains("System Settings"))
     }
 
     test("remediation for .modelNotReady mentions download") {
