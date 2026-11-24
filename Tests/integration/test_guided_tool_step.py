@@ -151,6 +151,49 @@ TIME = {"type": "function", "function": {
         "description": "IANA timezone name (e.g., 'America/New_York', 'Europe/London')."}}}}}
 
 
+SIX_TOOLS = [CALC, WEATHER, TIME] + [
+    {"type": "function", "function": {
+        "name": name, "description": desc,
+        "parameters": {"type": "object", "properties": {arg: {"type": "string", "description": desc}},
+                       "required": [arg]}}}
+    for name, arg, desc in [
+        ("search_web", "query", "Search the web and return the top results for a natural language query."),
+        ("fetch_page", "url", "Fetch a web page and return its readable content as markdown."),
+        ("convert_currency", "amount", "Convert an amount of money between two currencies at today's rate."),
+    ]
+]
+FILLER = "The quick brown fox jumps over the lazy dog near the quiet river bank. "
+
+
+def _overflows(base, repeats):
+    # One user turn, no history: nothing for the trimming strategy to drop,
+    # so the pre-generation budget check decides. max_tokens only caps the
+    # visible answer; the output reserve is fixed by the server.
+    r = _chat({"messages": [{"role": "user", "content": "Summarize these notes in one line. " + FILLER * repeats}],
+               "tools": SIX_TOOLS, "max_tokens": 8}, base=base)
+    if r.status_code == 400 and "context_length_exceeded" in r.text:
+        return True
+    assert r.status_code == 200, r.text
+    return False
+
+
+@pytest.mark.model
+def test_guided_step_that_does_not_fit_falls_back_to_free_text(text_server):
+    # #590 item 2: the step schema plus the tool list cost tokens the
+    # free-text format does not. A request free text can serve must not
+    # become a 400 just because guided is the default.
+    require_model()
+    lo, hi = 1, 1500  # largest repeat count the free-text format still fits
+    assert not _overflows(text_server, lo) and _overflows(text_server, hi)
+    while hi - lo > 1:
+        mid = (lo + hi) // 2
+        if _overflows(text_server, mid):
+            hi = mid
+        else:
+            lo = mid
+    assert not _overflows(BASE_URL, lo), f"guided overflowed at {lo} repeats, free text fits"
+
+
 @pytest.mark.model
 def test_text_format_still_returns_tool_calls(text_server):
     # The one prompt the free-text format got right 40/40 on macOS 27.0.1
