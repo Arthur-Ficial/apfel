@@ -88,7 +88,7 @@ public enum ShellCompletions {
             CompletionFlag(["--host"], .generic, "Server bind address"),
             CompletionFlag(["--cors"], .none, "Enable CORS headers"),
             CompletionFlag(["--max-concurrent"], .generic, "Max concurrent requests"),
-            CompletionFlag(["--tool-calling"], .values(ToolCallingFormat.allCases.map(\.rawValue)), "How the model writes client tool calls"),
+            CompletionFlag(["--tool-calling"], .values(ToolCallingFormat.allCases.map(\.rawValue)), "How the model decides tool calls (serve and --mcp)"),
             CompletionFlag(["--debug"], .none, "Enable debug logging"),
             CompletionFlag(["--allowed-origins"], .generic, "Comma-separated allowed origins"),
             CompletionFlag(["--no-origin-check"], .none, "Disable origin checking"),
