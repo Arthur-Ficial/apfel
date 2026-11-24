@@ -31,13 +31,22 @@ package struct ProcessPromptResult: Sendable {
         self.init(content: content, toolLog: toolLog, finishReason: finishReason, truncation: nil)
     }
 
-    /// Carries why a `.length` finish happened (#484), the matched stop
-    /// sequence (#483) and whether deltas already reached stdout (#590). A
-    /// separate initialiser so the three-argument one above keeps its exact
-    /// signature (API gate).
+    /// Carries why a `.length` finish happened (#484) and the matched stop
+    /// sequence (#483). A separate initialiser so the three-argument one
+    /// above keeps its exact signature (API gate); same rule here for the
+    /// six-argument one below (#590).
     package init(
         content: String, toolLog: [ToolLogEntry], finishReason: FinishReason,
-        truncation: TruncationCause?, matchedStop: String? = nil, printedLive: Bool = false
+        truncation: TruncationCause?, matchedStop: String? = nil
+    ) {
+        self.init(content: content, toolLog: toolLog, finishReason: finishReason,
+                  truncation: truncation, matchedStop: matchedStop, printedLive: false)
+    }
+
+    /// Additionally carries whether deltas already reached stdout (#590).
+    package init(
+        content: String, toolLog: [ToolLogEntry], finishReason: FinishReason,
+        truncation: TruncationCause?, matchedStop: String?, printedLive: Bool
     ) {
         self.content = content; self.toolLog = toolLog; self.finishReason = finishReason
         self.truncation = truncation
