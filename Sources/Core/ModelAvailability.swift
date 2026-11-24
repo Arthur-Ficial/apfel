@@ -67,23 +67,26 @@ public enum ModelAvailability: Sendable, Equatable, Hashable, CustomStringConver
             return """
                 This Mac is not eligible for Apple Intelligence.
 
-                Common causes (this is not an apfel limitation - Apple's
-                FoundationModels framework reports the device as ineligible):
+                Apple's FoundationModels framework reports this status; apfel
+                passes it through. This is not an apfel limitation.
 
-                  - Intel Mac: Apple Intelligence requires Apple Silicon (M1+)
-                  - Regional restriction: Apple Intelligence may not yet be
-                    available in your region, or requires a macOS update that
-                    lifts the restriction. Check for a macOS update that enables
-                    Apple Intelligence for your device and region.
-                  - Insufficient memory or other hardware limitation
+                Causes Apple documents:
+                  - The Mac has no Apple Silicon: Apple Intelligence needs a
+                    Mac with M1 or later (Intel Macs are not supported).
+                  - Region: Apple Intelligence does not currently work on
+                    devices purchased in China mainland, or while you are in
+                    China mainland with an Apple Account region of China
+                    mainland. Apple says these Macs can activate it once it
+                    launches there, which arrives as a macOS update.
 
-                Fix:
-                  1. Open System Settings > General > Software Update and
-                     install any available macOS update
-                  2. Open System Settings > Apple Intelligence & Siri and
-                     check whether Apple Intelligence can be enabled
-                  3. Ensure your device language and Siri language are set to
-                     a supported language
+                Try:
+                  1. System Settings > General > Software Update: install
+                     any macOS update (betas can lag behind Apple's rollout)
+                  2. System Settings > Apple Intelligence & Siri: check
+                     whether Apple Intelligence can be turned on
+                  3. On macOS 27, run Apple's own `fm available` (`fm models`
+                     on newer builds) - it reads the same status, so it
+                     confirms the cause is not apfel
 
                 Details: https://support.apple.com/en-us/121115
                 """

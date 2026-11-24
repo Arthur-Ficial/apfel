@@ -91,6 +91,31 @@ func runModelAvailabilityTests() {
     test("remediation for .deviceNotEligible suggests checking macOS updates") {
         let r = ModelAvailability.deviceNotEligible.remediation
         try assertTrue(r.contains("System Settings"))
+        try assertTrue(r.contains("Software Update"))
+    }
+
+    // #592: Apple's support article 121115 names the China mainland rule
+    // (device purchased there, or Apple Account region there while in China
+    // mainland). An M2 owner must not be told the only cause is Intel.
+    test("remediation for .deviceNotEligible names the China mainland rule (#592)") {
+        let r = ModelAvailability.deviceNotEligible.remediation
+        try assertTrue(r.contains("China mainland"))
+        try assertTrue(r.contains("Apple Account"))
+    }
+
+    // #592: Apple's eligibility list is "Mac with M1 or later" - memory only
+    // picks the model variant, it never makes a Mac ineligible. No made-up causes.
+    test("remediation for .deviceNotEligible does not invent a memory cause (#592)") {
+        let r = ModelAvailability.deviceNotEligible.remediation
+        try assertTrue(!r.lowercased().contains("memory"))
+        try assertTrue(r.contains("M1 or later"))
+    }
+
+    // #592: the status comes from Apple's framework; apfel cannot override it.
+    // Point at Apple's own fm CLI so the user can confirm that independently.
+    test("remediation for .deviceNotEligible points at Apple's fm CLI to confirm (#592)") {
+        let r = ModelAvailability.deviceNotEligible.remediation
+        try assertTrue(r.contains("fm available"))
     }
 
     test("remediation for .modelNotReady mentions download") {

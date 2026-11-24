@@ -119,7 +119,7 @@ If `apfel --model-info` shows `available: no`, the specific reason is printed al
 | Reason | What it means | Fix |
 |---|---|---|
 | **Apple Intelligence not enabled** | The toggle is off, or your device language and Siri language do not match, or Siri is set to an unsupported language | **System Settings > Apple Intelligence & Siri** → turn on. Ensure **Device Language** and **Siri Language** are set to the SAME supported language (English, Danish, Dutch, French, German, Italian, Norwegian, Portuguese, Spanish, Swedish, Turkish, Chinese Simplified/Traditional, Japanese, Korean, Vietnamese). |
-| **Device not eligible** | Intel Mac, or Mac older than M1 | Apple Silicon (M1 or later) is required. This is a hard Apple requirement - there is no workaround. |
+| **Device not eligible** | Intel Mac (Apple Intelligence needs a Mac with M1 or later), or a region rule: Apple Intelligence does not currently work on devices purchased in China mainland, or in China mainland with an Apple Account region of China mainland | No workaround for an Intel Mac. For the region rule, install macOS updates (System Settings > General > Software Update) - Apple says these Macs can activate it once it launches there, and beta builds can lag. On macOS 27, Apple's own `fm available` (`fm models` on newer builds) reads the same status. |
 | **Model not ready** | On-device model is still downloading (~3-4 GB on first enable) | Keep your Mac on **Wi-Fi and power**. Check download progress in System Settings > Apple Intelligence & Siri. Try again in a few minutes. |
 
 apfel is a thin wrapper around Apple's on-device model - it cannot turn on Apple Intelligence for you. Once the underlying Apple toggle is on and models are downloaded, apfel just works.
