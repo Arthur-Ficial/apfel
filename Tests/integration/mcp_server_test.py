@@ -16,6 +16,7 @@ tests that check different aspects of the same response share a single call.
 
 import json
 import contextlib
+import os
 import pathlib
 import pytest
 import httpx
@@ -33,7 +34,10 @@ from conftest import GUARDRAIL_SEEDS, MCP_SERVER, is_guardrail_refusal, post_cha
 pytestmark = pytest.mark.model
 
 
-BASE_URL = "http://localhost:11435"
+# Default: the shared 11435 MCP server (conftest). Override to run the suite
+# against a server you started yourself (e.g. while another worktree's run
+# owns 11435): APFEL_TEST_MCP_BASE=http://127.0.0.1:11457
+BASE_URL = os.environ.get("APFEL_TEST_MCP_BASE", "http://localhost:11435")
 API_URL = f"{BASE_URL}/v1"
 MODEL = "apple-foundationmodel"
 TIMEOUT = 60

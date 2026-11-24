@@ -8,6 +8,7 @@ failure here is a regression, not model noise.
 """
 
 import json
+import os
 import pathlib
 import signal
 import subprocess
@@ -19,8 +20,12 @@ from conftest import _start_server, require_model
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 BINARY = ROOT / ".build" / "release" / "apfel"
-BASE_URL = "http://127.0.0.1:11434"
-TEXT_PORT = 11438
+# Defaults: the shared 11434 server (conftest) and a text server on 11438.
+# Override both to run against servers you started yourself (e.g. while
+# another worktree's run owns these ports):
+#   APFEL_TEST_BASE=http://127.0.0.1:11456 APFEL_TEST_TEXT_PORT=11458
+BASE_URL = os.environ.get("APFEL_TEST_BASE", "http://127.0.0.1:11434")
+TEXT_PORT = int(os.environ.get("APFEL_TEST_TEXT_PORT", "11438"))
 TIMEOUT = 180
 
 CALC = {"type": "function", "function": {
