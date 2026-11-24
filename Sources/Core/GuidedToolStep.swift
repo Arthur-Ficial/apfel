@@ -160,7 +160,9 @@ package struct GuidedToolStep: Sendable {
             return "Decide the next step. Call a tool only when the user's request needs what the tool provides. "
                 + "For greetings, small talk and requests you can answer yourself, such as writing or explaining, "
                 + "set action to \"\(answer)\". To call a tool, set action to its name and write its arguments "
-                + "under arguments.<its name>."
+                + "under arguments.<its name>. "
+                + "Examples: \"Hello\" -> action \"\(answer)\". "
+                + "\"Write a short poem about autumn\" -> action \"\(answer)\"."
         }
     }
 
