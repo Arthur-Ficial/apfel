@@ -575,6 +575,33 @@ def test_chat_mcp_tool_log_on_stderr():
 
 
 @pytest.mark.model
+def test_chat_mcp_tool_turn_stays_in_the_conversation():
+    """A guided tool turn must not vanish from chat history (#590 item 1).
+
+    The guided step and the tool re-prompt run outside the persistent chat
+    session; chat records the exchange back into the transcript, so a later
+    turn can still refer to it. Without that, the model has no previous
+    question to repeat."""
+    require_model()
+    returncode, stdout, tty = run_chat_json(
+        ["--chat", "-o", "json", "--mcp", str(MCP_SERVER)],
+        steps=[
+            (b"Type 'quit' to exit.", b"What's 17 times 23?\n", 0.5),
+            (b'"assistant"', b"What was my previous question? Repeat it word for word.\n", 1.0),
+        ],
+        stop_when=lambda stdout, tty: stdout.count(b'"assistant"') >= 2,
+        timeout=150,
+    )
+    messages = parse_json_lines(stdout)
+    answers = [m["content"] for m in messages if m.get("role") == "assistant"]
+    assert len(answers) >= 2, f"expected two assistant turns, got: {messages}"
+    assert "391" in answers[0], answers[0]
+    recall = answers[1].lower()
+    assert any(token in recall for token in ("17", "23", "391", "times", "multipl")), \
+        f"the tool turn is missing from chat history: {answers[1]!r}"
+
+
+@pytest.mark.model
 def test_chat_mcp_with_system_prompt():
     """Chat + MCP + system prompt must all work together without crash."""
     require_model()

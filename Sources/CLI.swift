@@ -599,11 +599,25 @@ func chat(systemPrompt: String?, initialContext: String? = nil, options: Session
                 msgs.append(OpenAIMessage(role: "user", content: .text(trimmed)))
                 guidedMessages = msgs
             }
+            let entriesBefore = transcriptEntries(session.transcript).count
             let result = try await processPrompt(
                 prompt: trimmed, systemPrompt: systemPrompt, session: session,
                 options: options, genOpts: genOpts, stream: true,
                 printDelta: outputFormat == .plain, mcpManager: mcpManager, hasMCPTools: hasMCPTools,
                 toolCalling: toolCalling, guidedMessages: guidedMessages, guidedAnswerInSession: true)
+            // A guided tool turn runs entirely outside the persistent session
+            // (decision and re-prompt in their own sessions, #590): record the
+            // exchange so later turns still see it. Free-text and guided
+            // answer turns already grew the transcript and are left alone.
+            if hasMCPTools, !result.toolLog.isEmpty,
+               transcriptEntries(session.transcript).count == entriesBefore {
+                var entries = transcriptEntries(session.transcript)
+                entries.append(makePromptEntry(trimmed, options: options))
+                entries.append(.response(Transcript.Response(
+                    assetIDs: [], segments: [.text(Transcript.TextSegment(content: result.content))])))
+                session = makeTranscriptSession(model: model, entries: entries)
+                debugLog("chat", "guided tool turn recorded into the transcript")
+            }
             if !hasMCPTools && outputFormat == .plain { print("\n") }
             printToolLog(result.toolLog)
             let content = result.content
