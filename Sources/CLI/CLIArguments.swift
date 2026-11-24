@@ -329,18 +329,16 @@ extension CLIArguments {
             // --require-complete is a one-shot exit-status contract (#484):
             // it needs a single generation whose finish reason the engine
             // reports. Chat has no single exit status per answer, the
-            // non-generating modes have nothing to check, schema-constrained
-            // decoding and the MCP tool follow-up turn do not report a
-            // finish reason, so accepting them would promise a check apfel
-            // cannot make.
+            // non-generating modes have nothing to check, and schema-
+            // constrained decoding does not report a finish reason, so
+            // accepting them would promise a check apfel cannot make.
+            // MCP is allowed: the tool re-prompt resolves a real finish
+            // reason via FinishReasonResolver (#597).
             if mode != .single && mode != .stream {
                 throw CLIParseError("--require-complete requires a one-shot prompt (single, --stream, --messages or --code); cannot combine with --\(mode.rawValue)")
             }
             if schemaJSON != nil {
                 throw CLIParseError("--require-complete cannot be combined with --schema; schema-constrained output does not report a finish reason")
-            }
-            if !mcpServerPaths.isEmpty {
-                throw CLIParseError("--require-complete cannot be combined with MCP tool calling (--mcp / APFEL_MCP); the tool follow-up turn does not report a finish reason")
             }
         }
         if messagesJSON != nil || messagesFromStdin {

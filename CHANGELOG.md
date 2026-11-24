@@ -13,6 +13,7 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ### Fixed
 
+- CLI `--mcp` re-prompt now resolves the real finish reason via `FinishReasonResolver` instead of hardcoding `.stop` (#597). `--require-complete` composes with `--mcp`: a truncated tool re-prompt answer correctly reports `finish_reason=length` and exits 8.
 - A guided tool step that does not fit the context window falls back to the free-text tool-call format instead of returning 400 `context_length_exceeded` (#590 item 2). The step schema and tool list cost tokens free text does not; only a request free text cannot fit either still gets the 400.
 - Salvage scanner recovers the tool name after a bare `arguments` value (`null`, a number) instead of losing it to the depth counter (#590 item 4). `removingArgumentValues` now breaks on a closing brace when depth goes negative for a non-container value.
 - `parseToolCallJSON` reads arguments from `function.arguments` when the call carries both `name` and a `function` dict without its own `name` key (#590 item 5). Previously the `{"name": "x", "function": {"arguments": {...}}}` shape lost its arguments to `{}`.

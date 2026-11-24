@@ -62,9 +62,8 @@ func processPrompt(
         content = result.content
         toolLog = result.toolLog.map { ToolLogEntry(name: $0.name, args: $0.args, result: $0.result, isError: $0.isError) }
         debugLog("mcp", "executed \(toolLog.count) tool calls")
-        // After tool re-prompt the model produced a fresh natural reply.
-        finishReason = .stop
-        truncation = nil
+        finishReason = result.finishReason
+        truncation = result.truncation
         matchedStop = nil
     }
 
@@ -193,7 +192,7 @@ func executeMCPToolCallsForCLI(
     userPrompt: String,
     systemPrompt: String?,
     options: GenerationOptions
-) async throws -> (content: String, toolLog: [(name: String, args: String, result: String, isError: Bool)])? {
+) async throws -> (content: String, toolLog: [(name: String, args: String, result: String, isError: Bool)], finishReason: FinishReason, truncation: TruncationCause?)? {
     guard let executed = try await detectAndExecuteMCPTools(in: content, mcpManager: mcpManager) else {
         return nil
     }
@@ -212,10 +211,11 @@ func executeMCPToolCallsForCLI(
     }
     var toolResult = await truncateToolResultToBudget(
         executed.resultParts.joined(separator: "\n"), overhead: overhead)
-    var finalContent = try await plainSession.respond(
+    var lastResponse = try await plainSession.respond(
         to: "The user asked: \(userPrompt)\n\nThe tool returned: \(toolResult)\n\n\(followUpInstruction(executed))",
         options: options
-    ).content
+    )
+    var finalContent = lastResponse.content
 
     // The re-prompt answer may itself contain another tool_calls request. If we
     // returned it verbatim that JSON would leak to the user as raw text. Run a
@@ -229,17 +229,35 @@ func executeMCPToolCallsForCLI(
         aggregatedLog.append(contentsOf: followUp.toolLog)
         toolResult = await truncateToolResultToBudget(
             followUp.resultParts.joined(separator: "\n"), overhead: overhead)
-        finalContent = try await plainSession.respond(
+        lastResponse = try await plainSession.respond(
             to: "The user asked: \(userPrompt)\n\nThe tool returned: \(toolResult)\n\n\(followUpInstruction(followUp))",
             options: options
-        ).content
+        )
+        finalContent = lastResponse.content
     }
 
     // Cap exhausted but the model is still emitting a tool call: fail loudly
     // instead of stripping the JSON and returning a fragment as success (#435).
     try ToolCallHandler.ensureToolLoopCompleted(in: finalContent)
 
-    return (content: finalContent, toolLog: aggregatedLog)
+    // Resolve the real finish reason from the last re-prompt, mirroring
+    // collectStream and the server path: runtime-reported usage on macOS
+    // 27+, tokenizer count on macOS 26 (#597).
+    let completionTokens: Int
+    if let usage = reportedUsage(of: lastResponse) {
+        completionTokens = usage.completionTokens
+    } else {
+        completionTokens = await TokenCounter.shared.count(finalContent)
+    }
+    let finishReason = FinishReasonResolver.resolve(
+        hasToolCalls: false,
+        completionTokens: completionTokens,
+        maxTokens: options.maximumResponseTokens
+    )
+    let truncation = TruncationCause.resolve(
+        finishReason: finishReason, maxTokens: options.maximumResponseTokens)
+
+    return (content: finalContent, toolLog: aggregatedLog, finishReason: finishReason, truncation: truncation)
 }
 
 /// Token-budget each executed tool result for a server follow-up, given the

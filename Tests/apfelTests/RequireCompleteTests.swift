@@ -192,9 +192,10 @@ func runRequireCompleteTests() {
                              contains: ["--require-complete", "--schema"], readFile: { _ in schema })
     }
 
-    test("--require-complete --mcp throws a specific error") {
-        try expectParseError(["--require-complete", "--mcp", "server.py", "hi"],
-                             contains: ["--require-complete", "MCP"])
+    test("--require-complete composes with --mcp (#597)") {
+        let args = try CLIArguments.parse(["--require-complete", "--mcp", "server.py", "hi"])
+        try assertTrue(args.requireComplete)
+        try assertTrue(!args.mcpServerPaths.isEmpty)
     }
 
     // ========================================================================
