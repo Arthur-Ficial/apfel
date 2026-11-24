@@ -125,7 +125,7 @@ MCP tools attached with `--mcp` are auto-executed on Chat Completions only; `/v1
 
 ## Token preflight (`/v1/responses/input_tokens`)
 
-`POST /v1/responses/input_tokens` answers "does this fit?" before you spend time on generation. It takes the same body as `/v1/responses` minus the sampling fields, prepares the input exactly as generation would (instructions, roles, tool definitions, `text.format` schema, truncation), and counts it with Apple's on-device tokenizer (`SystemLanguageModel.tokenCount(for:)`). It never generates and never runs a tool. The official SDK call works unchanged:
+`POST /v1/responses/input_tokens` answers "does this fit?" before you spend time on generation. It takes the same body as `/v1/responses` minus the sampling fields, prepares the input exactly as generation would (instructions, roles, tool definitions, `text.format` schema, truncation), and counts it with Apple's on-device tokenizer (`SystemLanguageModel.tokenCount(for:)`). It never generates and never runs a tool. With function `tools` in scope and `--tool-calling guided` (the default), generation first runs the guided tool step, so the count is that step's request (the tool list, the decision text and the step schema); a step that would not fit is counted in the free-text format, as generation then falls back to it. When the step decides to answer, the answer is a second request, so the `usage` of the generated response is larger than this count. The official SDK call works unchanged:
 
 ```python
 from openai import OpenAI

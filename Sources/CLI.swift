@@ -603,18 +603,15 @@ func chat(systemPrompt: String?, initialContext: String? = nil, options: Session
                 options: options, genOpts: genOpts, stream: true,
                 printDelta: outputFormat == .plain, mcpManager: mcpManager, hasMCPTools: hasMCPTools,
                 toolCalling: toolCalling, guidedMessages: guidedMessages, guidedAnswerInSession: true)
-            // A guided tool turn runs entirely outside the persistent session
-            // (decision and re-prompt in their own sessions, #590): record the
-            // exchange so later turns still see it. Free-text and guided
-            // answer turns already grew the transcript and are left alone.
-            if hasMCPTools, !result.toolLog.isEmpty,
-               transcriptEntries(session.transcript).count == entriesBefore {
-                var entries = transcriptEntries(session.transcript)
-                entries.append(makePromptEntry(trimmed, options: options))
-                entries.append(.response(Transcript.Response(
-                    assetIDs: [], segments: [.text(Transcript.TextSegment(content: result.content))])))
+            // Keep the answer the user saw in the transcript (#590): a guided
+            // tool turn ran outside the persistent session, a free-text tool
+            // turn left the raw tool-call JSON as its response.
+            if hasMCPTools, !result.toolLog.isEmpty {
+                let entries = recordToolTurn(
+                    entries: transcriptEntries(session.transcript), entriesBefore: entriesBefore,
+                    prompt: trimmed, answer: result.content, options: options)
                 session = makeTranscriptSession(model: model, entries: entries)
-                debugLog("chat", "guided tool turn recorded into the transcript")
+                debugLog("chat", "tool turn recorded into the transcript")
             }
             if !hasMCPTools && outputFormat == .plain { print("\n") }
             printToolLog(result.toolLog)

@@ -14,6 +14,8 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ### Fixed
 
+- `/v1/responses/input_tokens` keeps counting exactly what `/v1/responses` sends first: with function tools in scope that is now the guided tool step's request (#590 item 1), so the preflight counts the tool list, decision text and step schema; a step that would not fit is counted in the free-text format, matching generation's fallback.
+- `--chat --mcp`: a tool turn leaves the answer the user saw in the chat transcript, also when the free-text format ran it; before, the raw tool-call JSON stayed as the turn's reply and the next turn (and the guided decision) read it (#590 review).
 - A guided tool step that does not fit the context window falls back to the free-text tool-call format instead of returning 400 `context_length_exceeded` (#590 item 2). The step schema and tool list cost tokens free text does not; only a request free text cannot fit either still gets the 400.
 - Salvage scanner recovers the tool name after a bare `arguments` value (`null`, a number) instead of losing it to the depth counter (#590 item 4). `removingArgumentValues` now breaks on a closing brace when depth goes negative for a non-container value.
 - `parseToolCallJSON` reads arguments from `function.arguments` when the call carries both `name` and a `function` dict without its own `name` key (#590 item 5). Previously the `{"name": "x", "function": {"arguments": {...}}}` shape lost its arguments to `{}`.

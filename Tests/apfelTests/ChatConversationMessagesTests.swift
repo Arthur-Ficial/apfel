@@ -65,4 +65,31 @@ func runChatConversationMessagesTests() {
             systemPrompt: nil, transcript: transcript, currentTurn: "next")
         try assertEqual(messages.map(\.role), ["assistant", "user"])
     }
+
+    // Review P2-1 (#590): a tool turn must leave the user-visible answer in
+    // the chat transcript, never the raw tool-call JSON, on both routes.
+    func responseTexts(_ entries: [Transcript.Entry]) -> [String] {
+        entries.compactMap {
+            guard case .response(let r) = $0 else { return nil }
+            return r.segments.compactMap { if case .text(let t) = $0 { return t.content } else { return nil } }.joined()
+        }
+    }
+
+    test("recordToolTurn appends prompt + answer when the turn ran outside the session (#590)") {
+        let before: [Transcript.Entry] = [entry(instructions: "tools"), entry(prompt: "hi"), entry(response: "Hello!")]
+        let out = recordToolTurn(entries: before, entriesBefore: before.count,
+                                 prompt: "What's 17 times 23?", answer: "391")
+        try assertEqual(out.count, 5)
+        try assertEqual(responseTexts(out), ["Hello!", "391"])
+    }
+
+    test("recordToolTurn replaces a trailing tool-call response with the answer (#590)") {
+        let before: [Transcript.Entry] = [entry(instructions: "tools")]
+        let grown = before + [entry(prompt: "What's 17 times 23?"),
+                              entry(response: "{\"tool_calls\": [{\"name\": \"multiply\", \"arguments\": {\"a\": 17, \"b\": 23}}]}")]
+        let out = recordToolTurn(entries: grown, entriesBefore: before.count,
+                                 prompt: "What's 17 times 23?", answer: "17 times 23 is 391.")
+        try assertEqual(out.count, 3)
+        try assertEqual(responseTexts(out), ["17 times 23 is 391."])
+    }
 }
