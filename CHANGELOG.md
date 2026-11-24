@@ -7,6 +7,8 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.20.0] - 2026-11-24
+
 ### Changed
 
 - The guided tool step now decides the first round of every tool path, not only client tools on `/v1/chat/completions` (#590 item 1). Server-injected `--mcp` tools: the decided call enters the existing auto-execute pipeline (follow-up rounds after a tool result stay free text), an `answer` is written without tool instructions; streaming and non-streaming. `/v1/responses` function tools: a call becomes the same `function_call` output item a detected free-text call produces, an `answer` a plain message (function tools with `stream: true` stay a 501). CLI `--mcp` (one-shot, `--messages`, `--chat`): the step decides; a call is executed and re-prompted as today, an answer streams live without the tool list in scope (in `--chat` it comes from the history-carrying session). `--tool-calling guided|text` now applies to the CLI `--mcp` path too, not just `--serve`. All paths fall back to the free-text format when the step cannot run (inexpressible tool schema) or does not fit the context window (#590 item 2 rule).
