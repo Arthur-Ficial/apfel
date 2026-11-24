@@ -2272,6 +2272,23 @@ def test_json_envelope_reports_finish_reason_length_when_capped():
 
 
 @pytest.mark.model
+def test_mcp_tool_reprompt_reports_finish_reason_length_when_capped():
+    # #597: after an MCP tool ran, the re-prompt answer is the reply; a cap
+    # that cuts it must show as length, not a hardcoded stop.
+    require_model()
+    result = run_cli(["-o", "json", "--max-tokens", "6", "--mcp", "mcp/calculator/server.py",
+                      "What's 17 times 23? Then explain multiplication in five detailed paragraphs."],
+                     timeout=180)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    payload = json.loads(result.stdout)
+    assert payload.get("tool_calls") or "tool" in result.stderr or payload["content"], payload
+    if exact_finish_signal():
+        assert payload["finish_reason"] == "length", payload
+    else:
+        assert payload.get("finish_reason") != "stop", payload
+
+
+@pytest.mark.model
 def test_require_complete_complete_json_reports_stop_and_exits_0():
     require_model()
     result = run_cli(["--require-complete", "-o", "json", SHORT_PROMPT], timeout=120)

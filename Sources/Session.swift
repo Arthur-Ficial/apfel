@@ -58,7 +58,7 @@ func processPrompt(
             return ProcessPromptResult(
                 content: executed.content,
                 toolLog: executed.toolLog.map { ToolLogEntry(name: $0.name, args: $0.args, result: $0.result, isError: $0.isError) },
-                finishReason: .stop, truncation: nil, matchedStop: nil)
+                finishReason: executed.finishReason, truncation: executed.truncation, matchedStop: nil)
         case .answer:
             debugLog("guided", "tool step decided: answer")
             if !guidedAnswerInSession {
@@ -113,9 +113,9 @@ func processPrompt(
         content = result.content
         toolLog = result.toolLog.map { ToolLogEntry(name: $0.name, args: $0.args, result: $0.result, isError: $0.isError) }
         debugLog("mcp", "executed \(toolLog.count) tool calls")
-        // After tool re-prompt the model produced a fresh natural reply.
-        finishReason = .stop
-        truncation = nil
+        // The re-prompt answer is the reply: its finish reason is the turn's (#597).
+        finishReason = result.finishReason
+        truncation = result.truncation
         matchedStop = nil
     }
 
@@ -282,7 +282,7 @@ func executeMCPToolCallsForCLI(
     userPrompt: String,
     systemPrompt: String?,
     options: GenerationOptions
-) async throws -> (content: String, toolLog: [(name: String, args: String, result: String, isError: Bool)])? {
+) async throws -> (content: String, toolLog: [(name: String, args: String, result: String, isError: Bool)], finishReason: FinishReason, truncation: TruncationCause?)? {
     guard let mcpManager,
           let executed = try await detectAndExecuteMCPTools(in: content, mcpManager: mcpManager) else {
         return nil
@@ -301,7 +301,7 @@ func executeMCPToolCallsForCLI(
     userPrompt: String,
     systemPrompt: String?,
     options: GenerationOptions
-) async throws -> (content: String, toolLog: [(name: String, args: String, result: String, isError: Bool)]) {
+) async throws -> (content: String, toolLog: [(name: String, args: String, result: String, isError: Bool)], finishReason: FinishReason, truncation: TruncationCause?) {
     let executed = try await executeMCPTools(calls, mcpManager: mcpManager)
     return try await repromptAfterMCPExecution(
         executed, mcpManager: mcpManager, userPrompt: userPrompt,
@@ -317,7 +317,7 @@ private func repromptAfterMCPExecution(
     userPrompt: String,
     systemPrompt: String?,
     options: GenerationOptions
-) async throws -> (content: String, toolLog: [(name: String, args: String, result: String, isError: Bool)]) {
+) async throws -> (content: String, toolLog: [(name: String, args: String, result: String, isError: Bool)], finishReason: FinishReason, truncation: TruncationCause?) {
     var aggregatedLog = executed.toolLog
     let plainSession = makeSession(systemPrompt: systemPrompt)
     let overhead = cliFollowUpOverhead(userPrompt: userPrompt, systemPrompt: systemPrompt)
@@ -332,10 +332,23 @@ private func repromptAfterMCPExecution(
     }
     var toolResult = await truncateToolResultToBudget(
         executed.resultParts.joined(separator: "\n"), overhead: overhead)
-    var finalContent = try await plainSession.respond(
-        to: "The user asked: \(userPrompt)\n\nThe tool returned: \(toolResult)\n\n\(followUpInstruction(executed))",
-        options: options
-    ).content
+    // The re-prompt answer is the reply, so its finish reason is the turn's
+    // (#597): the runtime's completion count when reported (macOS 27+),
+    // else one tokenizer count, decided like collectStream decides it.
+    func answer(_ prompt: String) async throws -> (content: String, finishReason: FinishReason) {
+        let response = try await plainSession.respond(to: prompt, options: options)
+        let completionTokens: Int
+        if let reported = reportedUsage(of: response) {
+            completionTokens = reported.completionTokens
+        } else {
+            completionTokens = await TokenCounter.shared.count(response.content)
+        }
+        return (response.content, FinishReasonResolver.resolve(
+            hasToolCalls: false, completionTokens: completionTokens,
+            maxTokens: options.maximumResponseTokens))
+    }
+    var (finalContent, finishReason) = try await answer(
+        "The user asked: \(userPrompt)\n\nThe tool returned: \(toolResult)\n\n\(followUpInstruction(executed))")
 
     // The re-prompt answer may itself contain another tool_calls request. If we
     // returned it verbatim that JSON would leak to the user as raw text. Run a
@@ -349,17 +362,16 @@ private func repromptAfterMCPExecution(
         aggregatedLog.append(contentsOf: followUp.toolLog)
         toolResult = await truncateToolResultToBudget(
             followUp.resultParts.joined(separator: "\n"), overhead: overhead)
-        finalContent = try await plainSession.respond(
-            to: "The user asked: \(userPrompt)\n\nThe tool returned: \(toolResult)\n\n\(followUpInstruction(followUp))",
-            options: options
-        ).content
+        (finalContent, finishReason) = try await answer(
+            "The user asked: \(userPrompt)\n\nThe tool returned: \(toolResult)\n\n\(followUpInstruction(followUp))")
     }
 
     // Cap exhausted but the model is still emitting a tool call: fail loudly
     // instead of stripping the JSON and returning a fragment as success (#435).
     try ToolCallHandler.ensureToolLoopCompleted(in: finalContent)
 
-    return (content: finalContent, toolLog: aggregatedLog)
+    return (content: finalContent, toolLog: aggregatedLog, finishReason: finishReason,
+            truncation: TruncationCause.resolve(finishReason: finishReason, maxTokens: options.maximumResponseTokens))
 }
 
 /// Token-budget each executed tool result for a server follow-up, given the

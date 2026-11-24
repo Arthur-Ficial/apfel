@@ -14,6 +14,7 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ### Fixed
 
+- CLI `--mcp`: after a tool ran, `finish_reason` (the `-o json` envelope and the truncation note) comes from the re-prompt answer instead of a hardcoded `stop`, so a `--max-tokens` cap that cuts the answer shows as `length` (#597).
 - `/v1/responses/input_tokens` keeps counting exactly what `/v1/responses` sends first: with function tools in scope that is now the guided tool step's request (#590 item 1), so the preflight counts the tool list, decision text and step schema; a step that would not fit is counted in the free-text format, matching generation's fallback.
 - `--chat --mcp`: a tool turn leaves the answer the user saw in the chat transcript, also when the free-text format ran it; before, the raw tool-call JSON stayed as the turn's reply and the next turn (and the guided decision) read it (#590 review).
 - A guided tool step that does not fit the context window falls back to the free-text tool-call format instead of returning 400 `context_length_exceeded` (#590 item 2). The step schema and tool list cost tokens free text does not; only a request free text cannot fit either still gets the 400.
