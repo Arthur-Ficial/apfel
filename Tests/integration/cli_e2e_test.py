@@ -2172,11 +2172,13 @@ def test_require_complete_schema_conflict_rejected(tmp_path):
     assert "--schema" in result.stderr
 
 
-def test_require_complete_mcp_conflict_rejected():
+def test_require_complete_mcp_accepted():
+    """--require-complete composes with --mcp (#597); no parse rejection."""
     result = run_cli(["--require-complete", "--mcp", "mcp/calculator/server.py", "hi"], timeout=30)
-    assert result.returncode == 2
-    assert "--require-complete" in result.stderr
-    assert "MCP" in result.stderr
+    # On CI (no Apple Intelligence) the model is unavailable (exit 5), which
+    # is fine - the point is that the parser no longer rejects the combination
+    # with exit 2.
+    assert result.returncode != 2, f"should not be a parse error: {result.stderr}"
 
 
 def test_require_complete_in_help_and_completions():
