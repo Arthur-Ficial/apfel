@@ -587,7 +587,9 @@ def test_chat_mcp_tool_turn_stays_in_the_conversation():
         ["--chat", "-o", "json", "--mcp", str(MCP_SERVER)],
         steps=[
             (b"Type 'quit' to exit.", b"What's 17 times 23?\n", 0.5),
-            (b'"assistant"', b"What was my previous question? Repeat it word for word.\n", 1.0),
+            # Ask for the result, not a verbatim repeat: macOS 26.1 refuses to
+            # "repeat the user's previous question verbatim" (2026-11-24).
+            (b'"assistant"', b"Remind me: which numbers did I ask you to multiply a moment ago?\n", 1.0),
         ],
         stop_when=lambda stdout, tty: stdout.count(b'"assistant"') >= 2,
         timeout=150,
