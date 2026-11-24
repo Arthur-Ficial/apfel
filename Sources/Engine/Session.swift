@@ -158,6 +158,43 @@ package func transcriptEntries(_ transcript: Transcript) -> [Transcript.Entry] {
     Array(transcript)
 }
 
+/// The chat conversation so far as OpenAI messages, for decisions that run
+/// outside the persistent session - the guided tool step (#590 item 1): the
+/// system prompt, every user/assistant turn from the transcript, then the
+/// current turn. The Instructions entry is skipped (in chat it carries the
+/// tool list and calling format, which the step builds itself) and so are
+/// empty turns. ContextManager trims the result to budget as usual.
+package func conversationMessages(
+    systemPrompt: String?,
+    transcript: Transcript,
+    currentTurn: String
+) -> [OpenAIMessage] {
+    func text(_ segments: [Transcript.Segment]) -> String {
+        segments.compactMap { if case .text(let t) = $0 { return t.content } else { return nil } }
+            .joined(separator: "\n")
+    }
+    var messages: [OpenAIMessage] = []
+    if let systemPrompt, !systemPrompt.isEmpty {
+        messages.append(OpenAIMessage(role: "system", content: .text(systemPrompt)))
+    }
+    for entry in transcriptEntries(transcript) {
+        switch entry {
+        case .prompt(let prompt):
+            let content = text(prompt.segments)
+            if !content.isEmpty { messages.append(OpenAIMessage(role: "user", content: .text(content))) }
+        case .response(let response):
+            let content = text(response.segments)
+            if !content.isEmpty { messages.append(OpenAIMessage(role: "assistant", content: .text(content))) }
+        default:
+            // Instructions (tool text), tool calls and tool output: the step
+            // needs the conversation, not the mechanics of earlier rounds.
+            break
+        }
+    }
+    messages.append(OpenAIMessage(role: "user", content: .text(currentTurn)))
+    return messages
+}
+
 /// Assemble the full prompt-token accounting input from the entries
 /// ContextManager actually built plus the final prompt sent via respond().
 /// Tool schemas live in instruction text segments (#555), not native

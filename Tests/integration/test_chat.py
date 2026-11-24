@@ -602,6 +602,35 @@ def test_chat_mcp_tool_turn_stays_in_the_conversation():
 
 
 @pytest.mark.model
+def test_chat_mcp_guided_follow_up_resolves_that_result():
+    """The guided decision in chat sees the conversation so far (#590 item 1).
+
+    Turn 1 computes 17*23 via the calculator; turn 2 says "Now add 9 to that
+    result." - resolvable only when the step (or the answer round) knows
+    "that" = 391. Good = the calculator ran on an expression containing 391
+    (tool log on stderr/tty) or the answer contains 400."""
+    require_model()
+    returncode, stdout, tty = run_chat_json(
+        ["--chat", "-o", "json", "--mcp", str(MCP_SERVER)],
+        steps=[
+            (b"Type 'quit' to exit.", b"What's 17 times 23?\n", 0.5),
+            (b'"assistant"', b"Now add 9 to that result.\n", 1.0),
+        ],
+        stop_when=lambda stdout, tty: stdout.count(b'"assistant"') >= 2,
+        timeout=180,
+    )
+    messages = parse_json_lines(stdout)
+    answers = [m["content"] for m in messages if m.get("role") == "assistant"]
+    assert len(answers) >= 2, f"expected two assistant turns, got: {messages}"
+    assert "391" in answers[0], answers[0]
+    tty_clean = strip_ansi(tty)
+    turn2_tool_lines = [l for l in tty_clean.split("\n")
+                        if "tool:" in l.lower() and "391" in l]
+    assert "400" in answers[1] or turn2_tool_lines, \
+        f"turn 2 did not resolve 'that result' (391+9): answer={answers[1]!r}"
+
+
+@pytest.mark.model
 def test_chat_mcp_with_system_prompt():
     """Chat + MCP + system prompt must all work together without crash."""
     require_model()

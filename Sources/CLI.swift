@@ -588,17 +588,15 @@ func chat(systemPrompt: String?, initialContext: String? = nil, options: Session
         }
 
         do {
-            // The guided step (#590) decides over the current turn; the
-            // persistent session keeps the conversation, so a guided answer
-            // falls through to it (guidedAnswerInSession) instead of losing
-            // history to a fresh tool-free session.
-            var guidedMessages: [OpenAIMessage]? = nil
-            if hasMCPTools {
-                var msgs: [OpenAIMessage] = []
-                if let sys = systemPrompt { msgs.append(OpenAIMessage(role: "system", content: .text(sys))) }
-                msgs.append(OpenAIMessage(role: "user", content: .text(trimmed)))
-                guidedMessages = msgs
-            }
+            // The guided step (#590) decides over the conversation so far -
+            // system prompt plus every earlier turn from the persistent
+            // transcript (including recorded tool turns), then the current
+            // turn - so "add 9 to that result" can resolve "that". A guided
+            // answer still falls through to the history-carrying session
+            // (guidedAnswerInSession).
+            let guidedMessages: [OpenAIMessage]? = hasMCPTools
+                ? conversationMessages(systemPrompt: systemPrompt, transcript: session.transcript, currentTurn: trimmed)
+                : nil
             let entriesBefore = transcriptEntries(session.transcript).count
             let result = try await processPrompt(
                 prompt: trimmed, systemPrompt: systemPrompt, session: session,

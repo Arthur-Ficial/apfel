@@ -72,7 +72,9 @@ and the CLI (`apfel --mcp server.py "prompt"`, `--chat`).
   fed back as today, and any further calls the model chains after a tool result are
   detected as free text. An `answer` is written without the tool list in scope - in
   `--chat` it comes from the history-carrying chat session instead, so multi-turn
-  context survives.
+  context survives. The `--chat` decision itself also sees the conversation so far
+  (every earlier turn, tool turns included), so a follow-up like "now add 9 to that
+  result" can resolve "that".
 
 Measured 2026-11-17 with the tool sets from #580/#581 (time tools, web search/fetch,
 calculator, a location + weather pair), 20 runs per prompt, streamed and non-streamed,

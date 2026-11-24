@@ -152,6 +152,7 @@ suite("TokenUsageTests") { runTokenUsageTests() }
 suite("ImageInputTests") { runImageInputTests() }
 suite("ModelCapabilityTests") { runModelCapabilityTests() }
 suite("EngineTranscriptTests") { runEngineTranscriptTests() }
+suite("ChatConversationMessagesTests") { runChatConversationMessagesTests() }
 suite("OnDeviceEngineTests") { runOnDeviceEngineTests() }
 suite("EngineOptionsPlumbingTests") { runEngineOptionsPlumbingTests() }
 suite("EngineOptionsTests") { runEngineOptionsTests() }
