@@ -119,8 +119,9 @@ public struct CLIArguments: Sendable, Equatable {
     public var serverToken: String? = nil
     public var serverTokenAuto: Bool = false
     public var serverPublicHealth: Bool = false
-    /// How the server asks the model for client tool calls (#533).
-    public var serverToolCalling: ToolCallingFormat = .guided
+    /// How the model is asked for tool calls (#533): the server's client
+    /// tools and, since #590, every `--mcp` path (server and CLI).
+    public var toolCalling: ToolCallingFormat = .guided
 
     // MARK: - MCP
 
@@ -881,7 +882,7 @@ extension CLIArguments {
                 guard i < args.count, let format = ToolCallingFormat(rawValue: args[i]) else {
                     throw CLIErrors.requires("--tool-calling", "one of: guided|text")
                 }
-                result.serverToolCalling = format
+                result.toolCalling = format
 
             case "--context-strategy":
                 i += 1
@@ -1107,7 +1108,9 @@ extension CLIArguments {
     }
 }
 
-/// How `apfel --serve` asks the model for client tool calls (#533).
+/// How apfel asks the model for tool calls (#533): client tools on
+/// `apfel --serve`, and every `--mcp` path - server auto-execution,
+/// `/v1/responses` function tools, and the CLI (#590).
 public enum ToolCallingFormat: String, Sendable, Equatable, CaseIterable {
     /// The tool decision and arguments are generated under a JSON schema
     /// (guided generation); answers are written in a separate request.

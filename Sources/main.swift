@@ -445,7 +445,7 @@ do {
             retryEnabled: parsed.retryEnabled,
             retryCount: parsed.retryCount,
             permissive: parsed.permissive,
-            toolCalling: parsed.serverToolCalling
+            toolCalling: parsed.toolCalling
         )
         try await startServer(config: config, mcpManager: mcpManager)
 
@@ -461,7 +461,7 @@ do {
     case .chat:
         // `-f file` / piped / positional content is merged into `prompt` above;
         // seed it into the chat context instead of dropping it silently (#370).
-        try await chat(systemPrompt: parsed.systemPrompt, initialContext: prompt.isEmpty ? nil : prompt, options: sessionOpts, mcpManager: mcpManager, contextStatus: parsed.contextStatus)
+        try await chat(systemPrompt: parsed.systemPrompt, initialContext: prompt.isEmpty ? nil : prompt, options: sessionOpts, mcpManager: mcpManager, contextStatus: parsed.contextStatus, toolCalling: parsed.toolCalling)
 
     case .stream:
         if let messagesJSON {
@@ -470,7 +470,8 @@ do {
                 messagesJSON: messagesJSON, systemPrompt: parsed.systemPrompt,
                 stream: true, schemaJSON: parsed.schemaJSON, schemaName: parsed.schemaName,
                 options: sessionOpts, mcpManager: mcpManager,
-                requireComplete: parsed.requireComplete, stopSequences: parsed.stopSequences)
+                requireComplete: parsed.requireComplete, stopSequences: parsed.stopSequences,
+                toolCalling: parsed.toolCalling)
             if status != 0 {
                 await shutdownMCP()
                 exit(status)
@@ -490,7 +491,7 @@ do {
                     schemaJSON: schemaJSON, schemaName: parsed.schemaName ?? "schema",
                     stream: true, options: sessionOpts)
             } else {
-                let status = try await singlePrompt(prompt, systemPrompt: parsed.systemPrompt, stream: true, options: sessionOpts, mcpManager: mcpManager, requireComplete: parsed.requireComplete, images: promptImages, stopSequences: parsed.stopSequences)
+                let status = try await singlePrompt(prompt, systemPrompt: parsed.systemPrompt, stream: true, options: sessionOpts, mcpManager: mcpManager, requireComplete: parsed.requireComplete, images: promptImages, stopSequences: parsed.stopSequences, toolCalling: parsed.toolCalling)
                 if status != 0 {
                     await shutdownMCP()
                     exit(status)
@@ -511,7 +512,8 @@ do {
                 messagesJSON: messagesJSON, systemPrompt: effectiveSystemPrompt,
                 stream: false, schemaJSON: parsed.schemaJSON, schemaName: parsed.schemaName,
                 options: sessionOpts, mcpManager: mcpManager, codeOnly: parsed.codeOnly,
-                requireComplete: parsed.requireComplete, stopSequences: parsed.stopSequences)
+                requireComplete: parsed.requireComplete, stopSequences: parsed.stopSequences,
+                toolCalling: parsed.toolCalling)
             if status != 0 {
                 await shutdownMCP()
                 exit(status)
@@ -530,7 +532,7 @@ do {
         } else {
             // The bare-pipe case (`echo hi | apfel`) streams to preserve its
             // historical output behavior; an explicit prompt does not (#222).
-            let status = try await singlePrompt(prompt, systemPrompt: effectiveSystemPrompt, stream: noArgsPipe, options: sessionOpts, mcpManager: mcpManager, codeOnly: parsed.codeOnly, requireComplete: parsed.requireComplete, images: promptImages, stopSequences: parsed.stopSequences)
+            let status = try await singlePrompt(prompt, systemPrompt: effectiveSystemPrompt, stream: noArgsPipe, options: sessionOpts, mcpManager: mcpManager, codeOnly: parsed.codeOnly, requireComplete: parsed.requireComplete, images: promptImages, stopSequences: parsed.stopSequences, toolCalling: parsed.toolCalling)
             if status != 0 {
                 await shutdownMCP()
                 exit(status)

@@ -60,7 +60,8 @@ SERVER (--serve)
   --public-health                         Keep /health unauthenticated
   --footgun                               Disable all protections
   --max-concurrent <n>                    Max concurrent requests (default: 5)
-  --tool-calling <f>                      guided (default) or text: how the model writes client tool calls
+  --tool-calling <f>                      guided (default) or text: how the model decides tool calls,
+                                          here and on every --mcp path (CLI included)
 
 META
   -v, --version                           Print version
@@ -203,8 +204,10 @@ apfel --serve --no-origin-check
 # --max-concurrent
 apfel --serve --max-concurrent 2
 
-# --tool-calling (guided is the default; text restores the free-text tool-call format)
+# --tool-calling (guided is the default; text restores the free-text tool-call format;
+# applies to --serve and to the CLI --mcp path)
 apfel --serve --tool-calling text
+apfel --mcp mcp/calculator/server.py --tool-calling text "What's 17 times 23?"
 
 # --benchmark, --model-info, --update, --release, --version, --help
 apfel --benchmark -o json | jq '.benchmarks[] | {name, speedup_ratio}'

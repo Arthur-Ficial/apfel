@@ -103,12 +103,36 @@ func handleInputTokens(_ request: Request, context: some RequestContext) async t
     let options = responsesSessionOptions(countRequest, truncation: truncation)
     events.append("count input messages=\(messages.count) format=\(formatType) tools=\(tools?.count ?? 0) truncation=\(truncation.rawValue)")
 
-    let prepared: ContextManager.PreparedEntries
-    do {
-        prepared = try await ContextManager.prepareEntries(
+    // Free-text entries: what generation sends without the guided step.
+    func freeTextEntries() async throws -> ContextManager.PreparedEntries {
+        try await ContextManager.prepareEntries(
             messages: messages, tools: toolPolicy.scopedTools(from: tools), options: options,
             jsonMode: formatType == "json_object", toolChoice: countRequest.tool_choice,
             responseSchema: responseSchema)
+    }
+    // With function tools in scope /v1/responses decides under the guided
+    // tool step (#590 item 1): its first request carries the step's
+    // instructions and schema, so that is what the preflight counts, built
+    // exactly like runGuidedToolStep builds it. A step guided generation
+    // cannot express, or one that does not fit, falls back to free text in
+    // generation, and so it does here.
+    var guided: (step: GuidedToolStep, schema: GenerationSchema)?
+    if serverState.config.toolCalling == .guided, toolPolicy.toolsInScope, responseSchema == nil,
+       let scoped = toolPolicy.scopedTools(from: tools), !scoped.isEmpty {
+        guided = try? prepareGuidedToolStep(tools: scoped, mode: toolPolicy.mode)
+    }
+
+    let prepared: ContextManager.PreparedEntries
+    do {
+        if let guided {
+            prepared = try await ContextManager.prepareEntries(
+                messages: messages, tools: toolPolicy.scopedTools(from: tools), options: options,
+                jsonMode: false, toolChoice: countRequest.tool_choice,
+                responseSchema: guided.schema, toolInstructions: guided.step.instructions)
+            events.append("counting the guided tool step")
+        } else {
+            prepared = try await freeTextEntries()
+        }
     } catch {
         let classified = classifyModelError(error)
         return openAIFailure(
@@ -122,11 +146,18 @@ func handleInputTokens(_ request: Request, context: some RequestContext) async t
     // The budget is read at runtime, the same way generation reads it.
     let window = await TokenCounter.shared.contextWindow
     let budget = window.tokens - outputReserve
-    let outcome: InputTokenPreflightOutcome
-    do {
-        outcome = try await InputTokenPreflight.run(
-            prepared: prepared, budget: budget,
+    func preflight(_ entries: ContextManager.PreparedEntries) async throws -> InputTokenPreflightOutcome {
+        try await InputTokenPreflight.run(
+            prepared: entries, budget: budget,
             strategy: truncation.contextStrategy, counter: TokenCounter.shared)
+    }
+    var outcome: InputTokenPreflightOutcome
+    do {
+        outcome = try await preflight(prepared)
+        if guided != nil, case .overflow = outcome {
+            events.append("guided tool step does not fit the context window, counting the free-text format")
+            outcome = try await preflight(try await freeTextEntries())
+        }
     } catch let error as TokenCountingError {
         return openAIFailure(
             status: .init(code: error.httpStatusCode),
@@ -135,6 +166,14 @@ func handleInputTokens(_ request: Request, context: some RequestContext) async t
             stream: false, requestBody: requestBodyString, events: events,
             event: "token counting unavailable: \(error.code)",
             code: error.code)
+    } catch {
+        let classified = classifyModelError(error)
+        return openAIFailure(
+            status: .init(code: classified.httpStatusCode),
+            message: classified.openAIMessage,
+            type: classified.openAIType,
+            stream: false, requestBody: requestBodyString, events: events,
+            event: "input preparation failed: \(classified.openAIMessage)")
     }
 
     switch outcome {

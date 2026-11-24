@@ -39,7 +39,7 @@ func printHeader() {
 /// `codeOnly` found no fenced block, or `ApfelExitCodes.incomplete` when
 /// `requireComplete` saw a length finish (#484). A matched `--stop`
 /// delimiter is a `stop` finish, so it is complete (#483).
-func singlePrompt(_ prompt: String, systemPrompt: String?, stream: Bool, options: SessionOptions = .defaults, mcpManager: MCPManager? = nil, codeOnly: Bool = false, requireComplete: Bool = false, images: [PromptImage] = [], stopSequences: [String] = []) async throws -> Int32 {
+func singlePrompt(_ prompt: String, systemPrompt: String?, stream: Bool, options: SessionOptions = .defaults, mcpManager: MCPManager? = nil, codeOnly: Bool = false, requireComplete: Bool = false, images: [PromptImage] = [], stopSequences: [String] = [], toolCalling: ToolCallingFormat = .guided) async throws -> Int32 {
     let mcpTools = await mcpManager?.allTools() ?? []
     let hasMCPTools = !mcpTools.isEmpty
 
@@ -47,10 +47,12 @@ func singlePrompt(_ prompt: String, systemPrompt: String?, stream: Bool, options
 
     let session: LanguageModelSession
     let finalPrompt: String
+    var guidedMessages: [OpenAIMessage]? = nil
     if hasMCPTools {
         var msgs: [OpenAIMessage] = []
         if let sys = systemPrompt { msgs.append(OpenAIMessage(role: "system", content: .text(sys))) }
         msgs.append(OpenAIMessage(role: "user", content: .text(prompt)))
+        guidedMessages = msgs
         (session, finalPrompt, _, _) = try await ContextManager.makeSession(
             messages: msgs, tools: mcpTools, options: options, jsonMode: false, toolChoice: nil)
     } else {
@@ -85,9 +87,9 @@ func singlePrompt(_ prompt: String, systemPrompt: String?, stream: Bool, options
         prompt: finalPrompt, pieces: pieces, systemPrompt: systemPrompt, session: session,
         options: options, genOpts: genOpts, stream: stream,
         printDelta: outputFormat == .plain && !codeOnly, mcpManager: mcpManager, hasMCPTools: hasMCPTools,
-        stopSequences: stopSequences)
+        stopSequences: stopSequences, toolCalling: toolCalling, guidedMessages: guidedMessages)
     return emitOneShotResult(
-        result, stream: stream, hasMCPTools: hasMCPTools,
+        result,
         codeOnly: codeOnly, requireComplete: requireComplete,
         unknownFinishNote: CompletionPolicy.unknownFinishNote(
             maxTokens: options.maxTokens,
@@ -105,14 +107,15 @@ func singlePrompt(_ prompt: String, systemPrompt: String?, stream: Bool, options
 /// nonzero exit is the contract there.
 func emitOneShotResult(
     _ result: ProcessPromptResult,
-    stream: Bool,
-    hasMCPTools: Bool,
     codeOnly: Bool,
     requireComplete: Bool,
     unknownFinishNote: String? = nil
 ) -> Int32 {
     printToolLog(result.toolLog)
-    let streamedLive = stream && outputFormat == .plain && !codeOnly && !hasMCPTools
+    // Whether deltas already reached stdout is decided where printing happens
+    // (processPrompt), not re-derived here: the guided --mcp answer streams
+    // live even though MCP tools are attached (#590).
+    let streamedLive = result.printedLive
     // Below macOS 26.4 with an explicit cap the stop/length decision is an
     // estimate: report it as unknown rather than as fact (PR #551 review).
     let reported = CompletionPolicy.reportedFinishReason(
@@ -281,7 +284,8 @@ func messagesPrompt(
     mcpManager: MCPManager? = nil,
     codeOnly: Bool = false,
     requireComplete: Bool = false,
-    stopSequences: [String] = []
+    stopSequences: [String] = [],
+    toolCalling: ToolCallingFormat = .guided
 ) async throws -> Int32 {
     var messages = try MessagesInput.decode(messagesJSON)
     if let sys = systemPrompt {
@@ -307,9 +311,10 @@ func messagesPrompt(
         prompt: finalPrompt, pieces: finalPieces, systemPrompt: systemPrompt, session: session,
         options: options, genOpts: genOpts, stream: stream,
         printDelta: outputFormat == .plain && !codeOnly, mcpManager: mcpManager, hasMCPTools: hasMCPTools,
-        stopSequences: stopSequences)
+        stopSequences: stopSequences, toolCalling: toolCalling,
+        guidedMessages: hasMCPTools ? messages : nil)
     return emitOneShotResult(
-        result, stream: stream, hasMCPTools: hasMCPTools,
+        result,
         codeOnly: codeOnly, requireComplete: requireComplete,
         unknownFinishNote: CompletionPolicy.unknownFinishNote(
             maxTokens: options.maxTokens,
@@ -467,7 +472,7 @@ func countTokens(
 // MARK: - Interactive Chat
 
 /// Run an interactive multi-turn chat session with context window protection.
-func chat(systemPrompt: String?, initialContext: String? = nil, options: SessionOptions = .defaults, mcpManager: MCPManager? = nil, contextStatus: Bool = false) async throws {
+func chat(systemPrompt: String?, initialContext: String? = nil, options: SessionOptions = .defaults, mcpManager: MCPManager? = nil, contextStatus: Bool = false, toolCalling: ToolCallingFormat = .guided) async throws {
     guard isatty(STDIN_FILENO) != 0 else {
         printError("--chat requires an interactive terminal (stdin must be a TTY)")
         exit(exitUsageError)
@@ -583,10 +588,31 @@ func chat(systemPrompt: String?, initialContext: String? = nil, options: Session
         }
 
         do {
+            // The guided step (#590) decides over the conversation so far -
+            // system prompt plus every earlier turn from the persistent
+            // transcript (including recorded tool turns), then the current
+            // turn - so "add 9 to that result" can resolve "that". A guided
+            // answer still falls through to the history-carrying session
+            // (guidedAnswerInSession).
+            let guidedMessages: [OpenAIMessage]? = hasMCPTools
+                ? conversationMessages(systemPrompt: systemPrompt, transcript: session.transcript, currentTurn: trimmed)
+                : nil
+            let entriesBefore = transcriptEntries(session.transcript).count
             let result = try await processPrompt(
                 prompt: trimmed, systemPrompt: systemPrompt, session: session,
                 options: options, genOpts: genOpts, stream: true,
-                printDelta: outputFormat == .plain, mcpManager: mcpManager, hasMCPTools: hasMCPTools)
+                printDelta: outputFormat == .plain, mcpManager: mcpManager, hasMCPTools: hasMCPTools,
+                toolCalling: toolCalling, guidedMessages: guidedMessages, guidedAnswerInSession: true)
+            // Keep the answer the user saw in the transcript (#590): a guided
+            // tool turn ran outside the persistent session, a free-text tool
+            // turn left the raw tool-call JSON as its response.
+            if hasMCPTools, !result.toolLog.isEmpty {
+                let entries = recordToolTurn(
+                    entries: transcriptEntries(session.transcript), entriesBefore: entriesBefore,
+                    prompt: trimmed, answer: result.content, options: options)
+                session = makeTranscriptSession(model: model, entries: entries)
+                debugLog("chat", "tool turn recorded into the transcript")
+            }
             if !hasMCPTools && outputFormat == .plain { print("\n") }
             printToolLog(result.toolLog)
             let content = result.content

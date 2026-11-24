@@ -36,8 +36,12 @@ client executes it (#119).
 
 ### The guided tool step (default since 1.19.0, `--tool-calling guided`)
 
-For `/v1/chat/completions` requests with client `tools`, the model does not write the
-call as free text. Its decision is generated under a JSON schema (#533):
+With tools in scope the model does not write the call as free text. Its decision is
+generated under a JSON schema (#533): client `tools` on `/v1/chat/completions` and
+`/v1/responses` (non-streaming; function tools with `stream: true` are still a 501),
+and - since #590 - the first decision of every `--mcp` path: server auto-execution
+(the decided call is executed, follow-up rounds after a tool result stay free text)
+and the CLI (`apfel --mcp server.py "prompt"`, `--chat`).
 
 ```
 {"action": "<one of the tool names, or answer>",
@@ -64,8 +68,13 @@ call as free text. Its decision is generated under a JSON schema (#533):
   step does not fit the window, the request uses the free-text format below instead of
   failing (#590); only a request that free text cannot fit either gets the 400
   `context_length_exceeded`. `--debug` logs the fallback.
-- Not covered yet: tools attached with `--mcp` (auto-executed), `/v1/responses`, and the
-  CLI use the free-text format.
+- On the `--mcp` paths the step decides the first round only: a call is executed and
+  fed back as today, and any further calls the model chains after a tool result are
+  detected as free text. An `answer` is written without the tool list in scope - in
+  `--chat` it comes from the history-carrying chat session instead, so multi-turn
+  context survives. The `--chat` decision itself also sees the conversation so far
+  (every earlier turn, tool turns included), so a follow-up like "now add 9 to that
+  result" can resolve "that".
 
 Measured 2026-11-17 with the tool sets from #580/#581 (time tools, web search/fetch,
 calculator, a location + weather pair), 20 runs per prompt, streamed and non-streamed,

@@ -32,7 +32,7 @@ _apfel() {
     '--host[Server bind address]:value:' \
     '--cors[Enable CORS headers]' \
     '--max-concurrent[Max concurrent requests]:value:' \
-    '--tool-calling[How the model writes client tool calls]:value:(guided text)' \
+    '--tool-calling[How the model decides tool calls (serve and --mcp)]:value:(guided text)' \
     '--debug[Enable debug logging]' \
     '--allowed-origins[Comma-separated allowed origins]:value:' \
     '--no-origin-check[Disable origin checking]' \
