@@ -157,6 +157,22 @@ func runGuidedToolStepTests() {
         try assertFalse(step.instructions.contains("tool_calls"), "no free-text envelope in the guided prompt")
     }
 
+    // #590 item 3: macOS 26.1 picked a tool for "Hello" and for a story
+    // (23/40, 3/40 measured 2026-11-24). Two examples that answer fixed it
+    // there without changing macOS 27. They name the real answer action.
+    test("auto instruction shows that greetings and writing are answered (#590)") {
+        let step = try GuidedToolStep(tools: [search], mode: .auto)
+        try assertTrue(step.instructions.contains("\"Hello\" -> action \"answer\""))
+        try assertTrue(step.instructions.contains("poem"))
+        let clashing = try GuidedToolStep(tools: [ToolDef(name: "answer", description: "x", parametersJSON: nil)], mode: .auto)
+        try assertTrue(clashing.instructions.contains("\"Hello\" -> action \"answer_2\""))
+    }
+
+    test("required and named instructions carry no answer examples (#590)") {
+        try assertFalse(try GuidedToolStep(tools: [search], mode: .required).instructions.contains("Hello"))
+        try assertFalse(try GuidedToolStep(tools: [search], mode: .specific("web_search")).instructions.contains("Hello"))
+    }
+
     test("required and named instructions demand a call") {
         try assertTrue(try GuidedToolStep(tools: [search], mode: .required).instructions.contains("Call one of the tools now"))
         try assertTrue(try GuidedToolStep(tools: [search], mode: .specific("web_search")).instructions.contains("Call the tool web_search now"))

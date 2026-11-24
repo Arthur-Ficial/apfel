@@ -79,9 +79,15 @@ tool with arguments that match its schema, or a plain answer where no tool is ne
 
 Where text loses: escaping and argument errors (`series`, and on macOS 26.1 the
 calculator 4/80), and tool calls for prompts that need none (`hello`, a short story).
-Where guided still loses on macOS 26.1: the older model picks a tool for a greeting or
-a story far more often (hello 16/40 vs 40/40 in text mode, story 0/40 vs 27/40). Use
-`--tool-calling text` if that matters more to you than correct calls. Cost: an answer
+Where guided lost on macOS 26.1: the older model picked a tool for a greeting or a story
+(hello 16/40 vs 40/40 in text mode, story 0/40 vs 27/40). Since two examples that answer
+were added to the decision text (#590, re-measured 2026-11-24, 20 runs per prompt,
+streamed and non-streamed, same day for both binaries), guided on macOS 26.1 went from
+254/360 to 292/360: hello 23/40 to 40/40, story 3/40 to 19/40, no prompt worse; macOS
+27.0.1 stayed at 360/360. Still weak on macOS 26.1: stories (19/40), and "What's the
+weather where I am?" calls `get_weather` with made-up coordinates instead of
+`get_current_location` (0/40, also before the change). Use `--tool-calling text` if
+that matters more to you than correct calls. Cost: an answer
 takes one extra request (on macOS 27, e.g. 2.3 s for "Hello" with six tools in scope);
 a call is usually one request, and often faster than the free-text envelope (web search
 on macOS 27: 2.8 s vs 5.0 s) because only the arguments are generated. The table was

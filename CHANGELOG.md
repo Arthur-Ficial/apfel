@@ -7,6 +7,10 @@ and this project adheres to [https://semver.org/](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- The guided tool step's decision text shows two examples that answer (a greeting, a short poem) (#590 item 3). Measured 2026-11-24, 20 runs per prompt streamed and non-streamed: macOS 26.1 (M5) guided went from 254/360 to 292/360 ("Hello" 23/40 to 40/40, a short story 3/40 to 19/40, no prompt worse); macOS 27.0.1 (M2) stayed at 360/360.
+
 ### Fixed
 
 - A guided tool step that does not fit the context window falls back to the free-text tool-call format instead of returning 400 `context_length_exceeded` (#590 item 2). The step schema and tool list cost tokens free text does not; only a request free text cannot fit either still gets the 400.
