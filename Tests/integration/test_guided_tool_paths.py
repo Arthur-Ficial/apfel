@@ -235,11 +235,13 @@ def test_responses_guided_answer_is_a_plain_message(guided_mcp):
 def test_responses_text_mode_keeps_free_text_detection(text_mcp):
     require_model()
     base, read_log = text_mcp
-    # The free-text format may or may not produce the call on a given
-    # trajectory; the subject here is the flag, not the model: the guided
-    # step must not run.
+    # The subject is the flag, not the model: the guided step must not run.
+    # A prompt that needs no tool, 20/20 in text mode on macOS 27.0.1 and
+    # 26.1 (2026-11-24); the calculator prompt makes 26.1 write broken
+    # escaping in text mode (0/20), which is a 500 unrelated to the flag.
     r = httpx.post(f"{base}/v1/responses", json={
-        "model": MODEL, "input": "What's 17 times 23?", "tools": [CALC_TOOL]},
+        "model": MODEL, "input": "Write me a short story about a space adventure in three sentences.",
+        "tools": [CALC_TOOL]},
         timeout=TIMEOUT)
     assert r.status_code == 200, r.text
     time.sleep(0.5)
