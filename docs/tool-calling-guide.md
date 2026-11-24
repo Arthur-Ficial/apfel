@@ -60,6 +60,10 @@ call as free text. Its decision is generated under a JSON schema (#533):
   schema-valued `additionalProperties` or `patternProperties`, a root `$ref` or union)
   makes the request use the free-text format below; `--debug` logs why.
 - `max_tokens` caps the answer, not the decision step or a call's arguments.
+- The step's schema and tool list cost context the free-text format does not. When the
+  step does not fit the window, the request uses the free-text format below instead of
+  failing (#590); only a request that free text cannot fit either gets the 400
+  `context_length_exceeded`. `--debug` logs the fallback.
 - Not covered yet: tools attached with `--mcp` (auto-executed), `/v1/responses`, and the
   CLI use the free-text format.
 

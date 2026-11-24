@@ -253,7 +253,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
             events.append("guided tool step unavailable, free-text format: \(error)")
         }
         if let prepared {
-            let outcome: GuidedToolOutcome
+            let outcome: GuidedToolOutcome?
             do {
                 outcome = try await runGuidedToolStep(
                     prepared.step, stepSchema: prepared.schema, messages: chatRequest.messages,
@@ -261,7 +261,18 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
             } catch {
                 let failure = error as? GuidedToolStepFailure
                 let classified = classifyModelError(failure?.underlying ?? error)
-                if case .refusal(let explanation) = classified {
+                let stepOverflowed = switch classified {
+                case .contextOverflow, .contextWindowExceeded: true
+                default: false
+                }
+                if stepOverflowed {
+                    // The step schema and its tool list cost tokens the
+                    // free-text format does not (#590 item 2): when the step
+                    // does not fit, the free-text path below serves the
+                    // request, or reports its own overflow if it cannot fit either.
+                    events.append("guided tool step does not fit the context window, free-text format")
+                    outcome = nil
+                } else if case .refusal(let explanation) = classified {
                     let refusalEvents = events + ["refusal: \(classified.cliLabel)"]
                     let stepPromptTokens = failure?.promptTokens ?? 0
                     let completedRounds = failure?.completedUsage.map { [$0] } ?? []
@@ -276,20 +287,23 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
                         id: requestId, created: created, model: model, promptTokens: stepPromptTokens,
                         completedRounds: completedRounds,
                         refusal: explanation, requestBody: requestBodyString, events: refusalEvents)
+                } else {
+                    return openAIFailure(
+                        status: .init(code: classified.httpStatusCode),
+                        message: classified.openAIMessage,
+                        type: classified.openAIType,
+                        stream: isStreaming,
+                        requestBody: requestBodyString,
+                        events: events,
+                        event: "guided tool step failed: \(classified.cliLabel)",
+                        retryAfterSeconds: classified.retryAfterSeconds
+                    )
                 }
-                return openAIFailure(
-                    status: .init(code: classified.httpStatusCode),
-                    message: classified.openAIMessage,
-                    type: classified.openAIType,
-                    stream: isStreaming,
-                    requestBody: requestBodyString,
-                    events: events,
-                    event: "guided tool step failed: \(classified.cliLabel)",
-                    retryAfterSeconds: classified.retryAfterSeconds
-                )
             }
             switch outcome {
-            case .call(let call, let usage):
+            case nil:
+                break
+            case .call(let call, let usage)?:
                 switch toolPolicy.evaluate(calls: [call]) {
                 case .violation(let violation):
                     return toolPolicyFailure(violation, stream: isStreaming, requestBody: requestBodyString, events: events)
@@ -298,7 +312,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
                         call, usage: usage, stream: isStreaming, includeUsage: includeUsage,
                         id: requestId, created: created, model: model, requestBody: requestBodyString, events: events)
                 }
-            case .answer(let usage):
+            case .answer(let usage)?:
                 // The step chose to answer: write the reply without tool
                 // instructions, so they cannot bend it (#533).
                 generationTools = nil
