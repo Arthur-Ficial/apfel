@@ -33,6 +33,35 @@ struct GuidedToolStepFailure: Error {
     let completedUsage: TokenUsage?
 }
 
+/// Build the guided step and its generation schema for the tools in scope.
+/// Shared by every path that runs the step (#590): chat completions with
+/// client tools, server `--mcp` auto-execution, `/v1/responses` function
+/// tools, and the CLI `--mcp` path.
+/// - Throws: `GuidedToolStep.Unavailable` or a schema-conversion error when
+///   guided generation cannot express a tool; callers fall back to the
+///   free-text format.
+func prepareGuidedToolStep(
+    tools: [OpenAITool], mode: ToolPolicy.Mode
+) throws -> (step: GuidedToolStep, schema: GenerationSchema) {
+    let step = try GuidedToolStep(
+        tools: tools.map {
+            ToolDef(name: $0.function.name, description: $0.function.description,
+                    parametersJSON: $0.function.parameters?.value)
+        },
+        mode: mode)
+    return (step, try SchemaConverter.generationSchema(fromJSON: step.schemaJSON, name: "tool_step"))
+}
+
+/// True when a failed guided step should fall back to the free-text format
+/// (#590 item 2): the step schema and its tool list cost tokens the free-text
+/// format does not, so an input-side overflow of the step is not final.
+func guidedStepFallsBackToFreeText(_ classified: ApfelError) -> Bool {
+    switch classified {
+    case .contextOverflow, .contextWindowExceeded: return true
+    default: return false
+    }
+}
+
 /// Generate the guided step for one request and resolve it to a call or an
 /// answer. Model errors propagate to the caller unchanged.
 func runGuidedToolStep(

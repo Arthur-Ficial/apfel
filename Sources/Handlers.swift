@@ -225,28 +225,26 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
     let requestId = "chatcmpl-\(UUID().uuidString.prefix(12).lowercased())"
     let created = Int(Date().timeIntervalSince1970)
 
-    // Guided tool step (#533): with client tools in scope, the model's
+    // Guided tool step (#533, #590): with tools in scope, the model's
     // decision (a tool and its arguments, or "answer") is generated under a
-    // JSON schema instead of as free-text JSON. A call is returned here; an
-    // answer continues below as a plain text request without tools, so the
-    // reply streams as usual. MCP tools (auto-executed) and json_schema
+    // JSON schema instead of as free-text JSON. A client-tool call is
+    // returned here; a server-injected MCP call is executed through the
+    // existing auto-execute pipeline; an answer continues below as a plain
+    // text request without tools, so the reply streams as usual. json_schema
     // requests keep their existing paths.
     var generationTools = effectiveTools
     var generationPolicy = toolPolicy
     var generationDirective = toolDirective
     var generationToolChoice = chatRequest.tool_choice
     var guidedStepUsage: TokenUsage?
-    if serverState.config.toolCalling == .guided, toolPolicy.toolsInScope, !resolvedTools.injected,
+    // Whether the request still enters MCP auto-execution below: a guided
+    // step that chose "answer" settles the tool question for this turn (#590).
+    var mcpAutoExecute = toolsAreMCPInjected
+    if serverState.config.toolCalling == .guided, toolPolicy.toolsInScope,
        structuredSchema == nil, let tools = effectiveTools, !tools.isEmpty {
         let prepared: (step: GuidedToolStep, schema: GenerationSchema)?
         do {
-            let step = try GuidedToolStep(
-                tools: tools.map {
-                    ToolDef(name: $0.function.name, description: $0.function.description,
-                            parametersJSON: $0.function.parameters?.value)
-                },
-                mode: toolPolicy.mode)
-            prepared = (step, try SchemaConverter.generationSchema(fromJSON: step.schemaJSON, name: "tool_step"))
+            prepared = try prepareGuidedToolStep(tools: tools, mode: toolPolicy.mode)
         } catch {
             // A tool schema guided generation cannot express: free text.
             prepared = nil
@@ -261,11 +259,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
             } catch {
                 let failure = error as? GuidedToolStepFailure
                 let classified = classifyModelError(failure?.underlying ?? error)
-                let stepOverflowed = switch classified {
-                case .contextOverflow, .contextWindowExceeded: true
-                default: false
-                }
-                if stepOverflowed {
+                if guidedStepFallsBackToFreeText(classified) {
                     // The step schema and its tool list cost tokens the
                     // free-text format does not (#590 item 2): when the step
                     // does not fit, the free-text path below serves the
@@ -308,13 +302,33 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
                 case .violation(let violation):
                     return toolPolicyFailure(violation, stream: isStreaming, requestBody: requestBodyString, events: events)
                 case .content, .toolCalls:
+                    if toolsAreMCPInjected {
+                        // Server-injected MCP tools are auto-executed (#590):
+                        // the decided call enters the existing execute +
+                        // re-prompt pipeline as its first round. The step's
+                        // usage is the first round's cost.
+                        let userPrompt = chatRequest.messages.last(where: { $0.role == "user" })?.textContent ?? ""
+                        let result = try await mcpExecuteAndDeliver(
+                            firstRound: [call], rawContent: "", usageRounds: [], stepUsage: usage,
+                            userPrompt: userPrompt, originalMessages: chatRequest.messages,
+                            sessionOptions: sessionOpts,
+                            id: requestId, created: created, model: model,
+                            genOpts: makeGenerationOptions(sessionOpts),
+                            // The step's usage already prices its own prompt;
+                            // counted fallbacks (macOS 26) add only the answer.
+                            promptTokens: .counted(0),
+                            streaming: isStreaming, includeUsage: includeUsage,
+                            jsonMode: jsonMode, requestBody: requestBodyString, events: events)
+                        return (result.response, result.trace)
+                    }
                     return guidedToolCallResponse(
                         call, usage: usage, stream: isStreaming, includeUsage: includeUsage,
                         id: requestId, created: created, model: model, requestBody: requestBodyString, events: events)
                 }
             case .answer(let usage)?:
                 // The step chose to answer: write the reply without tool
-                // instructions, so they cannot bend it (#533).
+                // instructions, so they cannot bend it (#533). With injected
+                // MCP tools this also skips auto-execution below (#590).
                 generationTools = nil
                 generationToolChoice = nil
                 generationDirective = nil
@@ -322,6 +336,7 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
                     generationPolicy = disabled
                 }
                 guidedStepUsage = usage
+                mcpAutoExecute = false
             }
         }
     }
@@ -368,8 +383,9 @@ func handleChatCompletion(_ request: Request, context: some RequestContext) asyn
     let finalUserPrompt = makeUserPrompt(text: finalPrompt, pieces: finalPieces)
 
     // MCP auto-execute: when tools were server-injected, run model, execute tool calls,
-    // re-prompt for final answer, then deliver as JSON or SSE.
-    if toolsAreMCPInjected {
+    // re-prompt for final answer, then deliver as JSON or SSE. Skipped when
+    // the guided step already answered the tool question above (#590).
+    if mcpAutoExecute {
         if structuredSchema != nil {
             return openAIFailure(
                 status: .badRequest,
@@ -531,6 +547,41 @@ private func mcpAutoExecuteResponse(
         firstRound = calls
     }
 
+    return try await mcpExecuteAndDeliver(
+        firstRound: firstRound, rawContent: rawContent, usageRounds: usageRounds, stepUsage: nil,
+        userPrompt: userPrompt, originalMessages: originalMessages, sessionOptions: sessionOptions,
+        id: id, created: created, model: model, genOpts: genOpts, promptTokens: promptTokens,
+        streaming: streaming, includeUsage: includeUsage, jsonMode: jsonMode,
+        requestBody: requestBody, events: events)
+}
+
+/// Execute an already-decided first round of MCP tool calls, run the
+/// re-prompt loop, and deliver the final answer as JSON or SSE. The shared
+/// tail of the free-text pipeline above and the guided tool step (#590):
+/// guided passes its decided call as `firstRound` with the step's usage as
+/// `stepUsage`, so the wire usage stays honest on both OSes.
+private func mcpExecuteAndDeliver(
+    firstRound: [ParsedToolCall],
+    rawContent: String,
+    usageRounds: [TokenUsage],
+    stepUsage: TokenUsage?,
+    userPrompt: String,
+    originalMessages: [OpenAIMessage],
+    sessionOptions: SessionOptions,
+    id: String,
+    created: Int,
+    model: String,
+    genOpts: GenerationOptions,
+    promptTokens: PromptTokens,
+    streaming: Bool,
+    includeUsage: Bool,
+    jsonMode: Bool,
+    requestBody: String?,
+    events: [String]
+) async throws -> (response: Response, trace: ChatRequestTrace) {
+    var events = events
+    var usageRounds = usageRounds
+
     // Auto-execute MCP tool calls and re-prompt for plain text answer
     let content: String
     do {
@@ -573,7 +624,7 @@ private func mcpAutoExecuteResponse(
     let deliveredContent = jsonMode ? JSONFenceStripper.strip(content) : content
     // Usage: the summed runtime-reported rounds (macOS 27+), else the counted
     // numbers (macOS 26 - unchanged on the wire).
-    let usage: TokenUsage
+    var usage: TokenUsage
     // finish_reason from the call that produced the delivered answer, like
     // every other path: a max_tokens cap shows as "length" (Fable review F5).
     let finalRoundCompletionTokens: Int
@@ -586,6 +637,8 @@ private func mcpAutoExecuteResponse(
             completionTokens: await TokenCounter.shared.count(deliveredContent))
         finalRoundCompletionTokens = usage.completionTokens
     }
+    // The guided step that decided this first round is part of the request (#590).
+    if let stepUsage { usage = stepUsage.adding(usage) }
     let finishReason = FinishReasonResolver.resolve(
         hasToolCalls: false,
         completionTokens: finalRoundCompletionTokens,
