@@ -937,6 +937,21 @@ func runToolCallHandlerTests() {
         let result = ProcessPromptResult(content: "", toolLog: [])
         try assertTrue(result.content.isEmpty)
     }
+    test("ProcessPromptResult printedLive defaults to false (#590)") {
+        // The existing initialisers keep their exact signatures (API gate);
+        // callers that never stream deltas see printedLive false.
+        try assertTrue(!ProcessPromptResult(content: "x", toolLog: []).printedLive)
+        try assertTrue(!ProcessPromptResult(
+            content: "x", toolLog: [], finishReason: .stop, truncation: nil, matchedStop: nil).printedLive)
+    }
+    test("ProcessPromptResult carries printedLive (#590)") {
+        // The guided --mcp answer path streams deltas live; emitOneShotResult
+        // and chat must know the content is already on stdout.
+        let result = ProcessPromptResult(
+            content: "hello", toolLog: [], finishReason: .stop,
+            truncation: nil, matchedStop: nil, printedLive: true)
+        try assertTrue(result.printedLive)
+    }
 
     // --- Codex review of the #580/#581 fix (2026-11-17) ---
 

@@ -23,21 +23,26 @@ package struct ProcessPromptResult: Sendable {
     /// The `--stop` sequence that ended generation (#483), else nil. A match
     /// is an observed event, so its `.stop` finish is exact on every OS.
     package let matchedStop: String?
+    /// True when the content was already streamed to stdout as live deltas
+    /// (#590): emitOneShotResult and chat must not print it a second time.
+    package let printedLive: Bool
 
     public init(content: String, toolLog: [ToolLogEntry], finishReason: FinishReason) {
         self.init(content: content, toolLog: toolLog, finishReason: finishReason, truncation: nil)
     }
 
-    /// Carries why a `.length` finish happened (#484) and the matched stop
-    /// sequence (#483). A separate initialiser so the three-argument one
-    /// above keeps its exact signature (API gate).
+    /// Carries why a `.length` finish happened (#484), the matched stop
+    /// sequence (#483) and whether deltas already reached stdout (#590). A
+    /// separate initialiser so the three-argument one above keeps its exact
+    /// signature (API gate).
     package init(
         content: String, toolLog: [ToolLogEntry], finishReason: FinishReason,
-        truncation: TruncationCause?, matchedStop: String? = nil
+        truncation: TruncationCause?, matchedStop: String? = nil, printedLive: Bool = false
     ) {
         self.content = content; self.toolLog = toolLog; self.finishReason = finishReason
         self.truncation = truncation
         self.matchedStop = matchedStop
+        self.printedLive = printedLive
     }
 
     /// Pre-1.3.3 initialiser preserved for source compatibility. Delegates to

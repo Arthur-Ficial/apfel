@@ -458,17 +458,35 @@ func runCLIArgumentsTests() {
 
     test("--tool-calling defaults to guided (#533)") {
         let args = try CLIArguments.parse(["--serve"])
-        try assertEqual(args.serverToolCalling, .guided)
+        try assertEqual(args.toolCalling, .guided)
     }
 
     test("--tool-calling text selects the free-text format (#533)") {
         let args = try CLIArguments.parse(["--serve", "--tool-calling", "text"])
-        try assertEqual(args.serverToolCalling, .text)
+        try assertEqual(args.toolCalling, .text)
     }
 
     test("--tool-calling guided selects the guided step (#533)") {
         let args = try CLIArguments.parse(["--serve", "--tool-calling", "guided"])
-        try assertEqual(args.serverToolCalling, .guided)
+        try assertEqual(args.toolCalling, .guided)
+    }
+
+    test("--tool-calling applies to the CLI --mcp path too (#590)") {
+        let args = try CLIArguments.parse(["--mcp", "server.py", "--tool-calling", "text", "What's 17 times 23?"])
+        try assertEqual(args.toolCalling, .text)
+        try assertEqual(args.mode, .single)
+        try assertEqual(args.prompt, "What's 17 times 23?")
+    }
+
+    test("--tool-calling defaults to guided for the CLI --mcp path (#590)") {
+        let args = try CLIArguments.parse(["--mcp", "server.py", "hi"])
+        try assertEqual(args.toolCalling, .guided)
+    }
+
+    test("--tool-calling with --chat parses (#590)") {
+        let args = try CLIArguments.parse(["--chat", "--mcp", "server.py", "--tool-calling", "text"])
+        try assertEqual(args.toolCalling, .text)
+        try assertEqual(args.mode, .chat)
     }
 
     test("--tool-calling with an unknown value throws naming the choices") {

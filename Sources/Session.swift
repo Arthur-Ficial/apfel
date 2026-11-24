@@ -9,12 +9,20 @@
 import FoundationModels
 import Foundation
 import ApfelCore
+import ApfelCLI
 import ApfelEngine
 
 // MARK: - Unified Prompt Processing (shared by singlePrompt and chat)
 
 /// Unified prompt execution: retry + streaming/non-streaming + MCP tool execution.
 /// Used by BOTH singlePrompt() and chat() - ONE code path, no duplication.
+///
+/// With MCP tools and `toolCalling == .guided` (the default, #590) the first
+/// decision is made by the guided tool step over `guidedMessages`: a call is
+/// executed directly, an answer is written without tool instructions (or, in
+/// chat, by the passed history-carrying session: `guidedAnswerInSession`).
+/// A step that guided generation cannot run (inexpressible tool schema) or
+/// that does not fit the context window falls back to the free-text format.
 func processPrompt(
     prompt: String,
     pieces: [PromptPiece]? = nil,
@@ -26,7 +34,10 @@ func processPrompt(
     printDelta: Bool,
     mcpManager: MCPManager?,
     hasMCPTools: Bool,
-    stopSequences: [String] = []
+    stopSequences: [String] = [],
+    toolCalling: ToolCallingFormat = .guided,
+    guidedMessages: [OpenAIMessage]? = nil,
+    guidedAnswerInSession: Bool = false
 ) async throws -> ProcessPromptResult {
     let retryMax = options.retryEnabled ? options.retryCount : 0
     // Image-bearing turns attach natively (macOS 27, #510); text-only turns
@@ -34,6 +45,46 @@ func processPrompt(
     let promptValue = makeUserPrompt(text: prompt, pieces: pieces ?? [.text(prompt)])
 
     debugLog("prompt", "stream=\(stream) retry=\(retryMax) mcp=\(hasMCPTools) images=\(pieces.map { p in p.reduce(0) { if case .image = $1 { return $0 + 1 } else { return $0 } } } ?? 0)")
+
+    if hasMCPTools, let mcpManager, toolCalling == .guided, let guidedMessages,
+       let outcome = try await runGuidedCLIToolStep(
+           messages: guidedMessages, tools: await mcpManager.allTools(), options: options) {
+        switch outcome {
+        case .call(let call, _):
+            debugLog("guided", "tool step decided: call \(call.name)")
+            let executed = try await executeMCPToolCallsForCLI(
+                calls: [call], mcpManager: mcpManager, userPrompt: prompt,
+                systemPrompt: systemPrompt, options: genOpts)
+            return ProcessPromptResult(
+                content: executed.content,
+                toolLog: executed.toolLog.map { ToolLogEntry(name: $0.name, args: $0.args, result: $0.result, isError: $0.isError) },
+                finishReason: .stop, truncation: nil, matchedStop: nil)
+        case .answer:
+            debugLog("guided", "tool step decided: answer")
+            if !guidedAnswerInSession {
+                // One-shot: write the reply without tool instructions, so
+                // they cannot bend it - and stream it live, which the
+                // free-text format cannot (tool JSON might appear mid-stream).
+                let (plainSession, plainPrompt, _, plainPieces) = try await ContextManager.makeSession(
+                    messages: guidedMessages, tools: nil, options: options, jsonMode: false, toolChoice: nil)
+                // Keep image attachments from the original turn (macOS 27, #510).
+                let imagePieces = (pieces ?? []).filter { if case .image = $0 { return true } else { return false } }
+                let answerPrompt = makeUserPrompt(
+                    text: plainPrompt,
+                    pieces: imagePieces.isEmpty ? plainPieces : [.text(plainPrompt)] + imagePieces)
+                let printSink = stream && printDelta ? StreamPrintSink() : nil
+                let outcome = try await withModelRetry(maxRetries: retryMax) {
+                    try await collectStream(plainSession, prompt: answerPrompt, sink: printSink, options: genOpts, stopSequences: stopSequences)
+                }
+                return ProcessPromptResult(
+                    content: outcome.content, toolLog: [], finishReason: outcome.finishReason,
+                    truncation: outcome.truncation, matchedStop: outcome.matchedStop,
+                    printedLive: printSink != nil)
+            }
+            // Chat: fall through - the passed session carries the history,
+            // and its buffered free-text round delivers the answer as today.
+        }
+    }
 
     var content: String
     var finishReason: FinishReason = .stop
@@ -70,7 +121,8 @@ func processPrompt(
 
     return ProcessPromptResult(
         content: content, toolLog: toolLog, finishReason: finishReason,
-        truncation: truncation, matchedStop: matchedStop)
+        truncation: truncation, matchedStop: matchedStop,
+        printedLive: printSink != nil)
 }
 
 /// Print tool execution log entries to stderr.
@@ -185,6 +237,43 @@ func truncateToolResultToBudget(
     return ToolOutputTruncator.truncate(result, tokenCount: tokens, budgetTokens: budget).text
 }
 
+/// Run the guided tool step (#533) for a CLI `--mcp` prompt (#590): the
+/// call-or-answer decision is generated under a JSON schema instead of as
+/// free-text JSON. Returns nil when the request must use the free-text
+/// format instead: a tool schema guided generation cannot express, or a step
+/// that does not fit the context window (the step's schema and tool list
+/// cost tokens the free-text format does not). Any other model error is
+/// rethrown unwrapped, so the CLI's exit-code mapping sees the real cause.
+func runGuidedCLIToolStep(
+    messages: [OpenAIMessage],
+    tools: [OpenAITool],
+    options: SessionOptions
+) async throws -> GuidedToolOutcome? {
+    guard !tools.isEmpty else { return nil }
+    let prepared: (step: GuidedToolStep, schema: GenerationSchema)
+    do {
+        prepared = try prepareGuidedToolStep(tools: tools, mode: .auto)
+    } catch {
+        debugLog("guided", "tool step unavailable, free-text format: \(error)")
+        return nil
+    }
+    var events: [String] = []
+    do {
+        let outcome = try await runGuidedToolStep(
+            prepared.step, stepSchema: prepared.schema, messages: messages,
+            tools: tools, toolChoice: nil, options: options, events: &events)
+        for event in events { debugLog("guided", event) }
+        return outcome
+    } catch {
+        let underlying = (error as? GuidedToolStepFailure)?.underlying ?? error
+        if guidedStepFallsBackToFreeText(classifyModelError(underlying)) {
+            debugLog("guided", "tool step does not fit the context window, free-text format")
+            return nil
+        }
+        throw underlying
+    }
+}
+
 /// CLI path: execute MCP tool calls and re-prompt with a plain follow-up session.
 /// No conversation history is threaded — the follow-up gets only the user prompt + tool results.
 func executeMCPToolCallsForCLI(
@@ -194,10 +283,41 @@ func executeMCPToolCallsForCLI(
     systemPrompt: String?,
     options: GenerationOptions
 ) async throws -> (content: String, toolLog: [(name: String, args: String, result: String, isError: Bool)])? {
-    guard let executed = try await detectAndExecuteMCPTools(in: content, mcpManager: mcpManager) else {
+    guard let mcpManager,
+          let executed = try await detectAndExecuteMCPTools(in: content, mcpManager: mcpManager) else {
         return nil
     }
+    return try await repromptAfterMCPExecution(
+        executed, mcpManager: mcpManager, userPrompt: userPrompt,
+        systemPrompt: systemPrompt, options: options)
+}
 
+/// CLI path for an already-decided first round (#590): the guided tool step
+/// chose the call, so detection is skipped and execution + the re-prompt
+/// loop run exactly as for a detected free-text call.
+func executeMCPToolCallsForCLI(
+    calls: [ParsedToolCall],
+    mcpManager: MCPManager,
+    userPrompt: String,
+    systemPrompt: String?,
+    options: GenerationOptions
+) async throws -> (content: String, toolLog: [(name: String, args: String, result: String, isError: Bool)]) {
+    let executed = try await executeMCPTools(calls, mcpManager: mcpManager)
+    return try await repromptAfterMCPExecution(
+        executed, mcpManager: mcpManager, userPrompt: userPrompt,
+        systemPrompt: systemPrompt, options: options)
+}
+
+/// The shared re-prompt loop behind both `executeMCPToolCallsForCLI`
+/// variants: feed the executed results back, answer, and run any further
+/// tool calls the answer requests, up to the bounded cap.
+private func repromptAfterMCPExecution(
+    _ executed: MCPExecutionResult,
+    mcpManager: MCPManager,
+    userPrompt: String,
+    systemPrompt: String?,
+    options: GenerationOptions
+) async throws -> (content: String, toolLog: [(name: String, args: String, result: String, isError: Bool)]) {
     var aggregatedLog = executed.toolLog
     let plainSession = makeSession(systemPrompt: systemPrompt)
     let overhead = cliFollowUpOverhead(userPrompt: userPrompt, systemPrompt: systemPrompt)
