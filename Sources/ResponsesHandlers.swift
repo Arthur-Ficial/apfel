@@ -170,14 +170,115 @@ func handleResponses(_ request: Request, context: some RequestContext) async thr
     let sessionOpts = responsesSessionOptions(
         responsesRequest, truncation: ResponsesTruncation(requestValue: responsesRequest.truncation))
 
+    let requestId = "resp_\(UUID().uuidString.prefix(12).lowercased())"
+    let created = Int(Date().timeIntervalSince1970)
+    let echo = ResponsesEcho(responsesRequest, formatType: formatType)
+
+    // Guided tool step (#533, #590): with function tools in scope the
+    // call-or-answer decision is generated under a JSON schema instead of as
+    // free-text JSON. A call becomes a `function_call` output item exactly
+    // like a detected free-text call; an answer continues below as a plain
+    // text request without tools. Tools with stream: true are a 501 above,
+    // so this path is non-streaming by construction.
+    var responsesTools = toolPolicy.scopedTools(from: tools)
+    var responsesToolChoice = responsesRequest.tool_choice
+    var responsesPolicy = toolPolicy
+    var guidedStepUsage: TokenUsage?
+    if serverState.config.toolCalling == .guided, toolPolicy.toolsInScope, structuredSchema == nil,
+       !isStreaming, let scoped = responsesTools, !scoped.isEmpty {
+        let prepared: (step: GuidedToolStep, schema: GenerationSchema)?
+        do {
+            prepared = try prepareGuidedToolStep(tools: scoped, mode: toolPolicy.mode)
+        } catch {
+            // A tool schema guided generation cannot express: free text.
+            prepared = nil
+            events.append("guided tool step unavailable, free-text format: \(error)")
+        }
+        if let prepared {
+            let outcome: GuidedToolOutcome?
+            do {
+                outcome = try await runGuidedToolStep(
+                    prepared.step, stepSchema: prepared.schema, messages: messages,
+                    tools: scoped, toolChoice: responsesToolChoice, options: sessionOpts, events: &events)
+            } catch {
+                let failure = error as? GuidedToolStepFailure
+                let classified = classifyModelError(failure?.underlying ?? error)
+                if guidedStepFallsBackToFreeText(classified) {
+                    // The step schema and its tool list cost tokens the
+                    // free-text format does not (#590): when the step does
+                    // not fit, the free-text path below serves the request.
+                    events.append("guided tool step does not fit the context window, free-text format")
+                    outcome = nil
+                } else if case .refusal(let explanation) = classified {
+                    // Wire parity with the non-guided path: a refusal is a
+                    // 200 with a refusal part, priced with the step's real
+                    // input size (macOS 27 reports completed rounds, #516).
+                    let refusalUsage = TokenUsage.refusal(
+                        completedRounds: failure?.completedUsage.map { [$0] } ?? [],
+                        refusedRound: TokenUsage(
+                            promptTokens: failure?.promptTokens ?? 0,
+                            completionTokens: await TokenCounter.shared.count(explanation)))
+                    let envelope = echo.envelope(
+                        id: requestId, created: created, status: "completed",
+                        output: [.message(id: "msg_\(UUID().uuidString.prefix(12).lowercased())",
+                                          text: nil, refusal: explanation, status: "completed")],
+                        usage: ResponsesUsage(input_tokens: refusalUsage.promptTokens,
+                                              output_tokens: refusalUsage.completionTokens))
+                    return encodeEnvelope(envelope, requestBody: requestBodyString,
+                                          events: events + ["refusal delivered"],
+                                          estimatedTokens: refusalUsage.totalTokens)
+                } else {
+                    return openAIFailure(
+                        status: .init(code: classified.httpStatusCode),
+                        message: classified.openAIMessage,
+                        type: classified.openAIType,
+                        stream: false, requestBody: requestBodyString, events: events,
+                        event: "guided tool step failed: \(classified.cliLabel)",
+                        retryAfterSeconds: classified.retryAfterSeconds)
+                }
+            }
+            switch outcome {
+            case nil:
+                break
+            case .call(let call, let usage)?:
+                switch toolPolicy.evaluate(calls: [call]) {
+                case .violation(let violation):
+                    return toolPolicyFailure(violation, stream: false, requestBody: requestBodyString, events: events)
+                case .content, .toolCalls:
+                    let envelope = echo.envelope(
+                        id: requestId, created: created, status: "completed",
+                        output: [.functionCall(id: "fc_\(UUID().uuidString.prefix(12).lowercased())",
+                                               callId: call.id, name: call.name,
+                                               arguments: call.argumentsString, status: "completed")],
+                        usage: ResponsesUsage(input_tokens: usage.promptTokens,
+                                              output_tokens: usage.completionTokens,
+                                              cached_input_tokens: usage.cachedPromptTokens))
+                    return encodeEnvelope(
+                        envelope, requestBody: requestBodyString,
+                        events: events + ["guided function_call: \(call.name)"],
+                        estimatedTokens: usage.totalTokens)
+                }
+            case .answer(let usage)?:
+                // The step chose to answer: write the reply without tool
+                // instructions, so they cannot bend it (#533).
+                responsesTools = nil
+                responsesToolChoice = nil
+                if case .success(let disabled) = ToolPolicy.resolve(toolChoice: ToolChoice.none, toolNames: [], parallelToolCalls: nil) {
+                    responsesPolicy = disabled
+                }
+                guidedStepUsage = usage
+            }
+        }
+    }
+
     let session: LanguageModelSession
     let finalPrompt: String
     let inputEntries: [Transcript.Entry]
     let finalPieces: [PromptPiece]
     do {
         (session, finalPrompt, inputEntries, finalPieces) = try await ContextManager.makeSession(
-            messages: messages, tools: toolPolicy.scopedTools(from: tools), options: sessionOpts,
-            jsonMode: jsonMode, toolChoice: responsesRequest.tool_choice,
+            messages: messages, tools: responsesTools, options: sessionOpts,
+            jsonMode: jsonMode, toolChoice: responsesToolChoice,
             responseSchema: structuredSchema)
     } catch {
         let classified = classifyModelError(error)
@@ -194,7 +295,7 @@ func handleResponses(_ request: Request, context: some RequestContext) async thr
     let genOpts = makeGenerationOptions(
         sessionOpts,
         toolCalling: ToolCallingDirective.resolve(
-            toolChoice: responsesRequest.tool_choice, toolsInScope: toolPolicy.toolsInScope))
+            toolChoice: responsesToolChoice, toolsInScope: responsesPolicy.toolsInScope))
     // Prompt tokens: counted up front on macOS 26; deferred on macOS 27, where
     // the response itself reports input tokens (#510, #504).
     let promptTokens = await PromptTokens.make(
@@ -202,9 +303,6 @@ func handleResponses(_ request: Request, context: some RequestContext) async thr
     // The respond() prompt: plain text, plus native image attachments when
     // the final turn carries images (macOS 27, #510).
     let finalUserPrompt = makeUserPrompt(text: finalPrompt, pieces: finalPieces)
-    let requestId = "resp_\(UUID().uuidString.prefix(12).lowercased())"
-    let created = Int(Date().timeIntervalSince1970)
-    let echo = ResponsesEcho(responsesRequest, formatType: formatType)
 
     if isStreaming {
         // Validator guarantees: no tools, no json_schema on this path.
@@ -219,8 +317,8 @@ func handleResponses(_ request: Request, context: some RequestContext) async thr
     let result = try await responsesNonStreamingResponse(
         session: session, prompt: finalUserPrompt, schema: structuredSchema,
         renderer: structuredRenderer,
-        jsonMode: jsonMode, policy: toolPolicy, id: requestId, created: created, genOpts: genOpts,
-        promptTokens: promptTokens, echo: echo,
+        jsonMode: jsonMode, policy: responsesPolicy, id: requestId, created: created, genOpts: genOpts,
+        promptTokens: promptTokens, priorUsage: guidedStepUsage, echo: echo,
         requestBody: requestBodyString, events: events)
     return (result.response, result.trace)
 }
@@ -238,6 +336,7 @@ private func responsesNonStreamingResponse(
     created: Int,
     genOpts: GenerationOptions,
     promptTokens: PromptTokens,
+    priorUsage: TokenUsage? = nil,
     echo: ResponsesEcho,
     requestBody: String?,
     events: [String]
@@ -307,9 +406,10 @@ private func responsesNonStreamingResponse(
         if case .refusal(let explanation) = classified {
             // Wire parity with chat: a refusal is a 200 with a refusal part.
             // A thrown refusal carries no runtime-reported usage: count it,
-            // plus the completed rounds' reported usage (macOS 27, #516).
+            // plus the completed rounds' reported usage (macOS 27, #516) and
+            // the guided step that chose to answer (#590).
             let refusalUsage = TokenUsage.refusal(
-                completedRounds: usageRounds,
+                completedRounds: usageRounds + (priorUsage.map { [$0] } ?? []),
                 refusedRound: TokenUsage(promptTokens: await promptTokens.resolve(),
                                          completionTokens: await TokenCounter.shared.count(explanation)))
             let refusalPromptTokens = refusalUsage.promptTokens
@@ -334,7 +434,7 @@ private func responsesNonStreamingResponse(
 
     // Usage: the summed runtime-reported rounds (macOS 27+), else the counted
     // numbers (macOS 26 - unchanged on the wire).
-    let usage: TokenUsage
+    var usage: TokenUsage
     if let reported = TokenUsage.sum(usageRounds) {
         usage = reported
     } else {
@@ -342,6 +442,8 @@ private func responsesNonStreamingResponse(
             promptTokens: await promptTokens.resolve(),
             completionTokens: await TokenCounter.shared.count(deliveredText))
     }
+    // The guided tool step that chose to answer is part of this request (#590).
+    if let priorUsage { usage = usage.adding(priorUsage) }
     let envelope = echo.envelope(
         id: id, created: created, status: status, output: output,
         usage: ResponsesUsage(input_tokens: usage.promptTokens, output_tokens: usage.completionTokens,
